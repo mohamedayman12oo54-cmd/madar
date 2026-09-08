@@ -1,0 +1,22 @@
+%% AI Quiz — Madar V1
+%% Authority: Descriptive. Source of truth: docs/05-runtime/ai-quiz.md
+sequenceDiagram
+    actor Student
+    participant App as Web/API
+    participant AI as Learning & AI
+    participant LLM as LLM (external)
+    participant DB as Persistence
+
+    Student->>App: finish targeted video, request quiz
+    App->>AI: submit generation (idempotent) -> operation-id
+    App-->>Student: operation-id (poll for status)
+    AI->>LLM: generate from teacher content (via LLM interface)
+    alt success
+        LLM-->>AI: quiz
+        AI->>DB: persist quiz (before answering)
+        Student->>App: poll -> Succeeded; answer quiz
+        App->>DB: persist answers + auto-score (student-visible)
+    else fail / timeout
+        AI-->>App: Failed
+        App-->>Student: clear failure + retry (NO partial quiz persisted)
+    end

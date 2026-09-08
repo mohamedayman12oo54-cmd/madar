@@ -1,0 +1,24 @@
+%% Fast Session — Madar V1
+%% Authority: Descriptive. Source of truth: docs/05-runtime/fast-session.md
+sequenceDiagram
+    actor Teacher
+    participant App as Web/API (Fast Session)
+    participant DB as Persistence
+    participant W as Worker
+    participant Push as Push (external)
+
+    Teacher->>App: open group session (Planned -> Open)
+    loop per student
+        Teacher->>App: tap Present/Absent (or Studied/Not-Studied/Skip)
+        App->>DB: persist record per-tap
+        alt Absent or Not-Studied
+            App->>DB: record + notification EVENT (same transaction)
+        else Skip
+            Note over App: no record, no event
+        end
+        App-->>Teacher: advance to next student (no wait)
+    end
+    Teacher->>App: close session (Open -> Closed)
+    W->>DB: read pending notification events
+    W->>Push: deliver (async; may fail independently)
+    Note over Teacher,DB: Correction: Closed->Reopened->flip->re-persist->Closed;<br/>prior notification not retracted; new Absent may fire new event

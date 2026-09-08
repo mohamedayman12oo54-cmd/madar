@@ -1,0 +1,40 @@
+%% Building-Block View — Madar V1 Modular Monolith
+%% Authority: Descriptive. Source of truth: docs/04-architecture/building-blocks.md
+flowchart TB
+    subgraph Clients
+        T["Teacher\n(responsive web)"]
+        S["Student\n(mobile-first web)"]
+        M["Content Maintainer\n(internal tool)"]
+    end
+
+    API["Unified REST API /api/v1"]
+    RB["Request boundary:\nAuth + Tenant Context\n(server-derived, ADR-008)"]
+
+    subgraph MONO["Modular Monolith (one deployable; web + worker roles)"]
+        IE["Identity &\nEnrollment"]
+        EO["Educational\nOperations"]
+        FIN["Financials"]
+        SE["Student\nEvaluation"]
+        CON["Content"]
+        AI["Learning & AI"]
+        NOT["Notifications"]
+        DAB["Data-access boundary:\ntenant scope enforced\n(ADR-004/007)"]
+    end
+
+    PERS["Persistence\n(logical tenant isolation)\n+ KB store"]
+    LLM["LLM provider\n(external)"]
+    PUSH["Push delivery\n(external)"]
+    VID["Video storage/streaming\n(external)"]
+
+    T --> API
+    S --> API
+    M --> API
+    API --> RB
+    RB --> IE & EO & FIN & SE & CON & AI & NOT
+    EO -. "Absent / Not-Studied events" .-> NOT
+    SE -. "advisory State rec" .-> AI
+    IE & EO & FIN & SE & CON & AI & NOT --> DAB
+    DAB --> PERS
+    AI -->|LLM interface| LLM
+    NOT -->|Push interface| PUSH
+    CON -->|Video interface| VID

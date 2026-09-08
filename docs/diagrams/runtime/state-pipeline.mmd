@@ -1,0 +1,22 @@
+%% Student State Pipeline — Madar V1
+%% Authority: Descriptive. Source of truth: docs/05-runtime/state-pipeline.md
+sequenceDiagram
+    actor Teacher
+    participant App as Web/API
+    participant Ev as Evidence (tenant/enrollment-scoped)
+    participant AI as Learning & AI
+    participant LLM as LLM (external)
+
+    Teacher->>App: open student's month
+    App->>Ev: gather attendance / recitation / quiz evidence
+    App->>AI: request State recommendation (async)
+    AI->>LLM: via LLM interface
+    alt success
+        LLM-->>AI: suggested State
+        AI-->>App: advisory recommendation
+    else fail / timeout
+        AI-->>App: no recommendation
+        Note over App,Teacher: teacher proceeds manually
+    end
+    Teacher->>App: finalize State {Good | Needs Follow-up | At Risk}
+    App->>Ev: persist finalized State (authoritative)

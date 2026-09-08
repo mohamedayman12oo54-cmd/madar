@@ -1,0 +1,19 @@
+%% Session Instance Lifecycle — Madar V1
+%% Authority: Descriptive. Source of truth: docs/03-domain/lifecycles.md
+stateDiagram-v2
+    [*] --> Planned
+    Planned --> Open: teacher starts session
+    Open --> Closed: teacher closes session
+    Closed --> Reopened: explicit correction
+    Reopened --> Closed: correction done
+    Closed --> [*]
+
+    note right of Open
+        Attendance & recitation
+        captured here
+    end note
+    note right of Reopened
+        Same occurrence re-opened.
+        Does NOT create a new session.
+        Fired notifications are not retracted.
+    end note

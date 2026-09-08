@@ -1,0 +1,40 @@
+%% Data Model (ERD) — Madar V1
+%% Authority: Descriptive. Source of truth: docs/06-data/data-model.md
+erDiagram
+    STUDENT ||--o{ ENROLLMENT : "global identity"
+    TEACHER_ENVIRONMENT ||--o{ ACADEMIC_YEAR : owns
+    TEACHER_ENVIRONMENT ||--o{ GRADE : owns
+    TEACHER_ENVIRONMENT ||--o{ GROUP : owns
+    TEACHER_ENVIRONMENT ||--o{ SCHEDULE : owns
+    TEACHER_ENVIRONMENT ||--o{ VIDEO_META : owns
+    TEACHER_ENVIRONMENT ||--o{ ENROLLMENT : scopes
+    ACADEMIC_YEAR ||--o{ ENROLLMENT : frames
+    GRADE ||--o{ GROUP : contains
+    GROUP ||--o{ SCHEDULE : "has slots"
+    GROUP ||--o{ SESSION_INSTANCE : "has occurrences"
+    ENROLLMENT }o--|| GRADE : "one (immutable; fee via Grade)"
+    ENROLLMENT ||--o{ GROUP_MEMBERSHIP : has
+    ENROLLMENT ||--o{ ATTENDANCE : "per session"
+    ENROLLMENT ||--o{ RECITATION : "per session"
+    SESSION_INSTANCE ||--o{ ATTENDANCE : records
+    SESSION_INSTANCE ||--o{ RECITATION : records
+    ENROLLMENT ||--o{ PAYMENT : "per month"
+    ENROLLMENT ||--o{ STATE : "per month (grade derived)"
+    ENROLLMENT ||--o{ RATING : "per month"
+    ENROLLMENT ||--o{ TEACHER_NOTE : "teacher-only"
+    VIDEO_META ||--o{ VIDEO_TARGET : targets
+
+    STUDENT {
+        string identity "GLOBAL - no teacher_environment_id"
+    }
+    ENROLLMENT {
+        id teacher_environment_id "universal tenant key"
+        id academic_year
+        id grade "immutable"
+    }
+    PAYMENT {
+        id teacher_environment_id
+        id enrollment
+        string month
+        string status
+    }

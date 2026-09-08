@@ -1,0 +1,31 @@
+%% System Context — Madar V1
+%% Authority: Descriptive. Source of truth: docs/00-overview/system-overview.md
+flowchart TB
+    Teacher["Teacher\n(responsive web)"]
+    Student["Student\n(mobile-first web)"]
+    Maintainer["Content Maintainer\n(internal web tool)"]
+
+    subgraph MADAR["MADAR (V1 system boundary)"]
+        Core["Core Madar system / domain\n(7 modules)"]
+        KB["Central curated\nKnowledge Base"]
+        AILogic["AI product logic /\norchestration"]
+    end
+
+    LLM["LLM / AI provider"]
+    Push["Push-notification\ndelivery"]
+    Video["Video storage /\nstreaming / delivery"]
+
+    %% Inbound: actors act ON Madar
+    Teacher -->|uses| Core
+    Student -->|uses| Core
+    Maintainer -->|curates| KB
+
+    %% Outbound: Madar depends ON external infrastructure
+    AILogic -->|consumes via Madar-owned interface| LLM
+    Core -->|dispatches via Push interface| Push
+    Core -->|stores/streams via Video interface| Video
+
+    %% Explicitly out of V1 context
+    OUT["Out of V1 context:\nParent · SMS · WhatsApp · Email ·\nOnline payment · inbound 3rd-parties"]:::excluded
+
+    classDef excluded fill:#f7f7f7,stroke:#bbb,stroke-dasharray:4 3,color:#666;

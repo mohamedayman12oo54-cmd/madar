@@ -1,0 +1,32 @@
+%% Domain Ownership Tree — Madar V1
+%% Authority: Descriptive. Source of truth: docs/03-domain/domain-model.md
+erDiagram
+    STUDENT ||--o{ ENROLLMENT : "has (global identity)"
+    TEACHER_ENVIRONMENT ||--o{ ACADEMIC_YEAR : owns
+    TEACHER_ENVIRONMENT ||--o{ GRADE : owns
+    TEACHER_ENVIRONMENT ||--o{ GROUP : owns
+    ACADEMIC_YEAR ||--o{ ENROLLMENT : frames
+    GRADE ||--o{ GROUP : contains
+    GRADE ||--|| GRADE_FEE : "owns fee"
+    ENROLLMENT }o--|| GRADE : "one (immutable)"
+    ENROLLMENT ||--o{ GROUP_MEMBERSHIP : has
+    GROUP ||--o{ SESSION_INSTANCE : "has occurrences"
+    ENROLLMENT ||--o{ ATTENDANCE : "per session"
+    ENROLLMENT ||--o{ RECITATION : "per session"
+    SESSION_INSTANCE ||--o{ ATTENDANCE : records
+    SESSION_INSTANCE ||--o{ RECITATION : records
+    ENROLLMENT ||--o{ PAYMENT : "per month"
+    ENROLLMENT ||--o{ STATE : "per month"
+    ENROLLMENT ||--o{ RATING : "per month"
+    ENROLLMENT ||--o{ TEACHER_NOTE : has
+
+    STUDENT {
+        string identity "global, not tenant-scoped"
+        string phone_login
+        string claim_state
+    }
+    ENROLLMENT {
+        id teacher_environment_id "tenant key"
+        id academic_year
+        id grade "immutable within enrollment"
+    }
