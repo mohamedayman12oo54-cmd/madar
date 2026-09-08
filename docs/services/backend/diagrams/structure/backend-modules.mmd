@@ -1,0 +1,60 @@
+%% Backend Internal Structural / Module View
+%% Descriptive. Specializes system 04-architecture/building-blocks.
+%% NOTE: depicts structural responsibilities and boundaries only.
+%% Does NOT prescribe a layering pattern, repositories, handlers, framework, or any stack/technology.
+
+flowchart TB
+    subgraph CLIENTS["Inbound clients (Frontend - separate surfaces)"]
+        T["Teacher (responsive web)"]
+        S["Student (mobile-first web)"]
+        CM["Content Maintainer (internal web)"]
+    end
+
+    T --> XC
+    S --> XC
+    CM --> XC
+
+    subgraph BACKEND["BACKEND - server-side application boundary within the Modular Monolith (one deployable, Web + Worker roles)"]
+        XC["Cross-cutting execution controls\n(authn context, server-derived tenant context,\nstructural isolation, common authz infra,\ninvariant enforcement, observability)\napplied on every applicable execution path"]
+
+        subgraph MODULES["Seven modules - each: internal capabilities over owned domain responsibilities + PRIVATE persistence"]
+            IE["Identity & Enrollment"]
+            EO["Educational Operations"]
+            FIN["Financials"]
+            SE["Student Evaluation"]
+            CON["Content"]
+            LAI["Learning & AI\n(internal bounded module;\nsole crosser of the LLM seam)"]
+            NOT["Notifications\n(async consumer of event hand-offs)"]
+        end
+
+        XC --> MODULES
+
+        %% capability-oriented collaboration (no cross-module persistence access)
+        EO -. capability .-> IE
+        FIN -. capability .-> IE
+        SE -. capability .-> IE
+        CON -. capability .-> IE
+        SE -. advisory recommendation .-> LAI
+        EO -. durable event hand-off .-> NOT
+    end
+
+    subgraph INFRA["Infrastructure / data dependencies (technology Open)"]
+        DB[("Persistence datastore")]
+        KB[("KB store")]
+    end
+
+    subgraph PROV["Outbound provider integrations (Madar-owned interfaces)"]
+        LLM["LLM interface -> external LLM"]
+        PUSH["Push Delivery interface"]
+        VID["Video Storage/Delivery interface"]
+    end
+
+    OTP["OTP / Identity-Verification\n(deferred; form undecided)"]
+
+    MODULES --> DB
+    LAI --> KB
+    CON --> KB
+    LAI --> LLM
+    NOT --> PUSH
+    CON --> VID
+    XC -. claiming .-> OTP

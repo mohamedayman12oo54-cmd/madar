@@ -1,0 +1,68 @@
+%% Backend LOGICAL Data Model / ERD
+%% Descriptive (logical/documentational). Specializes system 06-data/data-model; ADR-004/007.
+%% STRICTLY LOGICAL: entities, relationships, scoping tiers, isolation-vs-ownership keys, derived context.
+%% Does NOT imply database technology, ORM, physical schema, storage mechanism,
+%% and does NOT resolve the still-open AI product-state persistence ownership.
+%% Attributes shown are conceptual markers of scoping/keys only, not columns.
+
+erDiagram
+    STUDENT ||--o{ ENROLLMENT : "has (0..*)"
+    TEACHER_ENVIRONMENT ||--o{ ACADEMIC_YEAR : owns
+    TEACHER_ENVIRONMENT ||--o{ GRADE : owns
+    TEACHER_ENVIRONMENT ||--o{ GROUP : owns
+    TEACHER_ENVIRONMENT ||--o{ SCHEDULE : owns
+    TEACHER_ENVIRONMENT ||--o{ SESSION_INSTANCE : owns
+    TEACHER_ENVIRONMENT ||--o{ VIDEO_METADATA : owns
+    TEACHER_ENVIRONMENT ||--o{ ENROLLMENT : frames
+    ACADEMIC_YEAR ||--o{ ENROLLMENT : frames
+    GRADE ||--o{ GROUP : contains
+    GRADE ||--o{ ENROLLMENT : "grade-of (immutable per enrollment)"
+    GROUP ||--o{ SCHEDULE : "recurring slot"
+    GROUP ||--o{ SESSION_INSTANCE : "occurrence-of"
+    ENROLLMENT ||--o{ GROUP_MEMBERSHIP : has
+    GROUP ||--o{ GROUP_MEMBERSHIP : includes
+    ENROLLMENT ||--o{ ATTENDANCE : has
+    SESSION_INSTANCE ||--o{ ATTENDANCE : context
+    ENROLLMENT ||--o{ RECITATION : has
+    SESSION_INSTANCE ||--o{ RECITATION : context
+    ENROLLMENT ||--o{ PAYMENT : "monthly"
+    ENROLLMENT ||--o{ STATE : "monthly"
+    ENROLLMENT ||--o{ RATING : "monthly"
+    ENROLLMENT ||--o{ TEACHER_PRIVATE_NOTE : has
+
+    STUDENT {
+        marker identity "GLOBAL - the only entity NOT teacher-scoped"
+        marker claim_state "unclaimed until phone-based claiming"
+    }
+    TEACHER_ENVIRONMENT {
+        marker tenant_boundary "the isolation boundary"
+    }
+    ENROLLMENT {
+        marker teacher_environment_id "TENANT isolation key (uniform structural attribute)"
+        marker ownership_key "OWNERSHIP/relationship key for enrollment-scoped records"
+        marker grade_ref "one Grade, immutable within the enrollment (INV-3)"
+    }
+    PAYMENT {
+        marker teacher_environment_id "isolation key"
+        marker grade_context "DERIVED from Enrollment, NOT stamped (INV-6, ADR-007)"
+    }
+    STATE {
+        marker teacher_environment_id "isolation key"
+        marker grade_context "DERIVED from Enrollment, NOT stamped"
+    }
+    RATING {
+        marker teacher_environment_id "isolation key"
+        marker grade_context "DERIVED from Enrollment, NOT stamped"
+    }
+    ATTENDANCE {
+        marker teacher_environment_id "isolation key"
+        marker scope "Enrollment x Session Instance (INV-8)"
+    }
+    RECITATION {
+        marker teacher_environment_id "isolation key"
+        marker scope "Enrollment x Session Instance (INV-8)"
+    }
+    VIDEO_METADATA {
+        marker teacher_environment_id "isolation key"
+        marker blob "EXTERNAL reference only; blob not stored by Backend"
+    }

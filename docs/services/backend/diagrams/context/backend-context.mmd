@@ -1,0 +1,44 @@
+%% Backend Context View - the five neighbor classes
+%% Descriptive. Specializes system 00-overview/system-overview.
+%% NOTE: infrastructure/data dependencies are NOT peer external systems.
+%% No vendor or deployment topology is implied. No inbound external integrations in V1.
+
+flowchart LR
+    subgraph INBOUND["Inbound clients (one unified REST API)"]
+        T["Teacher"]
+        S["Student"]
+        CM["Content Maintainer"]
+    end
+
+    BE{{"BACKEND\nserver-side application boundary\nwithin the Modular Monolith\n(Web + Worker roles)"}}
+
+    subgraph SEAM["Internal seam"]
+        AI["AI Module (Learning & AI)\nbehind the Backend-owned\nintegration contract"]
+    end
+
+    subgraph INFRA["Infrastructure / data dependencies (technology Open)"]
+        DB[("Persistence datastore")]
+        KB[("KB store")]
+    end
+
+    subgraph PROVIDERS["Outbound provider integrations (Madar-owned interfaces)"]
+        LLM["LLM"]
+        PUSH["Push"]
+        VID["Video"]
+    end
+
+    OTP["OTP / Identity-Verification\nTBD / deferred\n(form undecided)"]
+
+    T --> BE
+    S --> BE
+    CM --> BE
+
+    BE <--> AI
+    BE --- DB
+    BE --- KB
+    BE --> LLM
+    BE --> PUSH
+    BE --> VID
+    BE -. conditional: claiming .-> OTP
+
+    %% Negative space: no inbound external integrations in V1

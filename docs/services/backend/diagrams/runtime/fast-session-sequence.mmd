@@ -1,0 +1,36 @@
+%% Fast-Session Commit + Notification Event Hand-off Sequence
+%% Descriptive. Specializes system 05-runtime/fast-session; ADR-005.
+%% NOTE: no outbox/broker/queue mechanism is implied. Emitting module owns the atomic hand-off.
+
+sequenceDiagram
+    participant Teacher
+    participant Web as Web / API process
+    participant EO as Educational Operations (emitting module)
+    participant Store as Persistence (Open)
+    participant Worker as Worker process
+    participant Push as Push Delivery interface
+
+    Teacher->>Web: open group session
+    Web->>EO: Session Instance Planned to Open
+
+    loop per student
+        Teacher->>Web: tap Present/Absent (or Studied/Not-Studied/Skip)
+        Web->>EO: authn/authz + context - validate transition / invariants
+        alt Present or Studied
+            EO->>Store: persist record (tenant-scoped)
+        else Absent or Not-Studied
+            EO->>Store: ATOMIC commit - record + durable notification event hand-off (within emitting module boundary)
+        else Skip
+            EO->>EO: advance - no record, no event
+        end
+        Web-->>Teacher: return - UI advances (no wait on delivery)
+    end
+
+    Teacher->>Web: close session
+    Web->>EO: Session Instance Open to Closed
+
+    Note over Worker: internal worker job (not a client-facing operation)
+    Worker->>Store: consume durable event hand-off
+    Worker->>Push: dispatch (async - may fail independently)
+
+    Note over Teacher,Push: Correction - Closed to Reopened to flip to Closed. Prior notifications stand - a new Absent/Not-Studied may fire a new hand-off.
