@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { AuthShell, AuthCard, Head, Field, TextInput, PasswordInput, Btn, Banner } from "../ui.jsx";
+import { authApi, saveSession } from "../api.js";
+import { ApiError } from "../../lib/api.js";
 
 export function TeamLogin() {
   const nav = useNavigate();
@@ -9,15 +11,19 @@ export function TeamLogin() {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!id.trim() || !pw) { setErr("أدخل بيانات الدخول للمتابعة."); return; }
     setErr(null); setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (pw === "wrong") { setErr("بيانات الدخول غير صحيحة، حاول مرة أخرى."); return; }
+    try {
+      const data = await authApi.teamLogin(id.trim(), pw);
+      saveSession(data);
       nav("/"); // → Knowledge Base / Content Management (خارج نطاق هذا النموذج)
-    }, 1000);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : "تعذّر الاتصال بالخادم، حاول مرة أخرى.");
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <AuthShell>
