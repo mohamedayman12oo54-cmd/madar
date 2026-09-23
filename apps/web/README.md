@@ -40,7 +40,12 @@ src/
 - Fonts load from Google Fonts (IBM Plex Sans Arabic). Swap in `index.html` if you self-host.
 - `prefers-reduced-motion` is respected globally (loader skipped, animations reduced).
 - The **Fast Session** block is an interactive demo: per-tap persistence, no batch save on close.
-- Login / "ابدأ الآن" CTAs are inert placeholders (no auth flow in this scaffold).
+
+## Backend
+This frontend now talks to a real Django REST API — see `../madar-backend/README.md`
+for setup. Point it at a different backend via `VITE_API_URL` (copy `.env.example` to `.env`).
+`src/lib/api.js` is the low-level fetch client (token storage + auto-refresh);
+`src/auth/api.js` wraps every backend endpoint one-to-one for the auth screens.
 
 ## Authentication experience
 Arabic-first, RTL, **split-screen** auth (form + cinematic brand panel) under `/auth`, sharing one design system. The marketing navbar/footer are hidden on auth routes.
@@ -49,6 +54,4 @@ Arabic-first, RTL, **split-screen** auth (form + cinematic brand panel) under `/
 - Entry `/auth` · Teacher `/auth/teacher/{login,signup,forgot,environments,welcome}` · Student `/auth/student` (login), `/auth/student/claim`, `/auth/student/environments` · Team `/auth/team/login` · states `/auth/state/:key` (incl. `unauthorized`, `session-expired`) · `/auth/logout`, `/auth/loading`.
 - Includes: split layout with brand panel, reusable components, live **password-requirements checklist**, reserved validation space (no layout jump), OTP boxes (auto-advance/paste), resend timer, loading-button text, success ring, environment cards.
 
-**Demo triggers (prototype):** password `wrong` → invalid credentials; OTP `000000` → wrong code; student claim phone ending in `0` → "no account found", otherwise proceeds.
-
-**Product rules honored:** no public student signup (claim-by-phone only); no `teacher_environment_id` field and no manual tenant entry; single active environment with a "never merge teachers" note; Content Maintainer walled off from records; unified `/api/v1` (no separate teacher/student APIs). Auth mechanics are shown generically — no provider is invented. Note: the student **password** shown here is one plausible design over a still-open backend decision on the student credential mechanism, not a locked product fact.
+**Product rules honored:** no public student signup (claim-by-phone only); no `teacher_environment_id` field and no manual tenant entry; single active environment with a "never merge teachers" note; Content Maintainer (team) walled off from teacher/student records; one unified backend (`/api/v1`, one user table, one JWT scheme across all three roles) rather than separate teacher/student services. Auth mechanics use a real Django backend now — see `../madar-backend/README.md`.
