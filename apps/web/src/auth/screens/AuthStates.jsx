@@ -4,6 +4,7 @@ import {
   TimerReset, PartyPopper, Lock,
 } from "lucide-react";
 import { AuthShell, AuthCard, StateView, SuccessRing, Btn, Modal, OrbitBig } from "../ui.jsx";
+import { authApi } from "../api.js";
 
 const STATES = {
   "invalid-credentials": { tone: "err", icon: <AlertTriangle size={30} />, title: "بيانات الدخول غير صحيحة", text: "تأكّد من رقم الهاتف/البريد وكلمة المرور وحاول مرة أخرى.", cta: ["تسجيل الدخول", "/auth/teacher/login"] },
@@ -45,10 +46,14 @@ export function AuthStateScreen() {
 
 export function LogoutConfirm() {
   const nav = useNavigate();
+  const doLogout = async () => {
+    await authApi.logout();
+    nav("/auth");
+  };
   return (
     <AuthShell>
       <Modal title="تسجيل الخروج؟" text="هل تريد تسجيل الخروج من حسابك؟" onClose={() => nav(-1)}>
-        <Btn onClick={() => nav("/auth")}>تسجيل الخروج</Btn>
+        <Btn onClick={doLogout}>تسجيل الخروج</Btn>
         <Btn variant="ghost" onClick={() => nav(-1)}>إلغاء</Btn>
       </Modal>
     </AuthShell>
@@ -71,7 +76,7 @@ export function LoadingDemo() {
 const GROUPS = [
   { h: "عام", items: [["الدخول", "/auth"], ["فهرس الشاشات", "/auth/all"], ["تحميل", "/auth/loading"], ["تأكيد الخروج", "/auth/logout"]] },
   { h: "المدرّس", items: [["تسجيل الدخول", "/auth/teacher/login"], ["إنشاء حساب", "/auth/teacher/signup"], ["استعادة كلمة المرور", "/auth/teacher/forgot"], ["اختيار البيئة", "/auth/teacher/environments"], ["بيئة جديدة", "/auth/teacher/welcome"]] },
-  { h: "الطالب", items: [["تسجيل الدخول", "/auth/student"], ["تفعيل الحساب", "/auth/student/claim"], ["اختيار المعلّم", "/auth/student/environments"]] },
+  { h: "الطالب", items: [["تسجيل الدخول", "/auth/student"], ["تفعيل الحساب", "/auth/student/claim"], ["استعادة كلمة المرور", "/auth/student/forgot"], ["اختيار المعلّم", "/auth/student/environments"]] },
   { h: "فريق مدار", items: [["دخول الفريق", "/auth/team/login"]] },
   { h: "حالات النجاح", items: [["إنشاء الحساب", "/auth/state/registration-success"], ["تفعيل الطالب", "/auth/state/claim-success"], ["تحديث كلمة المرور", "/auth/state/password-reset-success"]] },
   { h: "حالات الخطأ", items: [
