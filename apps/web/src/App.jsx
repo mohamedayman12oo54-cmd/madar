@@ -18,7 +18,7 @@ import Terms from "./pages/Terms.jsx";
 
 import AuthEntry from "./auth/screens/AuthEntry.jsx";
 import { TeacherLogin, TeacherSignup, TeacherForgot, TeacherEnvSelect, TeacherWelcome } from "./auth/screens/TeacherAuth.jsx";
-import { StudentLogin, StudentClaim, StudentEnvSelect } from "./auth/screens/StudentAuth.jsx";
+import { StudentLogin, StudentClaim, StudentForgot, StudentEnvSelect } from "./auth/screens/StudentAuth.jsx";
 import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
 import { AuthGallery, AuthStateScreen, LogoutConfirm, LoadingDemo } from "./auth/screens/AuthStates.jsx";
 
@@ -56,6 +56,7 @@ function AnimatedRoutes({ ready }) {
         <Route path="/auth/teacher/welcome" element={<TeacherWelcome />} />
         <Route path="/auth/student" element={<StudentLogin />} />
         <Route path="/auth/student/claim" element={<StudentClaim />} />
+        <Route path="/auth/student/forgot" element={<StudentForgot />} />
         <Route path="/auth/student/environments" element={<StudentEnvSelect />} />
         <Route path="/auth/team/login" element={<TeamLogin />} />
         <Route path="/auth/state/:key" element={<AuthStateScreen />} />
