@@ -28,7 +28,9 @@ export const authApi = {
   logout: async () => {
     const tokens = getTokens();
     if (tokens?.refresh) {
-      try { await api.post("/auth/logout/", { refresh: tokens.refresh }, { auth: true }); } catch { /* best-effort */ }
+      // The refresh token is the credential for logout (no access token
+      // needed), so this still revokes it when the access token has expired.
+      try { await api.post("/auth/logout/", { refresh: tokens.refresh }); } catch { /* best-effort */ }
     }
     clearTokens();
   },
