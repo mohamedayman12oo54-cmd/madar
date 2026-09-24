@@ -52,6 +52,11 @@ class User(AbstractUser):
     # student accounts still mid-onboarding (see PendingAuth below).
     is_verified = models.BooleanField(default=False)
 
+    # Bumped whenever all of a user's sessions must be cut off (password
+    # reset). Embedded in every token as the `sv` claim and checked by
+    # accounts.authentication.MadarJWTAuthentication.
+    session_version = models.PositiveIntegerField(default=0)
+
     objects = UserManager()
 
     first_name = None
@@ -129,7 +134,9 @@ class PendingAuth(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-    MAX_ATTEMPTS = 5
+    MAX_ATTEMPTS = 5          # wrong/any guesses per issued code
+    MAX_RESENDS = 3           # new codes per pending flow -> at most
+                              # MAX_ATTEMPTS * (MAX_RESENDS + 1) guesses in total
     OTP_TTL_SECONDS = 5 * 60
     PENDING_TTL_MINUTES = 30  # whole flow (incl. the step after OTP) expires
 
