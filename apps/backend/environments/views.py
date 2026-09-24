@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStudent, IsTeacher
-from accounts.throttles import SensitiveRateThrottle
+from accounts.throttles import StudentAddRateThrottle
 
 from .models import Environment, EnvironmentMembership
 from .serializers import AddStudentSerializer, StudentEnvironmentSerializer, TeacherEnvironmentSerializer
@@ -60,24 +60,22 @@ class StudentEnvironmentEnterView(APIView):
 
 class AddStudentView(APIView):
     """Teacher-only: pre-register a student by phone into one of the
-    teacher's own environments. Not backed by any screen in the provided
-    frontend (there's no teacher dashboard in scope) — this is the
-    missing piece of infrastructure needed to make the Student Claim flow
-    real rather than a dead end. See the top-level backend README."""
+    teacher's own environments (the piece that makes the Student Claim flow
+    real). The response deliberately contains only data the caller supplied
+    plus the tenant-owned membership id — see AddStudentSerializer."""
 
     permission_classes = [IsTeacher]
-    throttle_classes = [SensitiveRateThrottle]
+    throttle_classes = [StudentAddRateThrottle]
 
     def post(self, request):
         ser = AddStudentSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
-        user, membership, created, m_created = ser.save()
+        membership, m_created = ser.save()
         return Response(
             {
-                "student_id": user.id,
-                "phone": user.phone,
-                "name": user.name,
-                "already_claimed": user.is_active,
+                "membership_id": membership.id,
+                "name": ser.validated_data["name"],
+                "phone": ser.validated_data["phone"],
                 "environment_id": membership.environment_id,
             },
             status=status.HTTP_201_CREATED if m_created else status.HTTP_200_OK,
