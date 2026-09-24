@@ -1,4 +1,4 @@
-from django.test import TestCase
+from accounts.testing import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
