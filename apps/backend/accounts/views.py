@@ -1,12 +1,15 @@
 from django.conf import settings
-from rest_framework import status
+from django.db import IntegrityError, transaction
+from django.db.models import F
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import PendingAuth
+from .models import PendingAuth, User
+from .session_revocation import revoke_all_sessions
 from .serializers import (
     OTPVerifySerializer,
     ResendOTPSerializer,
@@ -22,12 +25,15 @@ from .serializers import (
     TeacherSignupStartSerializer,
     TeamLoginSerializer,
     UserPublicSerializer,
+    GENERIC_PENDING_ERROR,
     issue_tokens_for,
     user_public,
 )
 from .throttles import (
+    LoginAccountRateThrottle,
     LoginRateThrottle,
     OTPRequestRateThrottle,
+    OTPTargetRateThrottle,
     OTPVerifyRateThrottle,
     SensitiveRateThrottle,
 )
@@ -47,10 +53,21 @@ def pending_response(pending, code, extra_message="تم إرسال رمز الت
     )
 
 
+def consume_pending(pending) -> bool:
+    """Delete the verified pending flow in the caller's transaction and report
+    whether THIS request was the one that consumed it. A pending_id is single
+    use: of two concurrent requests replaying it, only one gets True."""
+    deleted, _ = PendingAuth.objects.filter(pk=pending.pk, verified=True).delete()
+    return deleted > 0
+
+
+GENERIC_RETRY = "حدث خطأ ما، برجاء المحاولة من جديد."
+
+
 # --------- logins ----
 class TeamLoginView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
+    throttle_classes = [LoginRateThrottle, LoginAccountRateThrottle]
 
     def post(self, request):
         ser = TeamLoginSerializer(data=request.data)
@@ -61,7 +78,7 @@ class TeamLoginView(APIView):
 
 class TeacherLoginView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
+    throttle_classes = [LoginRateThrottle, LoginAccountRateThrottle]
 
     def post(self, request):
         ser = TeacherLoginSerializer(data=request.data)
@@ -72,7 +89,7 @@ class TeacherLoginView(APIView):
 
 class StudentLoginView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [LoginRateThrottle]
+    throttle_classes = [LoginRateThrottle, LoginAccountRateThrottle]
 
     def post(self, request):
         ser = StudentLoginSerializer(data=request.data)
@@ -84,7 +101,7 @@ class StudentLoginView(APIView):
 #-------- teacher su --
 class TeacherSignupStartView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [SensitiveRateThrottle]
+    throttle_classes = [SensitiveRateThrottle, OTPTargetRateThrottle]
 
     def post(self, request):
         ser = TeacherSignupStartSerializer(data=request.data)
@@ -103,24 +120,38 @@ class TeacherSignupEnvironmentView(APIView):
         pending = ser.validated_data["pending_id"]
 
         from environments.models import Environment, EnvironmentMembership
-        from accounts.models import User
 
-        user = User.objects.create(
-            role=User.Role.TEACHER,
-            name=pending.payload["name"],
-            email=pending.payload["email"],
-            phone=pending.payload["phone"],
-            password=pending.payload["password_hash"],
-            is_active=True,
-            is_verified=True,
-        )
-        env = Environment.objects.create(
-            owner=user,
-            name=ser.validated_data["name"],
-            subject_stage=ser.validated_data.get("subject_stage", ""),
-        )
-        EnvironmentMembership.objects.create(user=user, environment=env, role=EnvironmentMembership.Role.OWNER)
-        pending.delete()
+        # All-or-nothing (S7): consuming the pending flow, creating the user,
+        # the environment and the owner membership are ONE transaction. Any
+        # failure rolls everything back — including the consumption, so the
+        # teacher can retry — and a replayed pending_id can create at most
+        # one account.
+        try:
+            with transaction.atomic():
+                if not consume_pending(pending):
+                    raise serializers.ValidationError({"pending_id": GENERIC_PENDING_ERROR})
+                user = User.objects.create(
+                    role=User.Role.TEACHER,
+                    name=pending.payload["name"],
+                    email=pending.payload["email"],
+                    phone=pending.payload["phone"],
+                    password=pending.payload["password_hash"],
+                    is_active=True,
+                    is_verified=True,
+                )
+                env = Environment.objects.create(
+                    owner=user,
+                    name=ser.validated_data["name"],
+                    subject_stage=ser.validated_data.get("subject_stage", ""),
+                )
+                EnvironmentMembership.objects.create(user=user, environment=env, role=EnvironmentMembership.Role.OWNER)
+        except IntegrityError:
+            # Someone registered the same email/phone between signup step 1
+            # and now. Nothing was written (rolled back).
+            return Response(
+                {"detail": "تعذّر إكمال التسجيل، الرقم أو البريد مستخدم بالفعل.", "code": "conflict"},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         return Response({**issue_tokens_for(user), "user": user_public(user)}, status=status.HTTP_201_CREATED)
 
@@ -128,7 +159,7 @@ class TeacherSignupEnvironmentView(APIView):
 # --------- teacher forgot-
 class TeacherForgotRequestView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [OTPRequestRateThrottle]
+    throttle_classes = [OTPRequestRateThrottle, OTPTargetRateThrottle]
 
     def post(self, request):
         ser = TeacherForgotRequestSerializer(data=request.data)
@@ -144,23 +175,28 @@ class TeacherForgotResetView(APIView):
     def post(self, request):
         ser = TeacherForgotResetSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        pending = ser.validated_data["pending_id"]
+        return reset_password_and_revoke(ser)
 
-        from accounts.models import User
 
-        user = User.objects.filter(id=pending.payload["user_id"]).first()
-        if not user:
-            return Response({"detail": "حدث خطأ ما، برجاء المحاولة من جديد."}, status=status.HTTP_400_BAD_REQUEST)
+def reset_password_and_revoke(ser):
+    """Shared tail of both password-reset flows (S4): set the new password,
+    consume the single-use pending flow, and revoke every existing session —
+    in one transaction, so a reset never leaves old tokens alive."""
+    pending = ser.validated_data["pending_id"]
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(id=pending.payload["user_id"]).first()
+        if not user or not consume_pending(pending):
+            return Response({"detail": GENERIC_RETRY}, status=status.HTTP_400_BAD_REQUEST)
         user.set_password(ser.validated_data["password"])
         user.save(update_fields=["password"])
-        pending.delete()
-        return Response({"message": "تم تغيير كلمة المرور بنجاح."})
+        revoke_all_sessions(user)
+    return Response({"message": "تم تغيير كلمة المرور بنجاح."})
 
 
 # ------- student claim-
 class StudentClaimRequestView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [OTPRequestRateThrottle]
+    throttle_classes = [OTPRequestRateThrottle, OTPTargetRateThrottle]
 
     def post(self, request):
         ser = StudentClaimRequestSerializer(data=request.data)
@@ -178,23 +214,24 @@ class StudentClaimActivateView(APIView):
         ser.is_valid(raise_exception=True)
         pending = ser.validated_data["pending_id"]
 
-        from accounts.models import User
-
-        user = User.objects.filter(id=pending.payload["user_id"]).first()
-        if not user:
-            return Response({"detail": "حدث خطأ ما، برجاء المحاولة من جديد."}, status=status.HTTP_400_BAD_REQUEST)
-        user.set_password(ser.validated_data["password"])
-        user.is_active = True
-        user.is_verified = True
-        user.save(update_fields=["password", "is_active", "is_verified"])
-        pending.delete()
+        with transaction.atomic():
+            # Only a still-unclaimed account can be activated by a claim flow.
+            user = User.objects.select_for_update().filter(
+                id=pending.payload["user_id"], role=User.Role.STUDENT, is_active=False
+            ).first()
+            if not user or not consume_pending(pending):
+                return Response({"detail": GENERIC_RETRY}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(ser.validated_data["password"])
+            user.is_active = True
+            user.is_verified = True
+            user.save(update_fields=["password", "is_active", "is_verified"])
         return Response({**issue_tokens_for(user), "user": user_public(user)}, status=status.HTTP_201_CREATED)
 
 
 #---------- student forgot --
 class StudentForgotRequestView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [OTPRequestRateThrottle]
+    throttle_classes = [OTPRequestRateThrottle, OTPTargetRateThrottle]
 
     def post(self, request):
         ser = StudentForgotRequestSerializer(data=request.data)
@@ -210,17 +247,7 @@ class StudentForgotResetView(APIView):
     def post(self, request):
         ser = StudentForgotResetSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        pending = ser.validated_data["pending_id"]
-
-        from accounts.models import User
-
-        user = User.objects.filter(id=pending.payload["user_id"]).first()
-        if not user:
-            return Response({"detail": "حدث خطأ ما، برجاء المحاولة من جديد."}, status=status.HTTP_400_BAD_REQUEST)
-        user.set_password(ser.validated_data["password"])
-        user.save(update_fields=["password"])
-        pending.delete()
-        return Response({"message": "تم تغيير كلمة المرور بنجاح."})
+        return reset_password_and_revoke(ser)
 
 
 # ----------- OTP -----
@@ -256,9 +283,19 @@ class OTPResendView(APIView):
         ser = ResendOTPSerializer(data=request.data, purpose=purpose)
         ser.is_valid(raise_exception=True)
         pending = ser.validated_data["pending_id"]
-        pending.resend_count += 1
+
+        # Enforce the resend cap atomically (S6). resend_count is never reset,
+        # so resending cannot restore the guess budget forever: a pending flow
+        # allows at most MAX_ATTEMPTS * (MAX_RESENDS + 1) guesses in total.
+        allowed = PendingAuth.objects.filter(
+            pk=pending.pk, resend_count__lt=PendingAuth.MAX_RESENDS
+        ).update(resend_count=F("resend_count") + 1)
+        if not allowed:
+            raise serializers.ValidationError("تجاوزت الحد الأقصى لإعادة الإرسال، برجاء البدء من جديد.")
+
         code = pending.set_new_otp()
-        pending.save()
+        # update_fields: never write back the (stale) resend_count we loaded.
+        pending.save(update_fields=["otp_hash", "otp_expires_at", "otp_attempts", "verified", "verified_at"])
         return pending_response(pending, code, "تم إرسال رمز جديد.")
 
 
@@ -272,11 +309,17 @@ class LogoutView(APIView):
     """Blacklists the refresh token so it can no longer be used to mint
     new access tokens — the closest stateless-JWT equivalent of "log out
     everywhere this token was". The (short-lived) access token itself
-    simply expires naturally."""
+    simply expires naturally.
+
+    The refresh token itself is the credential here, so no valid access token
+    is required: a client whose access token already expired can still log
+    out properly instead of leaving a live refresh token behind."""
+
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh = request.data.get("refresh")
-        if not refresh:
+        refresh = request.data.get("refresh") if isinstance(request.data, dict) else None
+        if not refresh or not isinstance(refresh, str):
             return Response({"detail": "الحقل refresh مطلوب."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token = RefreshToken(refresh)

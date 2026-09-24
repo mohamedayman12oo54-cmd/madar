@@ -1,0 +1,88 @@
+// Regression tests for the API client's token handling (Phase 0 / S3).
+// Run with:  npm test   (Node's built-in test runner — no extra dependency)
+import { test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+
+// --- minimal browser-ish globals -------------------------------------------
+const store = new Map();
+globalThis.localStorage = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+};
+
+const { apiFetch, getTokens, setTokens, refreshAccessToken } = await import("./api.js");
+
+const json = (status, body) => ({
+  status, ok: status >= 200 && status < 300, json: async () => body,
+});
+
+beforeEach(() => { store.clear(); });
+
+test("rotated refresh token is stored (not discarded) after a refresh", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/auth/token/refresh/")) return json(200, { access: "A1", refresh: "R1" });
+    throw new Error("unexpected " + url);
+  };
+  const access = await refreshAccessToken();
+  assert.equal(access, "A1");
+  assert.deepEqual(getTokens(), { access: "A1", refresh: "R1" });
+});
+
+test("a second expiry refreshes with the ROTATED token R1, not the old R0", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  const used = [];
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    used.push(body.refresh);
+    // Server behaviour: a blacklisted (already-rotated) token is rejected.
+    if (body.refresh === "R0" && used.length > 1) return json(401, { detail: "blacklisted" });
+    return body.refresh === "R0"
+      ? json(200, { access: "A1", refresh: "R1" })
+      : json(200, { access: "A2", refresh: "R2" });
+  };
+  await refreshAccessToken();
+  const second = await refreshAccessToken();
+  assert.equal(second, "A2");
+  assert.deepEqual(used, ["R0", "R1"]);
+  assert.deepEqual(getTokens(), { access: "A2", refresh: "R2" });
+});
+
+test("concurrent 401s trigger exactly one refresh call", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  let refreshCalls = 0;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/auth/token/refresh/")) {
+      refreshCalls += 1;
+      await new Promise((r) => setTimeout(r, 10));
+      return json(200, { access: "A1", refresh: "R1" });
+    }
+    const auth = init.headers.Authorization;
+    return auth === "Bearer A1" ? json(200, { ok: true }) : json(401, { detail: "expired" });
+  };
+  const results = await Promise.all([
+    apiFetch("/x/", { auth: true }), apiFetch("/y/", { auth: true }), apiFetch("/z/", { auth: true }),
+  ]);
+  assert.equal(refreshCalls, 1);
+  assert.deepEqual(results, [{ ok: true }, { ok: true }, { ok: true }]);
+  assert.equal(getTokens().refresh, "R1");
+});
+
+test("a rejected refresh token clears the session", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  globalThis.fetch = async () => json(401, { detail: "revoked" });
+  assert.equal(await refreshAccessToken(), null);
+  assert.equal(getTokens(), null);
+});
+
+test("a network error or 5xx during refresh does NOT log the user out", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  globalThis.fetch = async () => { throw new TypeError("network down"); };
+  assert.equal(await refreshAccessToken(), null);
+  assert.deepEqual(getTokens(), { access: "A0", refresh: "R0" });
+
+  globalThis.fetch = async () => json(503, {});
+  assert.equal(await refreshAccessToken(), null);
+  assert.deepEqual(getTokens(), { access: "A0", refresh: "R0" });
+});
