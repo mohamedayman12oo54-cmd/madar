@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
+from django.db.models import F
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -18,6 +19,9 @@ GENERIC_PENDING_ERROR = "انتهت صلاحية الجلسة أو أنها غي
 def issue_tokens_for(user):
     refresh = RefreshToken.for_user(user)
     refresh["role"] = user.role
+    # Session version: lets a password reset invalidate every token issued
+    # before it (see accounts/authentication.py).
+    refresh["sv"] = user.session_version
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
@@ -307,13 +311,23 @@ class OTPVerifySerializer(serializers.Serializer):
             raise serializers.ValidationError("عدد محاولات كبير جدًا، برجاء طلب رمز جديد.")
         if pending.is_otp_expired():
             raise serializers.ValidationError("انتهت صلاحية الرمز، برجاء طلب رمز جديد.")
+
+        # Atomically CLAIM one attempt *before* comparing the code. The
+        # conditional UPDATE is a single statement, so concurrent requests
+        # cannot each read "4 attempts used" and all get a free guess (the old
+        # read-modify-write allowed more than MAX_ATTEMPTS parallel guesses).
+        # Every guess — right or wrong — consumes an attempt.
+        claimed = PendingAuth.objects.filter(
+            pk=pending.pk, otp_attempts__lt=PendingAuth.MAX_ATTEMPTS
+        ).update(otp_attempts=F("otp_attempts") + 1)
+        if not claimed:
+            raise serializers.ValidationError("عدد محاولات كبير جدًا، برجاء طلب رمز جديد.")
+
         if not pending.check_otp(attrs["code"]):
-            pending.otp_attempts += 1
-            pending.save(update_fields=["otp_attempts"])
             raise serializers.ValidationError("رمز التحقق غير صحيح.")
-        pending.verified = True
-        pending.verified_at = timezone.now()
-        pending.save(update_fields=["verified", "verified_at"])
+
+        PendingAuth.objects.filter(pk=pending.pk).update(verified=True, verified_at=timezone.now())
+        pending.refresh_from_db()
         attrs["pending"] = pending
         return attrs
 
