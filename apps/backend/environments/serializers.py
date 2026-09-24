@@ -1,3 +1,4 @@
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from accounts.models import User, normalize_phone
@@ -57,11 +58,25 @@ class AddStudentSerializer(serializers.Serializer):
     environments. Existing users (already claimed, or pre-registered by
     another teacher) are reused rather than duplicated — phone is
     globally unique, and one student may belong to many teachers'
-    environments (see StudentEnvSelect)."""
+    environments (see StudentEnvSelect).
+
+    Privacy contract (Phase 0 / S5): student identity is GLOBAL, so this
+    endpoint must never tell a teacher anything about a global account they
+    do not already own. Nothing about an existing account (its name, whether
+    it has been claimed, its internal id) is ever returned or written —
+    the response only echoes what the teacher just submitted plus the id of
+    the tenant-owned membership row. The only remaining failure that depends
+    on the phone's global state is "this number belongs to a non-student
+    account"; it uses one generic message and is bounded by the
+    `student-add` throttle. (Phase 2 replaces this with a tenant-owned
+    roster/enrollment that removes even that.)
+    """
 
     name = serializers.CharField(max_length=150)
     phone = serializers.CharField()
     environment_id = serializers.IntegerField()
+
+    NOT_ADDABLE = "لا يمكن إضافة هذا الرقم كطالب."
 
     def validate_name(self, value):
         value = value.strip()
@@ -83,26 +98,31 @@ class AddStudentSerializer(serializers.Serializer):
         return env
 
     def validate(self, attrs):
-        existing = User.objects.filter(phone=attrs["phone"]).exclude(role=User.Role.STUDENT).first()
-        if existing:
-            raise serializers.ValidationError({"phone": "رقم الهاتف هذا مسجَّل بالفعل بحساب من نوع آخر."})
+        if User.objects.filter(phone=attrs["phone"]).exclude(role=User.Role.STUDENT).exists():
+            raise serializers.ValidationError({"phone": self.NOT_ADDABLE})
         return attrs
 
     def save(self):
         env = self.validated_data["environment_id"]
-        user = User.objects.filter(phone=self.validated_data["phone"]).first()
-        created = False
-        if not user:
-            user = User.objects.create_user(
-                phone=self.validated_data["phone"],
-                role=User.Role.STUDENT,
-                name=self.validated_data["name"],
-                is_active=False,
-                is_verified=False,
-                password=None,  # unusable until the student claims + sets one
+        with transaction.atomic():
+            user = User.objects.filter(phone=self.validated_data["phone"]).first()
+            if not user:
+                try:
+                    with transaction.atomic():
+                        user = User.objects.create_user(
+                            phone=self.validated_data["phone"],
+                            role=User.Role.STUDENT,
+                            name=self.validated_data["name"],
+                            is_active=False,
+                            is_verified=False,
+                            password=None,  # unusable until the student claims + sets one
+                        )
+                except IntegrityError:
+                    # Lost a race with another teacher adding the same phone.
+                    user = User.objects.filter(phone=self.validated_data["phone"], role=User.Role.STUDENT).first()
+                    if user is None:
+                        raise serializers.ValidationError({"phone": self.NOT_ADDABLE})
+            membership, m_created = EnvironmentMembership.objects.get_or_create(
+                user=user, environment=env, defaults={"role": EnvironmentMembership.Role.STUDENT}
             )
-            created = True
-        membership, m_created = EnvironmentMembership.objects.get_or_create(
-            user=user, environment=env, defaults={"role": EnvironmentMembership.Role.STUDENT}
-        )
-        return user, membership, created, m_created
+        return membership, m_created
