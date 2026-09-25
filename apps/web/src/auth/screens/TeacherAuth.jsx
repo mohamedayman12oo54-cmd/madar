@@ -5,13 +5,16 @@ import {
   AuthShell, AuthCard, Head, Field, TextInput, PasswordInput, Btn, Banner, Otp, Timer,
   Stepper, StateView, SuccessRing, EnvCard, PasswordChecklist, passwordValid,
 } from "../ui.jsx";
-import { authApi, envApi, saveSession, fieldErrorsFrom } from "../api.js";
+import { authApi, envApi, fieldErrorsFrom } from "../api.js";
 import { ApiError } from "../../lib/api.js";
+import { useSession } from "../../state/session.jsx";
+import { useEnvironment } from "../../state/environment.jsx";
 
 const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 export function TeacherLogin() {
   const nav = useNavigate();
+  const session = useSession();
   const [id, setId] = useState(""); const [pw, setPw] = useState("");
   const [err, setErr] = useState(null); const [fe, setFe] = useState({}); const [loading, setLoading] = useState(false);
   const submit = async (e) => {
@@ -23,7 +26,7 @@ export function TeacherLogin() {
     setErr(null); setLoading(true);
     try {
       const data = await authApi.teacherLogin(id.trim(), pw);
-      saveSession(data);
+      session.login(data);
       nav("/auth/teacher/environments");
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "تعذّر الاتصال بالخادم، حاول مرة أخرى.");
@@ -56,6 +59,7 @@ export function TeacherLogin() {
 
 export function TeacherSignup() {
   const nav = useNavigate();
+  const session = useSession();
   const [step, setStep] = useState(0); const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState(""); const [otpErr, setOtpErr] = useState(null);
   const [f, setF] = useState({ name: "", email: "", phone: "", pw: "", pw2: "" });
@@ -111,7 +115,7 @@ export function TeacherSignup() {
       const data = await authApi.teacherSignupEnvironment({
         pending_id: pendingId, name: envForm.name, subject_stage: envForm.subject_stage,
       });
-      saveSession(data);
+      session.login(data);
       setStep(3);
     } catch (e) {
       setFe({ envName: e instanceof ApiError ? e.message : "تعذّر الاتصال بالخادم." });
@@ -256,6 +260,7 @@ export function TeacherForgot() {
 
 export function TeacherEnvSelect() {
   const nav = useNavigate();
+  const envStore = useEnvironment();
   const [envs, setEnvs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -265,7 +270,7 @@ export function TeacherEnvSelect() {
     envApi.teacherList()
       .then((data) => {
         if (!alive) return;
-        if (data.length === 1) { enter(data[0].id); return; }
+        if (data.length === 1) { enter(data[0]); return; }
         setEnvs(data);
       })
       .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : "تعذّر تحميل البيئات."); })
@@ -274,9 +279,13 @@ export function TeacherEnvSelect() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const enter = async (id) => {
-    try { await envApi.teacherEnter(id); } catch { /* proceed regardless */ }
-    nav("/auth/teacher/welcome");
+  const enter = async (env) => {
+    try { await envApi.teacherEnter(env.id); } catch { /* proceed regardless */ }
+    // envApi.teacherEnter already validated ownership server-side (the
+    // request would have 404'd otherwise) — that's the authorization this
+    // selection relies on, not anything decided here.
+    envStore.select(env, "owner");
+    nav("/app");
   };
 
   return (
@@ -287,7 +296,7 @@ export function TeacherEnvSelect() {
         {err && <Banner tone="err">{err}</Banner>}
         <div className="env-list">
           {envs.map((e) => (
-            <EnvCard key={e.id} initials={e.initials} name={e.name} meta={e.meta} last={e.last} onEnter={() => enter(e.id)} />
+            <EnvCard key={e.id} initials={e.initials} name={e.name} meta={e.meta} last={e.last} onEnter={() => enter(e)} />
           ))}
         </div>
         {!loading && !err && envs.length === 0 && (
@@ -301,6 +310,10 @@ export function TeacherEnvSelect() {
 
 export function TeacherWelcome() {
   const nav = useNavigate();
+  // Reached right after a fresh signup — the new environment hasn't been
+  // selected client-side yet (the signup response carries no environment
+  // info), so route through TeacherEnvSelect: with exactly one environment
+  // to choose from, it selects it automatically and lands in /app.
   return (<AuthShell><AuthCard><StateView icon={<PartyPopper size={30} />} tone="info" title="مرحبًا بك في مدار" text="لنبدأ ببناء بيئة عملك التعليمية — طلابك ومجموعاتك وجلساتك في مكان واحد.">
-    <Btn onClick={() => nav("/")}>ابدأ الآن</Btn></StateView></AuthCard></AuthShell>);
+    <Btn onClick={() => nav("/auth/teacher/environments")}>ابدأ الآن</Btn></StateView></AuthCard></AuthShell>);
 }
