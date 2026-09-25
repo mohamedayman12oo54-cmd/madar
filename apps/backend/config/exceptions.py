@@ -28,4 +28,17 @@ def api_exception_handler(exc, context):
     elif isinstance(response.data, list):
         response.data = {"detail": "تحقق من البيانات المدخلة.", "code": "validation_error", "fields": response.data}
 
+    # Every APIException carries a machine-readable code (default_code, or a
+    # custom one set on a subclass — see environments/tenancy.py). Views that
+    # build a Response by hand already set "code" themselves; this only fills
+    # it in for errors that came from a *raised* exception, so every error
+    # response — not just the hand-built ones — has a stable "code" the
+    # frontend can branch on without parsing Arabic text.
+    if isinstance(response.data, dict) and "code" not in response.data:
+        try:
+            codes = exc.get_codes()
+            response.data["code"] = codes if isinstance(codes, str) else "error"
+        except AttributeError:
+            response.data["code"] = "error"
+
     return response
