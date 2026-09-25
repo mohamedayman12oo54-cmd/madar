@@ -35,6 +35,31 @@ export function isAuthenticated() {
   return !!getTokens()?.access;
 }
 
+// -------------------------------------------------------------------------
+// Active environment (tenant) id — the ONLY thing that gets sent as the
+// X-Madar-Environment header (see madar-backend/environments/tenancy.py,
+// which is the only place the backend reads it from). This is a UI
+// convenience for "which environment did the person last pick" — it is
+// NEVER trusted by itself; every tenant-scoped response must still be
+// validated against what the backend says the user can access (see
+// src/state/environment.jsx, which calls GET /environments/context/ to
+// confirm a persisted id before treating it as real).
+const ACTIVE_ENV_KEY = "madar.activeEnvironment";
+
+export function getActiveEnvironmentId() {
+  const raw = localStorage.getItem(ACTIVE_ENV_KEY);
+  return raw ? Number(raw) : null;
+}
+
+export function setActiveEnvironmentId(id) {
+  if (id === null || id === undefined) { localStorage.removeItem(ACTIVE_ENV_KEY); return; }
+  localStorage.setItem(ACTIVE_ENV_KEY, String(id));
+}
+
+export function clearActiveEnvironmentId() {
+  localStorage.removeItem(ACTIVE_ENV_KEY);
+}
+
 export class ApiError extends Error {
   constructor(status, data) {
     super(data?.detail || "حدث خطأ غير متوقع.");
@@ -88,14 +113,20 @@ export function refreshAccessToken() {
 
 /**
  * @param {string} path e.g. "/auth/teacher/login/"
- * @param {{method?:string, body?:object, auth?:boolean}} opts
+ * @param {{method?:string, body?:object, auth?:boolean, tenant?:boolean}} opts
+ *   `tenant`: attach X-Madar-Environment (the currently active environment,
+ *   if one is set) — for calls to tenant-scoped endpoints. Implies `auth`.
  */
-export async function apiFetch(path, { method = "GET", body, auth = false } = {}) {
+export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false } = {}) {
   const doFetch = async () => {
     const headers = { "Content-Type": "application/json" };
-    if (auth) {
+    if (auth || tenant) {
       const tokens = getTokens();
       if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;
+    }
+    if (tenant) {
+      const envId = getActiveEnvironmentId();
+      if (envId) headers["X-Madar-Environment"] = String(envId);
     }
     return fetch(`${BASE_URL}${path}`, {
       method,
@@ -106,7 +137,7 @@ export async function apiFetch(path, { method = "GET", body, auth = false } = {}
 
   let res = await doFetch();
 
-  if (res.status === 401 && auth) {
+  if (res.status === 401 && (auth || tenant)) {
     const newAccess = await refreshAccessToken();
     if (newAccess) res = await doFetch();
   }
@@ -123,4 +154,6 @@ export async function apiFetch(path, { method = "GET", body, auth = false } = {}
 export const api = {
   get: (path, opts) => apiFetch(path, { ...opts, method: "GET" }),
   post: (path, body, opts) => apiFetch(path, { ...opts, method: "POST", body }),
+  patch: (path, body, opts) => apiFetch(path, { ...opts, method: "PATCH", body }),
+  delete: (path, opts) => apiFetch(path, { ...opts, method: "DELETE" }),
 };
