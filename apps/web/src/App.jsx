@@ -22,6 +22,8 @@ import { StudentLogin, StudentClaim, StudentForgot, StudentEnvSelect } from "./a
 import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
 import { AuthGallery, AuthStateScreen, LogoutConfirm, LoadingDemo } from "./auth/screens/AuthStates.jsx";
 
+import AppRoutes from "./dashboard/AppRoutes.jsx";
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [pathname]);
@@ -70,6 +72,7 @@ function AnimatedRoutes({ ready }) {
 export default function App() {
   const location = useLocation();
   const isAuth = location.pathname.startsWith("/auth");
+  const isApp = location.pathname.startsWith("/app");
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -86,6 +89,18 @@ export default function App() {
     const l = setTimeout(() => setLoading(false), 2700);
     return () => { clearTimeout(r); clearTimeout(l); };
   }, [prefersReduced, onLanding]);
+
+  // /app has its own shell (topbar/sidebar) — no marketing Navbar/Footer or
+  // page-transition AnimatePresence, which would otherwise remount the
+  // dashboard shell (losing sidebar/drawer state) on every internal
+  // navigation between dashboard sections.
+  if (isApp) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <AppRoutes />
+      </MotionConfig>
+    );
+  }
 
   return (
     <MotionConfig reducedMotion="user">
