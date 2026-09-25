@@ -8,6 +8,7 @@ from accounts.throttles import StudentAddRateThrottle
 
 from .models import Environment, EnvironmentMembership
 from .serializers import AddStudentSerializer, StudentEnvironmentSerializer, TeacherEnvironmentSerializer
+from .tenancy import IsEnvironmentMember
 
 
 class TeacherEnvironmentListView(APIView):
@@ -80,3 +81,29 @@ class AddStudentView(APIView):
             },
             status=status.HTTP_201_CREATED if m_created else status.HTTP_200_OK,
         )
+
+
+class EnvironmentContextView(APIView):
+    """GET /api/v1/environments/context/ — the reference implementation of
+    server-side active-environment resolution (Phase 1). Given a valid
+    `X-Madar-Environment` header naming an environment the caller belongs
+    to, confirms it and returns just enough for the frontend to render a
+    "you are here" indicator and to validate a *persisted* selection (e.g.
+    on page reload) before trusting it for any tenant-scoped call.
+
+    Every future tenant-scoped endpoint (Phase 2+) authorizes the exact
+    same way, via IsEnvironmentMember — this view has no special-cased
+    logic of its own beyond that permission check.
+    """
+
+    permission_classes = [IsEnvironmentMember]
+
+    def get(self, request):
+        env = request.environment
+        membership = request.environment_membership
+        data = {"id": env.id, "name": env.name, "role": membership.role}
+        if membership.role == EnvironmentMembership.Role.STUDENT:
+            data["owner"] = {"name": env.owner.name, "initials": env.owner.initials}
+        else:
+            data["initials"] = env.initials
+        return Response(data)
