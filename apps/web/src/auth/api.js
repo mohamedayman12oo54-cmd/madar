@@ -41,6 +41,14 @@ export const envApi = {
   teacherEnter: (id) => api.post(`/environments/teacher/${id}/enter/`, undefined, { auth: true }),
   studentList: () => api.get("/environments/student/", { auth: true }),
   studentEnter: (id) => api.post(`/environments/student/${id}/enter/`, undefined, { auth: true }),
+  // Server-side confirmation of the currently active environment (the one
+  // named by X-Madar-Environment, i.e. whatever src/state/environment.jsx
+  // currently has selected). Used to validate a *persisted* selection
+  // (page reload / new tab) before trusting it for any tenant-scoped call —
+  // never to pick the environment in the first place, which only ever
+  // happens through teacherEnter/studentEnter above (backend-authorized
+  // lists) or a person's own click on an EnvCard.
+  context: () => api.get("/environments/context/", { tenant: true }),
 };
 
 export function saveSession(data) {
