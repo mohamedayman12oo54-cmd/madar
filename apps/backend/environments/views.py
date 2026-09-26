@@ -4,10 +4,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStudent, IsTeacher
-from accounts.throttles import StudentAddRateThrottle
 
 from .models import Environment, EnvironmentMembership
-from .serializers import AddStudentSerializer, StudentEnvironmentSerializer, TeacherEnvironmentSerializer
+from .serializers import StudentEnvironmentSerializer, TeacherEnvironmentSerializer
 from .tenancy import IsEnvironmentMember
 
 
@@ -57,31 +56,6 @@ class StudentEnvironmentEnterView(APIView):
         membership.last_accessed_at = timezone.now()
         membership.save(update_fields=["last_accessed_at"])
         return Response({"environment_id": membership.environment_id})
-
-
-class AddStudentView(APIView):
-    """Teacher-only: pre-register a student by phone into one of the
-    teacher's own environments (the piece that makes the Student Claim flow
-    real). The response deliberately contains only data the caller supplied
-    plus the tenant-owned membership id — see AddStudentSerializer."""
-
-    permission_classes = [IsTeacher]
-    throttle_classes = [StudentAddRateThrottle]
-
-    def post(self, request):
-        ser = AddStudentSerializer(data=request.data, context={"request": request})
-        ser.is_valid(raise_exception=True)
-        membership, m_created = ser.save()
-        return Response(
-            {
-                "membership_id": membership.id,
-                "name": ser.validated_data["name"],
-                "phone": ser.validated_data["phone"],
-                "environment_id": membership.environment_id,
-            },
-            status=status.HTTP_201_CREATED if m_created else status.HTTP_200_OK,
-        )
-
 
 class EnvironmentContextView(APIView):
     """GET /api/v1/environments/context/ — the reference implementation of
