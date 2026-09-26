@@ -2,12 +2,18 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
+import { SessionProvider } from "./state/session.jsx";
+import { EnvironmentProvider } from "./state/environment.jsx";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <SessionProvider>
+        <EnvironmentProvider>
+          <App />
+        </EnvironmentProvider>
+      </SessionProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

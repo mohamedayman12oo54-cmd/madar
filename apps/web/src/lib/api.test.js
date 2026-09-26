@@ -11,7 +11,10 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 };
 
-const { apiFetch, getTokens, setTokens, refreshAccessToken } = await import("./api.js");
+const {
+  apiFetch, api, getTokens, setTokens, refreshAccessToken,
+  getActiveEnvironmentId, setActiveEnvironmentId, clearActiveEnvironmentId,
+} = await import("./api.js");
 
 const json = (status, body) => ({
   status, ok: status >= 200 && status < 300, json: async () => body,
@@ -85,4 +88,53 @@ test("a network error or 5xx during refresh does NOT log the user out", async ()
   globalThis.fetch = async () => json(503, {});
   assert.equal(await refreshAccessToken(), null);
   assert.deepEqual(getTokens(), { access: "A0", refresh: "R0" });
+});
+
+// -------------------------- Phase 1: PATCH/DELETE + tenant header --------
+test("api.patch and api.delete send the right HTTP method", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  const seen = [];
+  globalThis.fetch = async (url, init) => { seen.push({ url, method: init.method }); return json(200, { ok: true }); };
+  await api.patch("/x/1/", { name: "n" }, { auth: true });
+  await api.delete("/x/1/", { auth: true });
+  assert.deepEqual(seen.map((s) => s.method), ["PATCH", "DELETE"]);
+});
+
+test("tenant:true attaches X-Madar-Environment when an active environment is set", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  setActiveEnvironmentId(42);
+  let seenHeader;
+  globalThis.fetch = async (url, init) => { seenHeader = init.headers["X-Madar-Environment"]; return json(200, {}); };
+  await apiFetch("/groups/", { tenant: true });
+  assert.equal(seenHeader, "42");
+});
+
+test("tenant:true sends no X-Madar-Environment header when none is set", async () => {
+  setTokens({ access: "A0", refresh: "R0" });
+  clearActiveEnvironmentId();
+  let seenHeader = "unset";
+  globalThis.fetch = async (url, init) => { seenHeader = init.headers["X-Madar-Environment"]; return json(200, {}); };
+  await apiFetch("/groups/", { tenant: true });
+  assert.equal(seenHeader, undefined);
+});
+
+test("tenant:true also authenticates (implies auth) and survives a 401 refresh", async () => {
+  setTokens({ access: "expired", refresh: "R0" });
+  setActiveEnvironmentId(7);
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/auth/token/refresh/")) return json(200, { access: "fresh", refresh: "R1" });
+    if (init.headers.Authorization === "Bearer fresh" && init.headers["X-Madar-Environment"] === "7") return json(200, { ok: true });
+    return json(401, {});
+  };
+  const result = await apiFetch("/groups/", { tenant: true });
+  assert.deepEqual(result, { ok: true });
+});
+
+test("getActiveEnvironmentId / setActiveEnvironmentId / clearActiveEnvironmentId round-trip", () => {
+  clearActiveEnvironmentId();
+  assert.equal(getActiveEnvironmentId(), null);
+  setActiveEnvironmentId(15);
+  assert.equal(getActiveEnvironmentId(), 15);
+  clearActiveEnvironmentId();
+  assert.equal(getActiveEnvironmentId(), null);
 });

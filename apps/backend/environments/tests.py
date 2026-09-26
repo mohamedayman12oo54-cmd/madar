@@ -57,57 +57,6 @@ class TeacherEnvironmentTests(TestCase):
         self.assertEqual(r.status_code, 403)
 
 
-class AddStudentTests(TestCase):
-    def setUp(self):
-        self.client = APIClient()
-        self.teacher = User.objects.create_user(
-            role=User.Role.TEACHER, name="Ahmed", email="t3@example.com", phone="201030303030",
-            password=VALID_PW, is_active=True,
-        )
-        self.env = Environment.objects.create(owner=self.teacher, name="Env")
-        login = self.client.post("/api/v1/auth/teacher/login/", {"identifier": "t3@example.com", "password": VALID_PW})
-        auth(self.client, login)
-
-    def test_add_new_student(self):
-        r = self.client.post("/api/v1/environments/students/", {
-            "name": "طالب جديد", "phone": "201040404040", "environment_id": self.env.id,
-        })
-        self.assertEqual(r.status_code, 201, r.data)
-        user = User.objects.get(phone="201040404040")
-        self.assertEqual(user.role, "student")
-        self.assertFalse(user.is_active)
-        self.assertFalse(user.has_usable_password())
-
-    def test_add_same_student_to_second_environment_reuses_user(self):
-        env2 = Environment.objects.create(owner=self.teacher, name="Env2")
-        self.client.post("/api/v1/environments/students/", {
-            "name": "طالب", "phone": "201050505050", "environment_id": self.env.id,
-        })
-        r2 = self.client.post("/api/v1/environments/students/", {
-            "name": "طالب", "phone": "201050505050", "environment_id": env2.id,
-        })
-        self.assertEqual(r2.status_code, 201)
-        self.assertEqual(User.objects.filter(phone="201050505050").count(), 1)
-        self.assertEqual(EnvironmentMembership.objects.filter(user__phone="201050505050").count(), 2)
-
-    def test_cannot_add_student_to_someone_elses_environment(self):
-        other_teacher = User.objects.create_user(
-            role=User.Role.TEACHER, email="t4@example.com", phone="201060606060", password=VALID_PW, is_active=True,
-        )
-        other_env = Environment.objects.create(owner=other_teacher, name="Other")
-        r = self.client.post("/api/v1/environments/students/", {
-            "name": "X", "phone": "201070707070", "environment_id": other_env.id,
-        })
-        self.assertEqual(r.status_code, 400)
-
-    def test_phone_already_used_by_non_student_role_rejected(self):
-        User.objects.create_user(role=User.Role.TEACHER, email="dup2@example.com", phone="201080808080", password=VALID_PW)
-        r = self.client.post("/api/v1/environments/students/", {
-            "name": "X", "phone": "201080808080", "environment_id": self.env.id,
-        })
-        self.assertEqual(r.status_code, 400)
-
-
 class StudentEnvironmentTests(TestCase):
     def setUp(self):
         self.client = APIClient()

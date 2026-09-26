@@ -4,10 +4,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsStudent, IsTeacher
-from accounts.throttles import StudentAddRateThrottle
 
 from .models import Environment, EnvironmentMembership
-from .serializers import AddStudentSerializer, StudentEnvironmentSerializer, TeacherEnvironmentSerializer
+from .serializers import StudentEnvironmentSerializer, TeacherEnvironmentSerializer
+from .tenancy import IsEnvironmentMember
 
 
 class TeacherEnvironmentListView(APIView):
@@ -57,26 +57,27 @@ class StudentEnvironmentEnterView(APIView):
         membership.save(update_fields=["last_accessed_at"])
         return Response({"environment_id": membership.environment_id})
 
+class EnvironmentContextView(APIView):
+    """GET /api/v1/environments/context/ — the reference implementation of
+    server-side active-environment resolution (Phase 1). Given a valid
+    `X-Madar-Environment` header naming an environment the caller belongs
+    to, confirms it and returns just enough for the frontend to render a
+    "you are here" indicator and to validate a *persisted* selection (e.g.
+    on page reload) before trusting it for any tenant-scoped call.
 
-class AddStudentView(APIView):
-    """Teacher-only: pre-register a student by phone into one of the
-    teacher's own environments (the piece that makes the Student Claim flow
-    real). The response deliberately contains only data the caller supplied
-    plus the tenant-owned membership id — see AddStudentSerializer."""
+    Every future tenant-scoped endpoint (Phase 2+) authorizes the exact
+    same way, via IsEnvironmentMember — this view has no special-cased
+    logic of its own beyond that permission check.
+    """
 
-    permission_classes = [IsTeacher]
-    throttle_classes = [StudentAddRateThrottle]
+    permission_classes = [IsEnvironmentMember]
 
-    def post(self, request):
-        ser = AddStudentSerializer(data=request.data, context={"request": request})
-        ser.is_valid(raise_exception=True)
-        membership, m_created = ser.save()
-        return Response(
-            {
-                "membership_id": membership.id,
-                "name": ser.validated_data["name"],
-                "phone": ser.validated_data["phone"],
-                "environment_id": membership.environment_id,
-            },
-            status=status.HTTP_201_CREATED if m_created else status.HTTP_200_OK,
-        )
+    def get(self, request):
+        env = request.environment
+        membership = request.environment_membership
+        data = {"id": env.id, "name": env.name, "role": membership.role}
+        if membership.role == EnvironmentMembership.Role.STUDENT:
+            data["owner"] = {"name": env.owner.name, "initials": env.owner.initials}
+        else:
+            data["initials"] = env.initials
+        return Response(data)
