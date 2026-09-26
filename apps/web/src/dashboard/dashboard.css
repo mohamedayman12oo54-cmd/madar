@@ -96,8 +96,53 @@
 
 .dash-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-block-end:26px}
 .dash-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
-.dash-card .k{font-size:.82rem;color:var(--soft)}
+.dash-card .k{font-size:.82rem;color:var(--soft);display:flex;align-items:center;gap:6px}
 .dash-card .v{font-size:1.5rem;font-weight:700;color:var(--navy);margin-block-start:6px}
+.dash-card-btn{text-align:start;cursor:pointer;transition:border-color .2s,transform .2s}
+.dash-card-btn:hover{border-color:var(--navy);transform:translateY(-2px)}
+
+/* ---------- section header / filters / forms (Phase 2) ---------- */
+.dash-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-block-end:18px}
+.dash-section-head h2{font-size:1.15rem;font-weight:700;color:var(--navy)}
+
+.dash-form{display:grid;gap:14px}
+
+.dash-filters{display:flex;gap:10px;flex-wrap:wrap;margin-block-end:18px}
+.dash-search{
+  flex:1;min-width:200px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:13px;
+  border:1.5px solid var(--line-2);background:var(--panel);color:var(--soft);
+}
+.dash-search input{flex:1;border:0;background:transparent;padding:11px 0;color:var(--ink);font-size:.92rem}
+.dash-search input:focus{outline:none}
+.dash-filters select.inp{width:auto;min-width:160px}
+
+/* ---------- grade tabs (Groups page) ---------- */
+.dash-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-block-end:22px;border-block-end:1px solid var(--line);padding-block-end:14px}
+.dash-tab{
+  padding:9px 16px;border-radius:100px;border:1.5px solid var(--line-2);background:var(--panel);color:var(--ink);
+  font-size:.88rem;font-weight:600;
+}
+.dash-tab.active{background:var(--navy);border-color:var(--navy);color:var(--cream)}
+.dash-tab-add{width:38px;padding:0;display:grid;place-items:center;color:var(--soft)}
+
+/* ---------- table (Students page) ---------- */
+.dash-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+.dash-table{width:100%;border-collapse:collapse;min-width:560px}
+.dash-table th{
+  text-align:start;font-size:.78rem;font-weight:700;color:var(--soft);padding:13px 16px;
+  border-block-end:1px solid var(--line);white-space:nowrap;
+}
+.dash-table td{padding:13px 16px;border-block-end:1px solid var(--line);font-size:.9rem;color:var(--ink);white-space:nowrap}
+.dash-table tr:last-child td{border-block-end:0}
+.ltr-cell{direction:ltr;text-align:end;font-variant-numeric:tabular-nums}
+
+.dash-pill{padding:5px 13px;border-radius:100px;font-size:.78rem;font-weight:700;border:1px solid var(--line-2);background:var(--fill);color:var(--soft)}
+.dash-pill.on{background:rgba(60,122,84,.12);border-color:rgba(60,122,84,.3);color:#2f6a49}
+
+.dash-pager{display:flex;align-items:center;justify-content:center;gap:16px;margin-block-start:18px}
+.dash-pager button{padding:8px 16px;border-radius:11px;border:1.5px solid var(--line-2);background:var(--panel);color:var(--navy);font-weight:600;font-size:.85rem}
+.dash-pager button:disabled{opacity:.4}
+.dash-pager span{font-size:.85rem;color:var(--soft)}
 
 /* ---------- responsive ---------- */
 @media(max-width:1024px){
@@ -108,4 +153,7 @@
   .dash-body{padding-inline:16px}
   .dash-env{max-width:150px}
   .dash-env-switch{display:none}
+  .dash-filters{flex-direction:column}
+  .dash-filters select.inp{width:100%}
+  .dash-section-head{align-items:flex-start}
 }
