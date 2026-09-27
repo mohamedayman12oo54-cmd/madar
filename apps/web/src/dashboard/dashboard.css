@@ -144,6 +144,12 @@
 .dash-pager button:disabled{opacity:.4}
 .dash-pager span{font-size:.85rem;color:var(--soft)}
 
+/* ---------- session rows (Sessions/Attendance pages, Phase 3) ---------- */
+.dash-session-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.dash-session-info{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dash-session-actions{display:flex;gap:8px;flex-wrap:wrap}
+.dash-tag{font-size:.76rem;color:var(--soft);background:var(--fill);padding:4px 10px;border-radius:100px}
+
 /* ---------- responsive ---------- */
 @media(max-width:1024px){
   .dash-side{display:none}
@@ -156,4 +162,7 @@
   .dash-filters{flex-direction:column}
   .dash-filters select.inp{width:100%}
   .dash-section-head{align-items:flex-start}
+  .dash-session-row{flex-direction:column;align-items:stretch}
+  .dash-session-actions{width:100%}
+  .dash-session-actions .abtn{flex:1}
 }
