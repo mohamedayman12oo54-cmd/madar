@@ -11,9 +11,9 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
-from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,6 +43,7 @@ def env_int(name, default):
     val = os.environ.get(name)
     if val is None or not val.strip():
         return default
+
     try:
         return int(val)
     except ValueError:
@@ -56,25 +57,45 @@ def env_int(name, default):
 # SECURITY WARNING: keep the secret key used in production secret, and set
 # it via the DJANGO_SECRET_KEY environment variable — never commit a real
 # one. The fallback only exists so `runserver` works in DEBUG without a .env.
-_DEV_SECRET_KEY = "insecure-dev-only-key-do-not-use-in-production"
-SECRET_KEY = env_str("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 
-DEBUG = env_bool("DJANGO_DEBUG", default=False)
+_DEV_SECRET_KEY = "insecure-dev-only-key-do-not-use-in-production"
+
+SECRET_KEY = env_str(
+    "DJANGO_SECRET_KEY",
+    _DEV_SECRET_KEY,
+)
+
+DEBUG = env_bool(
+    "DJANGO_DEBUG",
+    default=False,
+)
 
 
 # ------------------------------------------------- production guard rails --
 
 # With DEBUG off the app refuses to start on configuration that is unsafe by
 # construction, instead of booting and relying on someone reading a warning.
-_PLACEHOLDER_PREFIXES = ("change-me", "changeme", "insecure", "your-", "secret")
+
+_PLACEHOLDER_PREFIXES = (
+    "change-me",
+    "changeme",
+    "insecure",
+    "your-",
+    "secret",
+)
 
 
 def _https_only(name, values):
-    bad = [v for v in values if v == "*" or not v.startswith("https://")]
+    bad = [
+        v
+        for v in values
+        if v == "*" or not v.startswith("https://")
+    ]
+
     if bad:
         raise ImproperlyConfigured(
-            f"{name} must contain only https:// origins when DJANGO_DEBUG "
-            f"is off (offending: {bad})."
+            f"{name} must contain only https:// origins when "
+            f"DJANGO_DEBUG is off (offending: {bad})."
         )
 
 
@@ -86,20 +107,25 @@ if not DEBUG:
         or len(set(SECRET_KEY)) < 8
     ):
         raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY is missing, a placeholder, or too weak (need >= 50 chars, "
-            "not a 'change-me' style value). Generate one with: "
+            "DJANGO_SECRET_KEY is missing, a placeholder, or too weak "
+            "(need >= 50 chars, not a 'change-me' style value). "
+            "Generate one with: "
             'python -c "from django.core.management.utils import '
             'get_random_secret_key as g; print(g())"'
         )
 
 
 # In production there is no localhost default: the host list must be explicit.
+
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "localhost,127.0.0.1" if DEBUG else "",
 )
 
-if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
+if not DEBUG and (
+    not ALLOWED_HOSTS
+    or "*" in ALLOWED_HOSTS
+):
     raise ImproperlyConfigured(
         "DJANGO_ALLOWED_HOSTS must list explicit hostnames "
         "(no '*', not empty) when DJANGO_DEBUG is off."
@@ -115,13 +141,19 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+
     "accounts",
     "environments",
     "academics",
+    "scheduling",
+    "financials",
+    "evaluation",
 ]
+
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -134,7 +166,9 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+
 ROOT_URLCONF = "config.urls"
+
 
 TEMPLATES = [
     {
@@ -151,6 +185,7 @@ TEMPLATES = [
     },
 ]
 
+
 WSGI_APPLICATION = "config.wsgi.application"
 
 
@@ -159,10 +194,17 @@ WSGI_APPLICATION = "config.wsgi.application"
 # SQLite by default (zero setup for dev/small deployments). Point
 # DATABASE_URL-style vars at Postgres in production if you like — kept
 # simple/explicit here rather than pulling in another dependency.
+
 DATABASES = {
     "default": {
-        "ENGINE": env_str("DB_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": env_str("DB_NAME", str(BASE_DIR / "db.sqlite3")),
+        "ENGINE": env_str(
+            "DB_ENGINE",
+            "django.db.backends.sqlite3",
+        ),
+        "NAME": env_str(
+            "DB_NAME",
+            str(BASE_DIR / "db.sqlite3"),
+        ),
         "USER": os.environ.get("DB_USER", ""),
         "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", ""),
@@ -178,10 +220,12 @@ DATABASES = {
 # (and a restart wipes it). Django's built-in database cache satisfies that
 # with no new dependency: run `python manage.py createcachetable` once per
 # deployment. Local dev and the test suite use in-process memory.
+
 CACHE_BACKEND = env_str(
     "DJANGO_CACHE_BACKEND",
     "locmem" if DEBUG else "db",
 ).lower()
+
 
 if "test" in sys.argv or CACHE_BACKEND == "locmem":
     CACHES = {
@@ -190,6 +234,7 @@ if "test" in sys.argv or CACHE_BACKEND == "locmem":
             "LOCATION": "madar-local",
         }
     }
+
 elif CACHE_BACKEND == "db":
     CACHES = {
         "default": {
@@ -197,6 +242,7 @@ elif CACHE_BACKEND == "db":
             "LOCATION": "madar_cache",
         }
     }
+
 else:
     raise ImproperlyConfigured(
         "DJANGO_CACHE_BACKEND must be 'db' or 'locmem'."
@@ -204,6 +250,7 @@ else:
 
 
 AUTH_USER_MODEL = "accounts.User"
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -219,7 +266,7 @@ AUTH_PASSWORD_VALIDATORS = [
         )
     },
     {
-        "NAME": "accounts.validators.MadarPasswordValidator",
+        "NAME": "accounts.validators.MadarPasswordValidator"
     },
 ]
 
@@ -227,7 +274,12 @@ AUTH_PASSWORD_VALIDATORS = [
 # ------------------------------------------------------------- i18n/tz ----
 
 LANGUAGE_CODE = "ar"
-TIME_ZONE = env_str("DJANGO_TIME_ZONE", "Africa/Cairo")
+
+TIME_ZONE = env_str(
+    "DJANGO_TIME_ZONE",
+    "Africa/Cairo",
+)
+
 USE_I18N = True
 USE_TZ = True
 
@@ -279,7 +331,10 @@ REST_FRAMEWORK = {
     # and the socket address is the client IP, so it cannot be spoofed to
     # dodge throttling. Set DJANGO_NUM_PROXIES=N only when N trusted proxies
     # really append the real client address.
-    "NUM_PROXIES": env_int("DJANGO_NUM_PROXIES", 0),
+    "NUM_PROXIES": env_int(
+        "DJANGO_NUM_PROXIES",
+        0,
+    ),
 
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
@@ -293,9 +348,13 @@ REST_FRAMEWORK = {
     # pagination for free by using generics/viewsets. The current teacher/
     # student environment lists are plain APIViews and stay unpaginated on
     # purpose (see environments/tenancy.py:StandardPagination).
-    "DEFAULT_PAGINATION_CLASS": "environments.tenancy.StandardPagination",
+    "DEFAULT_PAGINATION_CLASS": (
+        "environments.tenancy.StandardPagination"
+    ),
 
-    "EXCEPTION_HANDLER": "config.exceptions.api_exception_handler",
+    "EXCEPTION_HANDLER": (
+        "config.exceptions.api_exception_handler"
+    ),
 
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
 }
@@ -322,15 +381,20 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173" if DEBUG else "",
+    "http://localhost:5173,http://127.0.0.1:5173"
+    if DEBUG
+    else "",
 )
 
+CORS_ALLOW_CREDENTIALS = False
+
+# The frontend sends this custom header to identify the active
+# Madar environment/tenant. It must be explicitly allowed during
+# the browser's CORS preflight request.
 CORS_ALLOW_HEADERS = [
     *default_headers,
     "x-madar-environment",
 ]
-
-CORS_ALLOW_CREDENTIALS = False
 
 CSRF_TRUSTED_ORIGINS = env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
@@ -342,6 +406,7 @@ if not DEBUG:
         "CORS_ALLOWED_ORIGINS",
         CORS_ALLOWED_ORIGINS,
     )
+
     _https_only(
         "DJANGO_CSRF_TRUSTED_ORIGINS",
         CSRF_TRUSTED_ORIGINS,
@@ -351,30 +416,45 @@ if not DEBUG:
 # --------------------------------------------------------- security -------
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
 X_FRAME_OPTIONS = "DENY"
+
 SECURE_REFERRER_POLICY = "same-origin"
+
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+
 
 # Request bodies are small JSON documents (Phase 5 file handling will set its
 # own, separate limits). An explicit cap keeps oversized JSON from being
 # buffered in memory.
+
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1_000_000
 
+
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
+
 SECURE_SSL_REDIRECT = env_bool(
     "DJANGO_SECURE_SSL_REDIRECT",
     default=not DEBUG,
 )
 
 SESSION_COOKIE_SECURE = not DEBUG
+
 CSRF_COOKIE_SECURE = not DEBUG
+
 SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = True  # Django admin only; the API uses Bearer tokens, not cookies
+
+# Django admin only; the API uses Bearer tokens, not cookies
+CSRF_COOKIE_HTTPONLY = True
+
 SESSION_COOKIE_SAMESITE = "Lax"
+
 CSRF_COOKIE_SAMESITE = "Lax"
 
 SECURE_HSTS_SECONDS = (
-    0 if DEBUG else env_int(
+    0
+    if DEBUG
+    else env_int(
         "DJANGO_HSTS_SECONDS",
         60 * 60 * 24 * 30,
     )
@@ -395,7 +475,11 @@ SECURE_HSTS_PRELOAD = env_bool(
 # SECURE_SSL_REDIRECT would redirect forever unless it can learn the original
 # scheme. Only enable this when the proxy OVERWRITES X-Forwarded-Proto (never
 # passes a client-supplied value through) — otherwise clients could forge it.
-if env_bool("DJANGO_BEHIND_TLS_PROXY", default=False):
+
+if env_bool(
+    "DJANGO_BEHIND_TLS_PROXY",
+    default=False,
+):
     SECURE_PROXY_SSL_HEADER = (
         "HTTP_X_FORWARDED_PROTO",
         "https",
@@ -405,9 +489,13 @@ if env_bool("DJANGO_BEHIND_TLS_PROXY", default=False):
 # Dev-only convenience: return the generated OTP code in API responses so
 # the whole flow is testable without a real SMS/email provider wired up.
 # Hard-gated on DEBUG, so it cannot be enabled in production by an env var.
-EXPOSE_OTP_IN_RESPONSE = DEBUG and env_bool(
-    "EXPOSE_OTP_IN_RESPONSE",
-    default=True,
+
+EXPOSE_OTP_IN_RESPONSE = (
+    DEBUG
+    and env_bool(
+        "EXPOSE_OTP_IN_RESPONSE",
+        default=True,
+    )
 )
 
 
@@ -442,6 +530,7 @@ LOGGING = {
             "level": "WARNING" if not DEBUG else "INFO",
             "propagate": False,
         },
+
         "django.security": {
             "handlers": ["console"],
             "level": "WARNING",
