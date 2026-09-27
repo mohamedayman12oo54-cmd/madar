@@ -4,13 +4,13 @@ import DashboardLayout from "./DashboardLayout.jsx";
 import OverviewPage from "./OverviewPage.jsx";
 import StudentsPage from "./StudentsPage.jsx";
 import GroupsPage from "./GroupsPage.jsx";
+import SessionsPage from "./SessionsPage.jsx";
+import AttendancePage from "./AttendancePage.jsx";
+import EvaluationPage from "./EvaluationPage.jsx";
+import FinancialsPage from "./FinancialsPage.jsx";
 import ComingSoon from "./ComingSoon.jsx";
 
 const SECTIONS = [
-  ["sessions", "الجلسات"],
-  ["attendance", "الحضور"],
-  ["evaluation", "التقييم"],
-  ["financials", "المدفوعات"],
   ["content", "المحتوى التعليمي"],
   ["ai", "المساعد الذكي"],
   ["notifications", "الإشعارات"],
@@ -25,6 +25,10 @@ export default function AppRoutes() {
           <Route index element={<OverviewPage />} />
           <Route path="students" element={<StudentsPage />} />
           <Route path="groups" element={<GroupsPage />} />
+          <Route path="sessions" element={<SessionsPage />} />
+          <Route path="attendance" element={<AttendancePage />} />
+          <Route path="evaluation" element={<EvaluationPage />} />
+          <Route path="financials" element={<FinancialsPage />} />
           {SECTIONS.map(([path, label]) => (
             <Route key={path} path={path} element={<ComingSoon title={label} />} />
           ))}
