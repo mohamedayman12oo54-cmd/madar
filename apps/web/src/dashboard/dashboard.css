@@ -150,6 +150,13 @@
 .dash-session-actions{display:flex;gap:8px;flex-wrap:wrap}
 .dash-tag{font-size:.76rem;color:var(--soft);background:var(--fill);padding:4px 10px;border-radius:100px}
 
+/* ---------- Phase 5: content / notifications / AI ---------- */
+.dash-unread{border-inline-start:4px solid var(--navy)}
+.dash-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:6px 0 0;color:var(--soft);font-size:.88rem;line-height:1.7}
+.dash-badge{margin-inline-start:auto;min-width:20px;height:20px;padding:0 6px;border-radius:100px;background:#b4442f;color:#fff;font-size:.72rem;font-weight:700;display:grid;place-items:center}
+.dash-link.active .dash-badge{background:var(--cream);color:var(--navy)}
+textarea.inp{resize:vertical;min-height:96px;font-family:inherit}
+
 /* ---------- responsive ---------- */
 @media(max-width:1024px){
   .dash-side{display:none}
