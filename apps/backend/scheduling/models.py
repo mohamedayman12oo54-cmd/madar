@@ -20,7 +20,7 @@ Domain rules enforced here (from the spec, not invented):
   flip the ones who showed up — see `open()`/`reopen()`/`_sync_roster()`.
 """
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from academics.models import Enrollment, Group
@@ -67,10 +67,17 @@ class SessionInstance(TenantOwnedModel):
     def open(self):
         if self.status != self.Status.PLANNED:
             raise ValidationError("لا يمكن فتح الجلسة إلا وهي في حالة (مخطط لها).")
-        self.status = self.Status.OPEN
-        self.opened_at = timezone.now()
-        self.save(update_fields=["status", "opened_at"])
-        self._sync_roster()
+        # Deferred import: avoids a circular import at module-load time
+        # (notifications.models imports SessionInstance for its FK).
+        from notifications.services import notify_session_event
+        from notifications.models import Notification
+
+        with transaction.atomic():
+            self.status = self.Status.OPEN
+            self.opened_at = timezone.now()
+            self.save(update_fields=["status", "opened_at"])
+            self._sync_roster()
+            notify_session_event(self, Notification.Type.SESSION_OPENED)
 
     def close(self):
         if self.status != self.Status.OPEN:
@@ -83,11 +90,20 @@ class SessionInstance(TenantOwnedModel):
         """Reopens THIS SAME SessionInstance — never creates a new one."""
         if self.status != self.Status.CLOSED:
             raise ValidationError("لا يمكن إعادة فتح إلا جلسة مغلقة.")
-        self.status = self.Status.OPEN
-        self.opened_at = timezone.now()
-        self.reopened_count += 1
-        self.save(update_fields=["status", "opened_at", "reopened_count"])
-        self._sync_roster()
+        from notifications.services import notify_session_event
+        from notifications.models import Notification
+
+        with transaction.atomic():
+            self.status = self.Status.OPEN
+            self.opened_at = timezone.now()
+            self.reopened_count += 1
+            self.save(update_fields=["status", "opened_at", "reopened_count"])
+            self._sync_roster()
+            # A fresh, independent notification — never touches/retracts
+            # whatever notification the original open() created (spec:
+            # reopening does not retroactively retract an already-fired
+            # notification).
+            notify_session_event(self, Notification.Type.SESSION_REOPENED)
 
     def __str__(self):
         return f"{self.group} @ {self.scheduled_at:%Y-%m-%d %H:%M} ({self.status})"
