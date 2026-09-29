@@ -8,12 +8,12 @@ import SessionsPage from "./SessionsPage.jsx";
 import AttendancePage from "./AttendancePage.jsx";
 import EvaluationPage from "./EvaluationPage.jsx";
 import FinancialsPage from "./FinancialsPage.jsx";
+import ContentPage from "./ContentPage.jsx";
+import AiPage from "./AiPage.jsx";
+import NotificationsPage from "./NotificationsPage.jsx";
 import ComingSoon from "./ComingSoon.jsx";
 
 const SECTIONS = [
-  ["content", "المحتوى التعليمي"],
-  ["ai", "المساعد الذكي"],
-  ["notifications", "الإشعارات"],
   ["settings", "الإعدادات"],
 ];
 
@@ -29,6 +29,9 @@ export default function AppRoutes() {
           <Route path="attendance" element={<AttendancePage />} />
           <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="financials" element={<FinancialsPage />} />
+          <Route path="content" element={<ContentPage />} />
+          <Route path="ai" element={<AiPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           {SECTIONS.map(([path, label]) => (
             <Route key={path} path={path} element={<ComingSoon title={label} />} />
           ))}
