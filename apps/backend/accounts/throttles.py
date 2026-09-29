@@ -107,3 +107,11 @@ class OTPTargetRateThrottle(TargetRateThrottle):
 # ---- user-keyed ------------------------------------------------------------
 class StudentAddRateThrottle(UserRateThrottle):
     scope = "student-add"
+
+
+class AISubmitRateThrottle(UserRateThrottle):
+    """AI submissions cost real compute/money once a real provider is wired
+    in — cap them per teacher."""
+
+    scope = "ai-submit"
+
