@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/api.test.js src/dashboard/nav.test.js"
+    "test": "node --test src/lib/api.test.js src/lib/poll.test.js src/dashboard/nav.test.js"
   },
   "dependencies": {
     "framer-motion": "^11.3.19",
