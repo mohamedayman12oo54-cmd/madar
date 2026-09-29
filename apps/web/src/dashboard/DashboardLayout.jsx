@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X, ChevronDown, LogOut, Settings as SettingsIcon } from "lucide-react";
 import logo from "../assets/madar-logo.png";
 import { useSession } from "../state/session.jsx";
 import { useEnvironment } from "../state/environment.jsx";
+import { notificationsApi } from "../lib/notificationsApi.js";
 import { dashboardNav } from "./nav.js";
 import "./dashboard.css";
 
@@ -12,13 +13,14 @@ function initialsOf(name) {
   return (name || "؟").trim().slice(0, 1);
 }
 
-function NavLinks({ onNavigate }) {
+function NavLinks({ onNavigate, badges = {} }) {
   return (
     <nav className="dash-nav" aria-label="أقسام لوحة التحكم">
       {dashboardNav.map(({ to, label, icon: Icon, end }) => (
         <NavLink key={to} to={to} end={end} onClick={onNavigate} className={({ isActive }) => "dash-link" + (isActive ? " active" : "")}>
           <Icon size={18} />
           <span>{label}</span>
+          {badges[to] > 0 && <span className="dash-badge" aria-label={`${badges[to]} غير مقروء`}>{badges[to] > 99 ? "99+" : badges[to]}</span>}
         </NavLink>
       ))}
     </nav>
@@ -79,6 +81,16 @@ export default function DashboardLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const env = useEnvironment();
   const location = useLocation();
+  const [unread, setUnread] = useState(0);
+  const refreshUnread = useCallback(() => {
+    notificationsApi.unreadCount().then((d) => setUnread(d.unread_count)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshUnread();
+    const t = setInterval(refreshUnread, 60000);
+    return () => clearInterval(t);
+  }, [refreshUnread]);
+  const badges = { "/app/notifications": unread };
   const current = dashboardNav.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)));
 
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
@@ -88,7 +100,7 @@ export default function DashboardLayout() {
     <div className="dash">
       <aside className="dash-side">
         <div className="dash-brand"><img src={logo} alt="مدار Madar" /></div>
-        <NavLinks />
+        <NavLinks badges={badges} />
       </aside>
 
       <AnimatePresence>
@@ -104,7 +116,7 @@ export default function DashboardLayout() {
                 <img src={logo} alt="مدار Madar" />
                 <button className="dash-drawer-close" aria-label="إغلاق القائمة" onClick={() => setDrawerOpen(false)}><X size={18} /></button>
               </div>
-              <NavLinks onNavigate={() => setDrawerOpen(false)} />
+              <NavLinks badges={badges} onNavigate={() => setDrawerOpen(false)} />
             </motion.div>
           </>
         )}
@@ -128,7 +140,7 @@ export default function DashboardLayout() {
           </div>
         </header>
         <main className="dash-body">
-          <Outlet />
+          <Outlet context={{ refreshUnread }} />
         </main>
       </div>
     </div>
