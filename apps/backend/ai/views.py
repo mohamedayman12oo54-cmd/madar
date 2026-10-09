@@ -8,7 +8,8 @@ from accounts.throttles import AISubmitRateThrottle
 from environments.tenancy import IsEnvironmentMember, TenantScopedQuerySetMixin
 
 from .models import AIOperation
-from .serializers import AIOperationSerializer, AIOperationSubmitSerializer
+from academics.models import Enrollment
+from .serializers import AIOperationSerializer, AIOperationSubmitSerializer, StateRecommendationSubmitSerializer
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
 
@@ -27,7 +28,7 @@ class AIOperationListSubmitView(TenantScopedQuerySetMixin, generics.ListAPIView)
         return [AISubmitRateThrottle()] if self.request.method == "POST" else []
 
     def get_queryset(self):
-        return super().get_queryset().filter(requested_by=self.request.user)
+        return super().get_queryset().filter(requested_by=self.request.user, kind=AIOperation.Kind.ASSISTANT)
 
     def post(self, request):
         ser = AIOperationSubmitSerializer(data=request.data)
@@ -64,6 +65,42 @@ class AIOperationListSubmitView(TenantScopedQuerySetMixin, generics.ListAPIView)
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(AIOperationSerializer(op).data, status=status.HTTP_200_OK)
+
+
+class StateRecommendationSubmitView(APIView):
+    """Ask for an ADVISORY State suggestion for one student-month. The evidence
+    (aggregate counts) is gathered HERE, inside the caller's own environment,
+    and frozen on the operation; the worker only ever reads that snapshot."""
+
+    permission_classes = IS_ENV_OWNER
+    throttle_classes = [AISubmitRateThrottle]
+
+    def post(self, request):
+        from evaluation.views import month_evidence
+        from django.shortcuts import get_object_or_404
+
+        ser = StateRecommendationSubmitSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+        env = request.environment
+        enrollment = get_object_or_404(Enrollment.objects.filter(environment=env, is_active=True), pk=v["enrollment_id"])
+        key = v.get("idempotency_key")
+        if key:
+            existing = AIOperation.objects.filter(environment=env, requested_by=request.user, idempotency_key=key).first()
+            if existing:
+                return Response(AIOperationSerializer(existing).data, status=status.HTTP_200_OK)
+        evidence = month_evidence(env, v["month"], [enrollment.id])[enrollment.id]
+        try:
+            with transaction.atomic():
+                op = AIOperation.objects.create(
+                    environment=env, requested_by=request.user, kind=AIOperation.Kind.STATE_RECOMMENDATION,
+                    enrollment=enrollment, month=v["month"], evidence=evidence, idempotency_key=key,
+                    prompt=f"state-recommendation {v['month']:%Y-%m}",
+                )
+        except IntegrityError:
+            op = AIOperation.objects.get(environment=env, requested_by=request.user, idempotency_key=key)
+            return Response(AIOperationSerializer(op).data, status=status.HTTP_200_OK)
+        return Response(AIOperationSerializer(op).data, status=status.HTTP_202_ACCEPTED)
 
 
 class AIOperationDetailView(APIView):
