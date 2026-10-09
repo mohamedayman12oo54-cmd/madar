@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import PendingAuth, User
 from .session_revocation import revoke_all_sessions
@@ -26,10 +27,14 @@ from .serializers import (
     TeamLoginSerializer,
     UserPublicSerializer,
     GENERIC_PENDING_ERROR,
+    NewPasswordMixin,
+    student_can_access,
     issue_tokens_for,
     user_public,
 )
 from .throttles import (
+    PasswordChangeRateThrottle,
+    RefreshRateThrottle,
     LoginAccountRateThrottle,
     LoginRateThrottle,
     OTPRequestRateThrottle,
@@ -221,6 +226,13 @@ class StudentClaimActivateView(APIView):
             ).first()
             if not user or not consume_pending(pending):
                 return Response({"detail": GENERIC_RETRY}, status=status.HTTP_400_BAD_REQUEST)
+            # A teacher may have deactivated the student between the OTP step
+            # and now — the rule is re-checked at the moment of activation.
+            if not student_can_access(user):
+                return Response(
+                    {"detail": "تعذّر تفعيل الحساب حاليًا. تواصل مع معلّمك.", "code": "student_inactive"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             user.set_password(ser.validated_data["password"])
             user.is_active = True
             user.is_verified = True
@@ -303,6 +315,69 @@ class OTPResendView(APIView):
 class MeView(APIView):
     def get(self, request):
         return Response(UserPublicSerializer(request.user).data)
+
+    def patch(self, request):
+        """Teachers (and team staff) may edit their own display name. Email
+        and phone are login identities: changing them needs OTP re-verification,
+        which is deferred with the OTP provider, so they are NOT editable here.
+        Students never edit the global identity."""
+        user = request.user
+        if user.role not in (User.Role.TEACHER, User.Role.TEAM):
+            return Response({"detail": "غير مسموح.", "code": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        if not isinstance(request.data, dict) or set(request.data) - {"name"}:
+            return Response(
+                {"detail": "يمكن تعديل الاسم فقط.", "code": "validation_error"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        name = str(request.data.get("name", "")).strip()
+        if len(name) < 2 or len(name) > 150:
+            return Response(
+                {"detail": "تحقق من البيانات المدخلة.", "code": "validation_error",
+                 "fields": {"name": "الاسم يجب أن يكون بين حرفين و150 حرفًا."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.name = name
+        user.save(update_fields=["name"])
+        return Response(UserPublicSerializer(user).data)
+
+
+class ChangePasswordSerializer(NewPasswordMixin, serializers.Serializer):
+    current_password = serializers.CharField(trim_whitespace=False)
+    password = serializers.CharField(trim_whitespace=False)
+    password2 = serializers.CharField(trim_whitespace=False)
+
+
+class ChangePasswordView(APIView):
+    """Authenticated password change. Requires the CURRENT password (a stolen
+    access token alone cannot take over the account), then cuts off every
+    existing session and returns a fresh token pair for this device only."""
+
+    throttle_classes = [PasswordChangeRateThrottle]
+
+    def post(self, request):
+        ser = ChangePasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(ser.validated_data["current_password"]):
+            raise serializers.ValidationError({"current_password": "كلمة المرور الحالية غير صحيحة."})
+        if ser.validated_data["current_password"] == ser.validated_data["password"]:
+            raise serializers.ValidationError({"password": "اختر كلمة مرور مختلفة عن الحالية."})
+        with transaction.atomic():
+            user.set_password(ser.validated_data["password"])
+            user.save(update_fields=["password"])
+            revoke_all_sessions(user)
+        return Response({**issue_tokens_for(user), "user": user_public(user)})
+
+
+class SignOutEverywhereView(APIView):
+    """Revoke every session of the caller (all devices), including this one."""
+
+    def post(self, request):
+        revoke_all_sessions(request.user)
+        return Response(status=status.HTTP_205_RESET_CONTENT)
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    throttle_classes = [RefreshRateThrottle]
 
 
 class LogoutView(APIView):
