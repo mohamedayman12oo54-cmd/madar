@@ -4,6 +4,7 @@ import { Btn, Banner } from "../auth/ui.jsx";
 import { aiApi, AI_TERMINAL } from "../lib/aiApi.js";
 import { pollUntilDone } from "../lib/poll.js";
 import { ApiError } from "../lib/api.js";
+import { PageHeader } from "./common.jsx";
 
 const STATUS_LABEL = { pending: "بانتظار المعالجة…", processing: "جارٍ إعداد الإجابة…", completed: "مكتملة", failed: "فشلت" };
 const MAX_PROMPT = 2000;
@@ -16,7 +17,7 @@ function newKey() {
   return globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export default function AiPage() {
+export default function AiPage({ api = aiApi, infoKey = "ai" }) {
   const [prompt, setPrompt] = useState("");
   const [op, setOp] = useState(null);            // the operation currently on screen
   const [submitting, setSubmitting] = useState(false);
@@ -30,8 +31,8 @@ export default function AiPage() {
   const attemptKeyRef = useRef(newKey());
 
   const loadHistory = useCallback(() => {
-    aiApi.list().then((d) => setHistory(d.results || d)).catch(() => {});
-  }, []);
+    api.list().then((d) => setHistory(d.results || d)).catch(() => {});
+  }, [api]);
 
   useEffect(() => { loadHistory(); return () => controllerRef.current?.abort(); }, [loadHistory]);
 
@@ -41,7 +42,7 @@ export default function AiPage() {
     controllerRef.current = controller;
     setTimedOut(false);
     try {
-      const outcome = await pollUntilDone(() => aiApi.get(id), {
+      const outcome = await pollUntilDone(() => api.get(id), {
         isDone: (o) => AI_TERMINAL.has(o.status),
         onUpdate: setOp,
         signal: controller.signal,
@@ -62,7 +63,7 @@ export default function AiPage() {
     if (!text || submitting) return;
     setSubmitting(true); setError(null); setOp(null);
     try {
-      const created = await aiApi.submit(text, attemptKeyRef.current);
+      const created = await api.submit(text, attemptKeyRef.current);
       setOp(created);
       setSubmitting(false);
       track(created.id);
@@ -88,7 +89,7 @@ export default function AiPage() {
 
   return (
     <>
-      <div className="dash-section-head"><h2>المساعد الذكي</h2></div>
+      <PageHeader infoKey={infoKey} title="المساعد الذكي" />
 
       <Banner tone="info">
         مساعد تعليمي عام للمعلّم — لا يطّلع على بيانات أي طالب. الإجابات قد تحتوي على أخطاء، راجعها قبل الاعتماد عليها.
