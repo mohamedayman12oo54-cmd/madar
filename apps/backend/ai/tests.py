@@ -21,6 +21,20 @@ def op_url(pk):
     return f"{URL}{pk}/"
 
 
+def seed_kb(*, published=True, title="نظرية فيثاغورس", topic="رياضيات",
+            body=("نظرية فيثاغورس تنص على أن مربع الوتر في المثلث القائم يساوي "
+                  "مجموع مربعي الضلعين الآخرين. الجذر التربيعي لعدد هو العدد الذي "
+                  "إذا ضرب في نفسه أعطى ذلك العدد. سؤال شائع في الرياضيات.")):
+    """The Study Assistant is grounded in the PUBLISHED Knowledge Base, so any
+    test that expects an answer must first curate something for it to use."""
+    from knowledge.models import KBDocument
+
+    doc = KBDocument.objects.create(title=title, topic=topic, body=body)
+    if published:
+        doc.publish()
+    return doc
+
+
 def run_worker(*args):
     out = StringIO()
     call_command("process_ai_operations", *args, stdout=out)
@@ -28,6 +42,10 @@ def run_worker(*args):
 
 
 class SubmitAndPollTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
+        seed_kb()
+
     def submit(self, client=None, env=None, **body):
         client = client or self.client_a
         env = env or self.env_a
@@ -65,7 +83,7 @@ class SubmitAndPollTests(TenantTestCase):
         op_id = self.submit(prompt="سؤال").json()["id"]
 
         class Boom(AIProvider):
-            def generate(self, prompt):
+            def generate(self, prompt, context=""):
                 raise AIProviderError("upstream unavailable")
 
         with mock.patch("ai.management.commands.process_ai_operations.get_provider", return_value=Boom()):
@@ -109,6 +127,10 @@ class SubmitAndPollTests(TenantTestCase):
 
 
 class SelectiveIdempotencyTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
+        seed_kb()
+
     def submit(self, prompt="سؤال", key=None, client=None, env=None):
         body = {"prompt": prompt}
         if key is not None:
@@ -186,12 +208,22 @@ class TenancyAndIsolationTests(TenantTestCase):
         keys = set(self.client_a.get(op_url(self.op.id), **self.with_env(self.env_a.id)).json())
         self.assertFalse(keys & {"requested_by", "environment", "user", "idempotency_key"})
 
-    def test_general_tutor_by_construction_no_link_to_student_records(self):
-        """Spec: the assistant is NOT a personalized student-record retrieval
-        system. Structurally: AIOperation has no relation to any student-,
-        enrollment-, payment-, note- or session-owned model."""
-        related = {f.related_model.__name__ for f in AIOperation._meta.get_fields() if f.is_relation and f.related_model}
-        self.assertEqual(related, {"Environment", "User"})
+    def test_general_tutor_by_construction_cannot_reference_a_student(self):
+        """Spec (PD-1): the assistant is NOT a student-record retrieval system.
+        Only the bounded `state_recommendation` kind may carry an enrollment;
+        the database itself refuses an assistant operation that does."""
+        from django.db import IntegrityError, transaction
+
+        from academics.models import Grade
+        from accounts.testing import make_enrollment
+
+        student = self.make_student_in(self.env_a, "201066600001")
+        enrollment = make_enrollment(self.env_a, student, Grade.objects.create(environment=self.env_a, name="ع"))
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            AIOperation.objects.create(
+                environment=self.env_a, requested_by=self.teacher_a, prompt="x",
+                kind=AIOperation.Kind.ASSISTANT, enrollment=enrollment,
+            )
 
 
 class SubmitThrottleTests(TenantTestCase):
@@ -206,8 +238,13 @@ class SubmitThrottleTests(TenantTestCase):
 
 
 class WorkerSafetyTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
+        seed_kb()
+
     def make(self, **kw):
-        return AIOperation.objects.create(environment=self.env_a, requested_by=self.teacher_a, prompt="q", **kw)
+        return AIOperation.objects.create(
+            environment=self.env_a, requested_by=self.teacher_a, prompt="اشرح نظرية فيثاغورس", **kw)
 
     def test_worker_only_processes_pending(self):
         done = self.make(status="completed", result="keep")
@@ -256,15 +293,19 @@ class WorkerSafetyTests(TenantTestCase):
 
 
 class LoopModeTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
+        seed_kb()
+
     def test_loop_picks_up_work_that_arrives_between_iterations(self):
         seen = []
 
         def fake_sleep(_):
             # "new work arrives" while the worker is sleeping
-            AIOperation.objects.create(environment=self.env_a, requested_by=self.teacher_a, prompt="late")
+            AIOperation.objects.create(environment=self.env_a, requested_by=self.teacher_a, prompt="اشرح نظرية فيثاغورس مرة أخرى")
             seen.append(1)
 
-        AIOperation.objects.create(environment=self.env_a, requested_by=self.teacher_a, prompt="early")
+        AIOperation.objects.create(environment=self.env_a, requested_by=self.teacher_a, prompt="اشرح نظرية فيثاغورس")
         with mock.patch("ai.management.commands.process_ai_operations.time.sleep", side_effect=fake_sleep):
             out = StringIO()
             call_command("process_ai_operations", "--loop", "--interval", "0", "--max-iterations", "2", stdout=out)
@@ -279,9 +320,16 @@ class LoopModeTests(TenantTestCase):
 
 class ProviderTests(TenantTestCase):
     def test_stub_is_clearly_labelled_and_deterministic(self):
-        a = StubTutorProvider().generate("سؤال")
+        ctx = "[درس] مادة منشورة من قاعدة المعرفة."
+        a = StubTutorProvider().generate("سؤال", ctx)
         self.assertIn("وضع تجريبي", a)
-        self.assertEqual(a, StubTutorProvider().generate("سؤال"))
+        self.assertEqual(a, StubTutorProvider().generate("سؤال", ctx))
+
+    def test_stub_refuses_to_answer_without_knowledge_base_grounding(self):
+        """No curated source => no answer. The tutor must never answer from
+        memory (docs: bounded source contract)."""
+        with self.assertRaises(AIProviderError):
+            StubTutorProvider().generate("سؤال", "")
 
     def test_unknown_provider_setting_fails_loudly(self):
         from django.test import override_settings
