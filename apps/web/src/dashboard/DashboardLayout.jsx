@@ -5,7 +5,7 @@ import { Menu, X, ChevronDown, LogOut, Settings as SettingsIcon } from "lucide-r
 import logo from "../assets/madar-logo.png";
 import { useSession } from "../state/session.jsx";
 import { useEnvironment } from "../state/environment.jsx";
-import { notificationsApi } from "../lib/notificationsApi.js";
+import { notificationsApi } from "../lib/dashboardApi.js";
 import { dashboardNav } from "./nav.js";
 import "./dashboard.css";
 
@@ -20,7 +20,7 @@ function NavLinks({ onNavigate, badges = {} }) {
         <NavLink key={to} to={to} end={end} onClick={onNavigate} className={({ isActive }) => "dash-link" + (isActive ? " active" : "")}>
           <Icon size={18} />
           <span>{label}</span>
-          {badges[to] > 0 && <span className="dash-badge" aria-label={`${badges[to]} غير مقروء`}>{badges[to] > 99 ? "99+" : badges[to]}</span>}
+          {badges[to] > 0 && <span className="dash-badge" aria-label={`${badges[to]} إشعار فشل إرساله`}>{badges[to] > 99 ? "99+" : badges[to]}</span>}
         </NavLink>
       ))}
     </nav>
@@ -81,16 +81,16 @@ export default function DashboardLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const env = useEnvironment();
   const location = useLocation();
-  const [unread, setUnread] = useState(0);
-  const refreshUnread = useCallback(() => {
-    notificationsApi.unreadCount().then((d) => setUnread(d.unread_count)).catch(() => {});
+  const [failed, setFailed] = useState(0);
+  const refreshFailed = useCallback(() => {
+    notificationsApi.summary().then((d) => setFailed(d.failed)).catch(() => {});
   }, []);
   useEffect(() => {
-    refreshUnread();
-    const t = setInterval(refreshUnread, 60000);
+    refreshFailed();
+    const t = setInterval(refreshFailed, 60000);
     return () => clearInterval(t);
-  }, [refreshUnread]);
-  const badges = { "/app/notifications": unread };
+  }, [refreshFailed]);
+  const badges = { "/app/notifications": failed };
   const current = dashboardNav.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)));
 
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
@@ -140,7 +140,7 @@ export default function DashboardLayout() {
           </div>
         </header>
         <main className="dash-body">
-          <Outlet context={{ refreshUnread }} />
+          <Outlet context={{ refreshFailed }} />
         </main>
       </div>
     </div>
