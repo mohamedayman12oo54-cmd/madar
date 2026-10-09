@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Check, AlertCircle, Info, ArrowRight, ChevronLeft } from "lucide-react";
+import { Eye, EyeOff, Check, AlertCircle, Info, ArrowRight, ChevronLeft, X } from "lucide-react";
 import logo from "../assets/madar-logo.png";
+import { COUNTRIES, COUNTRY_BY_ISO, DEFAULT_ISO, cleanNational, parseInternational } from "../lib/phone.js";
 import "./auth.css";
 
 /* ---------------- layout: centered AuthLayout ---------------- */
@@ -70,9 +71,9 @@ export function Stepper({ total, current }) {
 }
 
 /* ---------------- fields (label + required + reserved message) ---------------- */
-export function Field({ label, required, error, hint, children }) {
+export function Field({ label, required, error, hint, children, className = "" }) {
   return (
-    <div className="field">
+    <div className={"field" + (className ? " " + className : "")}>
       {label && <label>{label}{required && <span className="req"> *</span>}</label>}
       {children}
       <div className={"field-msg" + (error ? " err" : "")}>
@@ -98,16 +99,44 @@ export function PasswordInput({ error, ...p }) {
   );
 }
 
-export function PhoneInput({ error, ...p }) {
+/** Country-aware mobile field. `value` / onChange use the FULL international
+ *  string ("+201001234567", or "" while empty) so callers just validate it with
+ *  phoneError() from lib/phone.js and send it to the API unchanged. */
+export function PhoneInput({ value = "", onChange, error, defaultIso = DEFAULT_ISO, disabled, id, ...rest }) {
+  const parsed = parseInternational(value);
+  const [iso, setIso] = useState(parsed?.country.iso || defaultIso);
+  const [national, setNational] = useState(parsed?.national || "");
+  const country = COUNTRY_BY_ISO[iso] || COUNTRY_BY_ISO[DEFAULT_ISO];
+
+  // Follow external resets / edits of the value (e.g. opening the edit modal).
+  useEffect(() => {
+    if (!value) { setNational(""); return; }
+    const p = parseInternational(value);
+    if (p && ("+" + p.country.dial + p.national) !== ("+" + country.dial + national)) {
+      setIso(p.country.iso); setNational(p.national);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const emit = (nextIso, nextNational) => {
+    const c = COUNTRY_BY_ISO[nextIso];
+    onChange?.({ target: { value: nextNational ? `+${c.dial}${nextNational}` : "" } });
+  };
+
   return (
-    <div className="inp-wrap tel-field">
-      <input className={"inp" + (error ? " err" : "")} type="tel" inputMode="numeric" placeholder="1XXXXXXXXX" {...p} />
-      <span className="phone-pre">+20</span>
+    <div className="phone-row" dir="ltr">
+      <select className={"inp phone-sel" + (error ? " err" : "")} value={iso} disabled={disabled}
+        aria-label="دولة رقم الهاتف"
+        onChange={(e) => { setIso(e.target.value); emit(e.target.value, national); }}>
+        {COUNTRIES.map((c) => <option key={c.iso} value={c.iso}>{c.name} (+{c.dial})</option>)}
+      </select>
+      <input id={id} className={"inp phone-num" + (error ? " err" : "")} type="tel" inputMode="numeric" autoComplete="tel-national"
+        disabled={disabled} placeholder={country.example} value={national} maxLength={14}
+        onChange={(e) => { const n = cleanNational(e.target.value); setNational(n); emit(iso, n); }} {...rest} />
     </div>
   );
 }
 
-/* password requirements */
 export const PW_RULES = [
   { k: "len", t: "٨ أحرف على الأقل", test: (v) => v.length >= 8 },
   { k: "up", t: "حرف كبير (A-Z)", test: (v) => /[A-Z]/.test(v) },
@@ -221,15 +250,78 @@ export function EnvCard({ initials, name, meta, last, onEnter }) {
   );
 }
 
-export function Modal({ title, text, children, onClose }) {
+let _openModals = 0;
+
+/** Locks the page behind the dialog so the background never scrolls while a
+ *  modal is open. Reference-counted: nested/stacked modals unlock only once
+ *  the last one closes. Compensates for the scrollbar width so the page
+ *  doesn't visibly shift. */
+function useBodyScrollLock() {
+  useEffect(() => {
+    const body = document.body;
+    if (_openModals === 0) {
+      const gap = window.innerWidth - document.documentElement.clientWidth;
+      body.dataset.prevOverflow = body.style.overflow;
+      body.dataset.prevPadding = body.style.paddingInlineEnd;
+      body.style.overflow = "hidden";
+      if (gap > 0) body.style.paddingInlineEnd = `${gap}px`;
+    }
+    _openModals += 1;
+    return () => {
+      _openModals -= 1;
+      if (_openModals === 0) {
+        body.style.overflow = body.dataset.prevOverflow || "";
+        body.style.paddingInlineEnd = body.dataset.prevPadding || "";
+        delete body.dataset.prevOverflow;
+        delete body.dataset.prevPadding;
+      }
+    };
+  }, []);
+}
+
+/**
+ * Shared dialog for the whole app. Structure is always
+ *   header (sticky) → body (the ONLY scroller) → footer (sticky, optional)
+ * so a long form is fully reachable at normal browser zoom on any screen.
+ *
+ * `size`: "sm" (default, confirmations) | "md" | "lg" (multi-field forms).
+ * `footer`: action buttons pinned to the bottom. When omitted the children
+ * scroll as one block — existing call sites keep working unchanged.
+ */
+export function Modal({ title, text, children, onClose, size = "sm", footer = null }) {
+  const panelRef = useRef(null);
+  const titleId = useId();
+  useBodyScrollLock();
+
+  // Esc closes; focus moves into the dialog so keyboard/scroll start inside it.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", onKey);
+    panelRef.current?.focus({ preventScroll: true });
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <div className="modal-back" onClick={onClose}>
-      <motion.div className="modal" onClick={(e) => e.stopPropagation()}
+    <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
+      <motion.div
+        ref={panelRef}
+        className={`modal modal-${size}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onMouseDown={(e) => e.stopPropagation()}
         initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
-        <div className="mt">{title}</div>
-        {text && <div className="mx">{text}</div>}
+        <header className="modal-head">
+          <div className="mt" id={titleId}>{title}</div>
+          {text && <div className="mx">{text}</div>}
+          <button type="button" className="modal-x" aria-label="إغلاق" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
         <div className="ma">{children}</div>
+        {footer && <footer className="modal-foot">{footer}</footer>}
       </motion.div>
     </div>
   );

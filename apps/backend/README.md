@@ -170,3 +170,30 @@ directly or via `X-Forwarded-Proto` from the proxy. Set every variable in
 `.env.example` for real (especially `DJANGO_SECRET_KEY`,
 `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`) — the app refuses to boot
 with `DEBUG=False` and the placeholder secret key, on purpose.
+
+
+## لوحة المعلم (v2) — ما تغيّر
+- مراجعة الأمان: `SECURITY.md` • المطابقة للوثائق: `../CONFORMANCE.md`
+- بعد سحب هذه النسخة: `python manage.py migrate` (يحافظ على بياناتك؛ خذ نسخة من `db.sqlite3` أولًا).
+- الـ workers (عمليات منفصلة في الإنتاج):
+  ```bash
+  python manage.py process_notifications     # تسليم الإشعارات (غير متزامن)
+  python manage.py process_ai_operations     # المساعد + اقتراح الحالة
+  python manage.py purge_pending_auth        # يوميًا: حذف تدفقات OTP المنتهية
+  ```
+- نقاط جديدة (كلها داخل بيئة المعلم النشطة `X-Environment-ID` ومحصورة بها):
+  `scheduling/{schedules,sessions/generate,sessions/<id>/roster,attendance/mark,recitation/mark}` •
+  `financials/monthly` • `evaluation/{monthly,ratings,ratings/publish,states,notes}` •
+  `ai/state-recommendations` • `content/<id>/publish` • `notifications/{broadcast,summary,retry-failed}` •
+  `environments/{overview,current}` • `auth/{change-password,sign-out-everywhere}` والتعديل `PATCH auth/me`.
+- أرقام الهاتف: ترسلها دائمًا برمز الدولة (`+20 100 …`). تُخزَّن بصيغة `201001234567`.
+- الاختبارات: `python manage.py test` (280).
+
+> **مهم بعد التحديث:** شغّل `python manage.py migrate` — الـ migration `0004_canonical_phones` يوحّد صيغة أرقام الحسابات القديمة (وإلا يفشل دخول من سُجّل قبل التحديث). للتشخيص: `python manage.py diagnose_login <رقم أو بريد>` (وضع DEBUG فقط).
+
+
+## لوحة الطالب
+- نقاط `/api/v1/student/*` (تتطلب دور طالب + `X-Environment-ID` لبيئة هو نشط فيها): `overview` • `attendance` • `recitation` • `payments` • `evaluation` • `videos` • `notifications` (+`read-all`, `<id>/read`) • `quizzes` (+`operations/<id>`, `<id>`, `<id>/submit`) • `assistant`.
+- `python manage.py migrate` (يضيف `studentarea` و`ContentItem.quiz_source` وأنواع جديدة في `ai`).
+- الـ worker `process_ai_operations` يولّد الآن الاختبارات أيضًا — شغّله بجانب الخادم.
+- الاختبارات: `python manage.py test` (312).

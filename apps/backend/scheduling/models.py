@@ -1,30 +1,51 @@
 """
-Phase 3 / Sessions + Attendance.
+Sessions, Schedules, Attendance and Recitation (per the System Documentation).
 
-Domain rules enforced here (from the spec, not invented):
-- GROUP OWNS SESSIONS: SessionInstance.group is required and fixed forever
-  (no serializer ever exposes changing it — see serializers.py).
-- SessionInstance is a first-class entity with an explicit lifecycle:
-  planned -> open -> closed -> (reopen) -> open -> closed -> ...
-  Reopening transitions the SAME row back to `open` — it never creates a new
-  SessionInstance. `reopened_count` is the only trace of "this has happened
-  before"; there is no separate "reopened" status (a reopened session is,
-  functionally, open again).
-- Attendance is scoped to a SessionInstance AND an Enrollment (never a bare
-  "student" — the enrollment is what ties a student to a specific
-  environment/group, per Phase 2). One record per (session, enrollment).
-- Attendance rows are not hand-created by the teacher one at a time — they
-  are generated for every currently-active Enrollment in the session's group
-  at the moment the session is opened (or reopened, to pick up anyone
-  enrolled since), defaulting to "absent". The teacher's job is then only to
-  flip the ones who showed up — see `open()`/`reopen()`/`_sync_roster()`.
+Domain rules (docs: domain-model, invariants INV-4/INV-8, lifecycles, functional):
+- GROUP OWNS SESSIONS: SessionInstance.group is required and fixed forever.
+- SessionInstance lifecycle: planned -> open -> closed -> (reopen) -> open ...
+  Reopening re-opens the SAME row (never a new session); `reopened_count` is
+  the only trace. A session may come from a Schedule or be ad-hoc (make-up).
+- Schedule = the recurring EXPECTED slot of a Group (e.g. Monday 18:00). It
+  never prevents recording an off-schedule session.
+- Attendance is binary Present/Absent per (session, enrollment). Records are
+  created ONLY when the teacher marks a student — never pre-filled — so an
+  "Absent" always means the teacher said so (Absent fires a notification).
+- Recitation: Studied / Not-Studied persist; "Skip" records nothing.
+- A student may belong to several groups of their grade (INV-4), so the
+  roster of a session is `group.member_enrollments` (active only).
+- Records can only be written while the session is OPEN (docs: lifecycles);
+  corrections go through reopen -> edit -> close.
 """
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.core.validators import MaxValueValidator
+from django.db import models
 from django.utils import timezone
 
 from academics.models import Enrollment, Group
 from environments.tenancy import TenantOwnedModel
+
+
+class Schedule(TenantOwnedModel):
+    WEEKDAYS = [
+        (5, "السبت"), (6, "الأحد"), (0, "الاثنين"), (1, "الثلاثاء"),
+        (2, "الأربعاء"), (3, "الخميس"), (4, "الجمعة"),
+    ]  # Python weekday numbers (Monday=0); listed Saturday-first for Egypt.
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="schedules")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS, validators=[MaxValueValidator(6)])
+    start_time = models.TimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["group_id", "weekday", "start_time"]
+        constraints = [
+            models.UniqueConstraint(fields=["group", "weekday", "start_time"], name="unique_schedule_slot"),
+        ]
+
+    def clean(self):
+        if self.group_id and self.environment_id and self.group.environment_id != self.environment_id:
+            raise ValidationError("الموعد يجب أن ينتمي لنفس بيئة المجموعة.")
 
 
 class SessionInstance(TenantOwnedModel):
@@ -38,8 +59,6 @@ class SessionInstance(TenantOwnedModel):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PLANNED)
     opened_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
-    # The only trace that a reopen ever happened — see module docstring.
-    # Never resets; incremented, never decremented.
     reopened_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -50,34 +69,12 @@ class SessionInstance(TenantOwnedModel):
         if self.group_id and self.environment_id and self.group.environment_id != self.environment_id:
             raise ValidationError("الجلسة يجب أن تنتمي لنفس بيئة المجموعة.")
 
-    def _sync_roster(self):
-        """Create an ABSENT AttendanceRecord for every currently-active
-        Enrollment in this session's group that doesn't already have one.
-        Never touches an existing record's status — a student already marked
-        present before a reopen stays present."""
-        existing = set(self.attendance_records.values_list("enrollment_id", flat=True))
-        roster = Enrollment.objects.filter(environment_id=self.environment_id, group_id=self.group_id, is_active=True)
-        AttendanceRecord.objects.bulk_create(
-            [
-                AttendanceRecord(environment_id=self.environment_id, session=self, enrollment=e)
-                for e in roster if e.id not in existing
-            ]
-        )
-
     def open(self):
         if self.status != self.Status.PLANNED:
             raise ValidationError("لا يمكن فتح الجلسة إلا وهي في حالة (مخطط لها).")
-        # Deferred import: avoids a circular import at module-load time
-        # (notifications.models imports SessionInstance for its FK).
-        from notifications.services import notify_session_event
-        from notifications.models import Notification
-
-        with transaction.atomic():
-            self.status = self.Status.OPEN
-            self.opened_at = timezone.now()
-            self.save(update_fields=["status", "opened_at"])
-            self._sync_roster()
-            notify_session_event(self, Notification.Type.SESSION_OPENED)
+        self.status = self.Status.OPEN
+        self.opened_at = timezone.now()
+        self.save(update_fields=["status", "opened_at"])
 
     def close(self):
         if self.status != self.Status.OPEN:
@@ -87,52 +84,68 @@ class SessionInstance(TenantOwnedModel):
         self.save(update_fields=["status", "closed_at"])
 
     def reopen(self):
-        """Reopens THIS SAME SessionInstance — never creates a new one."""
+        """Reopens THIS SAME SessionInstance — never creates a new one.
+        Notifications already fired are NOT retracted (docs: fired-and-forgotten)."""
         if self.status != self.Status.CLOSED:
             raise ValidationError("لا يمكن إعادة فتح إلا جلسة مغلقة.")
-        from notifications.services import notify_session_event
-        from notifications.models import Notification
-
-        with transaction.atomic():
-            self.status = self.Status.OPEN
-            self.opened_at = timezone.now()
-            self.reopened_count += 1
-            self.save(update_fields=["status", "opened_at", "reopened_count"])
-            self._sync_roster()
-            # A fresh, independent notification — never touches/retracts
-            # whatever notification the original open() created (spec:
-            # reopening does not retroactively retract an already-fired
-            # notification).
-            notify_session_event(self, Notification.Type.SESSION_REOPENED)
+        self.status = self.Status.OPEN
+        self.opened_at = timezone.now()
+        self.reopened_count += 1
+        self.save(update_fields=["status", "opened_at", "reopened_count"])
 
     def __str__(self):
         return f"{self.group} @ {self.scheduled_at:%Y-%m-%d %H:%M} ({self.status})"
 
 
-class AttendanceRecord(TenantOwnedModel):
+class _SessionRecord(TenantOwnedModel):
+    """Shared integrity rules for per-(session, enrollment) records (INV-8)."""
+
+    session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="+")
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="+")
+    marked_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        if self.session_id and self.session.environment_id != self.environment_id:
+            raise ValidationError("السجل يجب أن ينتمي لنفس بيئة الجلسة.")
+        if self.enrollment_id and self.enrollment.environment_id != self.environment_id:
+            raise ValidationError("السجل يجب أن ينتمي لنفس بيئة تسجيل الطالب.")
+        if self.session_id and self.enrollment_id and not self.enrollment.groups.filter(
+            pk=self.session.group_id
+        ).exists():
+            raise ValidationError("الطالب لا ينتمي لمجموعة هذه الجلسة.")
+
+
+class AttendanceRecord(_SessionRecord):
     class Status(models.TextChoices):
         PRESENT = "present", "حاضر"
         ABSENT = "absent", "غائب"
 
     session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="attendance_records")
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="attendance_records")
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ABSENT)
-    marked_at = models.DateTimeField(auto_now=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=Status.choices)
 
     class Meta:
-        ordering = ["enrollment__student__name"]
+        ordering = ["enrollment__student_name"]
         constraints = [
             models.UniqueConstraint(fields=["session", "enrollment"], name="unique_attendance_per_session_enrollment"),
         ]
 
-    def clean(self):
-        if self.session_id and self.session.environment_id != self.environment_id:
-            raise ValidationError("سجل الحضور يجب أن ينتمي لنفس بيئة الجلسة.")
-        if self.enrollment_id and self.enrollment.environment_id != self.environment_id:
-            raise ValidationError("سجل الحضور يجب أن ينتمي لنفس بيئة تسجيل الطالب.")
-        if self.session_id and self.enrollment_id and self.session.group_id != self.enrollment.group_id:
-            raise ValidationError("لا يمكن تسجيل حضور طالب لا ينتمي لمجموعة هذه الجلسة.")
 
-    def __str__(self):
-        return f"{self.enrollment} @ {self.session} = {self.status}"
+class RecitationRecord(_SessionRecord):
+    class Status(models.TextChoices):
+        STUDIED = "studied", "ذاكر"
+        NOT_STUDIED = "not_studied", "لم يذاكر"
+
+    session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="recitation_records")
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="recitation_records")
+    status = models.CharField(max_length=12, choices=Status.choices)
+
+    class Meta:
+        ordering = ["enrollment__student_name"]
+        constraints = [
+            models.UniqueConstraint(fields=["session", "enrollment"], name="unique_recitation_per_session_enrollment"),
+        ]

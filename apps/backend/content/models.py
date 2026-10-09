@@ -1,42 +1,188 @@
 """
-Phase 5 / Content.
-
-A ContentItem is a piece of educational material a teacher keeps in their
-environment, optionally tied to one Grade (or general, if `grade` is null).
-The optional video is stored as (provider, opaque ref) only — never a URL —
-and turned into an embeddable form solely by content/video.py, so no
-provider is ever referenced from domain code (spec: internal Video
-abstraction).
-
-No file/attachment upload is implemented: the spec's upload-security
-checklist applies "if the application accepts" uploads, and nothing in the
-Phase 5 requirements calls for accepting any — keeping it out keeps the
-attack surface (path traversal, malicious types, storage) at zero rather
-than half-built.
+Video & content (docs: upload -> target -> watch). A ContentItem keeps ONLY
+metadata + targeting + an external reference (provider + opaque id — never a
+URL, never a file: the video binary lives in external storage). Targets are
+any mix of whole GRADES, GROUPS and individual STUDENTS (enrollments); an item
+with no target is a private draft nobody can see. PUBLISHING is the explicit
+step that fires the "new video available" notification, once.
 """
 from django.core.exceptions import ValidationError
-from django.db import models
+import uuid
 
-from academics.models import Grade
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+
+from academics.models import Enrollment, Grade, Group
 from environments.tenancy import TenantOwnedModel
 
+from .uploads import storage_path
 from .video import PROVIDER_CHOICES
 
 
 class ContentItem(TenantOwnedModel):
-    grade = models.ForeignKey(Grade, on_delete=models.SET_NULL, null=True, blank=True, related_name="content_items")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    # EITHER an external reference (provider + opaque id) OR an uploaded file.
+    # `source` says which one is authoritative for playback.
     video_provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default="none")
     video_ref = models.CharField(max_length=255, blank=True)
+
+    class Source(models.TextChoices):
+        EXTERNAL = "external", "رابط خارجي"
+        UPLOAD = "upload", "ملف مرفوع"
+
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.EXTERNAL)
+
+    class Processing(models.TextChoices):
+        """Where a video is in the pipeline. A file is NOT playable the moment
+        the bytes land: validation (and, with a transcoding provider, encoding)
+        happen first, so the UI can show honest progress instead of a broken
+        player."""
+        NONE = "none", "لا يوجد"
+        UPLOADING = "uploading", "جارٍ الرفع"
+        PROCESSING = "processing", "جارٍ المعالجة"
+        READY = "ready", "جاهز"
+        FAILED = "failed", "فشل"
+
+    processing_status = models.CharField(max_length=12, choices=Processing.choices, default=Processing.NONE)
+    processing_error = models.TextField(blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Opaque handle at the streaming provider (Cloudflare Stream / Mux / ...).
+    # Empty while Madar serves the bytes itself.
+    playback_id = models.CharField(max_length=200, blank=True)
+    # One id that ties upload -> processing -> playback -> logs together, so a
+    # failure report can be traced end to end.
+    trace_id = models.CharField(max_length=32, blank=True, db_index=True)
+    # Stored under MEDIA_ROOT, which is NOT web-served: bytes only ever leave
+    # through content.streaming after an authorisation check.
+    video_file = models.FileField(upload_to=storage_path, blank=True, null=True, max_length=255)
+    original_filename = models.CharField(max_length=120, blank=True)
+    file_size = models.PositiveBigIntegerField(null=True, blank=True)
+    content_type = models.CharField(max_length=80, blank=True)
+    # Teacher-provided text the AI Quiz is generated from (summary / transcript
+    # of the lesson). The video itself is an external blob the quiz cannot read.
+    quiz_source = models.TextField(blank=True, max_length=4000)
+    target_grades = models.ManyToManyField(Grade, blank=True, related_name="content_items")
+    target_groups = models.ManyToManyField(Group, blank=True, related_name="content_items")
+    target_enrollments = models.ManyToManyField(Enrollment, blank=True, related_name="content_items")
+    published_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
 
     def clean(self):
-        if self.grade_id and self.environment_id and self.grade.environment_id != self.environment_id:
-            raise ValidationError("المحتوى يجب أن ينتمي لنفس بيئة الصف.")
+        pass
+
+    def audience(self):
+        """ACTIVE enrollments who may watch this item (grade OR group OR
+        individually targeted), de-duplicated."""
+        from django.db.models import Q
+
+        return (
+            Enrollment.objects.filter(environment_id=self.environment_id, is_active=True)
+            .filter(Q(grade__in=self.target_grades.all()) | Q(groups__in=self.target_groups.all()) | Q(pk__in=self.target_enrollments.all()))
+            .distinct()
+        )
+
+    def has_targets(self):
+        return self.target_grades.exists() or self.target_groups.exists() or self.target_enrollments.exists()
 
     def __str__(self):
         return self.title
+
+
+class VideoProgress(TenantOwnedModel):
+    """Per-student viewing activity for one item.
+
+    Feeds the teacher's view of engagement and is an input the monthly
+    evaluation can use. Written only by the owning student, for themselves.
+    """
+    item = models.ForeignKey(ContentItem, on_delete=models.CASCADE, related_name="progress")
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="video_progress")
+    position_seconds = models.PositiveIntegerField(default=0)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    percent = models.PositiveSmallIntegerField(default=0)
+    completed = models.BooleanField(default=False)
+    started_at = models.DateTimeField(auto_now_add=True)
+    last_watched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["item", "enrollment"], name="uniq_progress_per_item_enrollment"),
+        ]
+        ordering = ["-last_watched_at"]
+
+    def apply(self, position, duration):
+        """Progress only moves forward: a seek back to 0 must not erase that
+        the student already watched the lesson."""
+        position = max(0, int(position or 0))
+        duration = max(0, int(duration or 0))
+        if duration:
+            self.duration_seconds = duration
+            position = min(position, duration)
+        self.position_seconds = position
+        if self.duration_seconds:
+            pct = round(position * 100 / self.duration_seconds)
+            self.percent = max(self.percent, min(100, pct))
+            if self.percent >= 95:
+                self.completed = True
+        return self
+
+    def __str__(self):
+        return f"{self.enrollment} · {self.item} · {self.percent}%"
+
+
+class UploadSession(TenantOwnedModel):
+    """A resumable upload (TUS-style).
+
+    Large videos and flaky connections do not mix: without this, a 95%-complete
+    upload that drops has to start from zero. The session records how many
+    bytes have landed (`offset`), so the client asks "where was I?" (HEAD) and
+    continues from exactly there (PATCH).
+
+    The session is the authorisation too: it is created only after the server
+    has checked who the teacher is and what they may upload, and it carries the
+    declared size and type so limits are enforced before any byte is written —
+    not after a 10 GB file has already been accepted.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "جارٍ الرفع"
+        COMPLETED = "completed", "اكتمل"
+        ABORTED = "aborted", "أُلغي"
+        EXPIRED = "expired", "انتهت صلاحيته"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    item = models.ForeignKey(ContentItem, on_delete=models.CASCADE, related_name="upload_sessions")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    filename = models.CharField(max_length=120)
+    content_type = models.CharField(max_length=80, blank=True)
+    total_bytes = models.PositiveBigIntegerField()
+    offset = models.PositiveBigIntegerField(default=0)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
+    storage_path = models.CharField(max_length=255, blank=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_complete(self):
+        return self.offset >= self.total_bytes
+
+    @property
+    def remaining(self):
+        return max(0, self.total_bytes - self.offset)
+
+    def __str__(self):
+        return f"upload {self.id} ({self.offset}/{self.total_bytes})"
