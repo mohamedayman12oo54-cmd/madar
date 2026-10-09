@@ -3,10 +3,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db.models import F
 from django.utils import timezone
-from rest_framework import serializers
+from rest_framework import exceptions, serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import PendingAuth, normalize_phone
+from .models import PendingAuth, normalize_phone  # noqa: F401  (re-exported for tests)
+from .phones import PhoneError, canonical_phone, try_canonical_phone
 from .validators import password_meets_rules
 
 User = get_user_model()
@@ -37,6 +38,38 @@ def user_public(user):
 
 def looks_like_email(value: str) -> bool:
     return "@" in (value or "")
+
+
+def clean_phone(value: str) -> str:
+    """Strict, country-aware validation (accounts/phones.py): the API always
+    requires the country code. Returns the canonical digits-only number."""
+    try:
+        return canonical_phone(value)
+    except PhoneError as exc:
+        raise serializers.ValidationError(exc.message_ar)
+
+
+def student_can_access(user) -> bool:
+    """A student may use Madar only while at least one teacher keeps them
+    ACTIVE. Deactivated everywhere => cannot claim, log in, or use any token,
+    until a teacher (this one or another) activates them again."""
+    from academics.access import student_has_active_enrollment
+
+    return student_has_active_enrollment(user)
+
+
+class StudentInactive(exceptions.APIException):
+    """400 with a stable machine code. A dedicated exception (not a dict
+    ValidationError) because serializer-level dict errors get list-wrapped by
+    DRF, which would hand the frontend `code: ["student_inactive"]`."""
+
+    status_code = 400
+    default_code = "student_inactive"
+    default_detail = "تم إيقاف حسابك لدى معلّمك حاليًا. تواصل مع معلّمك لإعادة التفعيل."
+
+
+STUDENT_INACTIVE = "تم إيقاف حسابك لدى معلّمك حاليًا. تواصل مع معلّمك لإعادة التفعيل."
+CLAIM_NOT_FOUND = "لم نجد حسابًا مفعّلًا لطالب بهذا الرقم. تأكد من الرقم أو تواصل مع معلّمك."
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
@@ -83,10 +116,11 @@ class TeacherLoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         ident = attrs["identifier"].strip()
         qs = User.objects.filter(role=User.Role.TEACHER)
+        phone = None if looks_like_email(ident) else try_canonical_phone(ident, default_country="EG")
         user = (
             qs.filter(email__iexact=ident).first()
             if looks_like_email(ident)
-            else qs.filter(phone=normalize_phone(ident)).first()
+            else (qs.filter(phone=phone).first() if phone else None)
         )
         if not user or not user.check_password(attrs["password"]) or not user.is_active:
             raise serializers.ValidationError(GENERIC_LOGIN_ERROR)
@@ -114,9 +148,7 @@ class TeacherSignupStartSerializer(NewPasswordMixin, serializers.Serializer):
         return value
 
     def validate_phone(self, value):
-        digits = normalize_phone(value)
-        if len(digits) < 8:
-            raise serializers.ValidationError("أدخل رقم هاتف صحيح.")
+        digits = clean_phone(value)
         if User.objects.filter(phone=digits).exists():
             raise serializers.ValidationError("رقم الهاتف هذا مستخدم بالفعل.")
         return digits
@@ -164,10 +196,11 @@ class TeacherForgotRequestSerializer(serializers.Serializer):
     def create(self, validated):
         ident = validated["identifier"].strip()
         qs = User.objects.filter(role=User.Role.TEACHER, is_active=True)
+        phone = None if looks_like_email(ident) else try_canonical_phone(ident, default_country="EG")
         user = (
             qs.filter(email__iexact=ident).first()
             if looks_like_email(ident)
-            else qs.filter(phone=normalize_phone(ident)).first()
+            else (qs.filter(phone=phone).first() if phone else None)
         )
         # Always create a real, working OTP flow (even with no matching
         # user) so the response never reveals whether the identifier is
@@ -202,9 +235,14 @@ class StudentLoginSerializer(serializers.Serializer):
     password = serializers.CharField(trim_whitespace=False)
 
     def validate(self, attrs):
-        user = User.objects.filter(role=User.Role.STUDENT, phone=normalize_phone(attrs["phone"])).first()
+        phone = try_canonical_phone(attrs["phone"])
+        user = User.objects.filter(role=User.Role.STUDENT, phone=phone).first() if phone else None
         if not user or not user.is_active or not user.check_password(attrs["password"]):
             raise serializers.ValidationError(GENERIC_LOGIN_ERROR)
+        # Credentials are correct at this point, so telling the student WHY
+        # they are blocked leaks nothing to anyone else.
+        if not student_can_access(user):
+            raise StudentInactive()
         attrs["user"] = user
         return attrs
 
@@ -214,19 +252,16 @@ class StudentClaimRequestSerializer(serializers.Serializer):
     phone = serializers.CharField()
 
     def validate_phone(self, value):
-        digits = normalize_phone(value)
-        if len(digits) < 8:
-            raise serializers.ValidationError("أدخل رقم هاتف صحيح.")
-        return digits
+        return clean_phone(value)
 
     def create(self, validated):
         user = User.objects.filter(
             role=User.Role.STUDENT, phone=validated["phone"], is_active=False
         ).first()
-        if not user:
-            raise serializers.ValidationError(
-                {"detail": "لم نجد حساب طالب مرتبطًا بهذا الرقم.", "code": "not_found"}
-            )
+        # One message for "no such account", "already claimed" and "inactive
+        # with every teacher": the response must not reveal which it was.
+        if not user or not student_can_access(user):
+            raise serializers.ValidationError({"detail": CLAIM_NOT_FOUND, "code": "not_found"})
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.STUDENT_CLAIM,
             payload={"user_id": user.id},
@@ -256,13 +291,12 @@ class StudentForgotRequestSerializer(serializers.Serializer):
     phone = serializers.CharField()
 
     def validate_phone(self, value):
-        digits = normalize_phone(value)
-        if len(digits) < 8:
-            raise serializers.ValidationError("أدخل رقم هاتف صحيح.")
-        return digits
+        return clean_phone(value)
 
     def create(self, validated):
         user = User.objects.filter(role=User.Role.STUDENT, phone=validated["phone"], is_active=True).first()
+        if user and not student_can_access(user):
+            user = None  # deactivated everywhere: same silent outcome as "no such account"
         # Same anti-enumeration shape as the teacher flow: always return a
         # real, working OTP round-trip even when no matching active
         # student exists — the reset step is what actually gates access.
