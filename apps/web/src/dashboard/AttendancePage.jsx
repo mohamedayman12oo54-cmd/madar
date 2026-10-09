@@ -1,147 +1,161 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarClock, LockOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Btn, Banner } from "../auth/ui.jsx";
-import { sessionsApi, attendanceApi } from "../lib/schedulingApi.js";
+import { schedulingApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
-import { useGrades } from "./useGrades.js";
-import { useGroups } from "./useGroups.js";
-import ComingSoon from "./ComingSoon.jsx";
+import { Empty, PageHeader, fmtDateTime } from "./common.jsx";
 
-const STATUS_LABEL = { planned: "مخطط لها", open: "مفتوحة", closed: "مغلقة" };
+const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
+const LABEL = { present: "حاضر", absent: "غائب", studied: "ذاكر", not_studied: "لم يذاكر" };
+const TONE = { present: "good", studied: "good", absent: "bad", not_studied: "bad" };
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
-}
-
-function SessionPicker({ onPick }) {
-  const { grades } = useGrades();
-  const { groups, status, error } = useGroups();
-  const [groupId, setGroupId] = useState(null);
-  const [sessions, setSessions] = useState([]);
-
-  useEffect(() => { if (groups.length && groupId === null) setGroupId(groups[0].id); }, [groups, groupId]);
-  useEffect(() => {
-    if (!groupId) return;
-    sessionsApi.list({ group_id: groupId }).then((data) => setSessions((data.results || data).filter((s) => s.status !== "planned")));
-  }, [groupId]);
-
-  const gradeName = (id) => grades.find((g) => g.id === id)?.name || "";
-
-  if (status === "loading") return <p className="field-msg">جاري تحميل البيانات...</p>;
-  if (status === "error") return <Banner tone="err">{error}</Banner>;
-  if (groups.length === 0) return <ComingSoon title="لا توجد مجموعات بعد" text="أنشئ مجموعة وجلسة أولًا من صفحة «الجلسات»." />;
-
-  return (
-    <div className="dash-filters">
-      <select className="inp" value={groupId || ""} onChange={(e) => setGroupId(Number(e.target.value))}>
-        {groups.map((g) => <option key={g.id} value={g.id}>{gradeName(g.grade_id)} — {g.name}</option>)}
-      </select>
-      <select className="inp" onChange={(e) => e.target.value && onPick(Number(e.target.value))} defaultValue="">
-        <option value="" disabled>اختر جلسة…</option>
-        {sessions.map((s) => (
-          <option key={s.id} value={s.id}>{fmt(s.scheduled_at)} — {STATUS_LABEL[s.status]}</option>
-        ))}
-      </select>
-      {sessions.length === 0 && groupId && <p className="field-msg">لا توجد جلسات مفتوحة أو مغلقة لهذه المجموعة بعد.</p>}
-    </div>
-  );
-}
-
+/** Fast Session. Each tap is ONE small write sent immediately; the screen
+ *  advances without waiting for the server (so a slow network never stalls the
+ *  class) and any tap that failed stays visible, with a retry, until it saves. */
 export default function AttendancePage() {
   const [params, setParams] = useSearchParams();
-  const sessionId = params.get("session");
-
-  const [session, setSession] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [status, setStatus] = useState("idle");
+  const sessionId = params.get("session") ? Number(params.get("session")) : null;
+  const [sessions, setSessions] = useState([]);
+  const [roster, setRoster] = useState(null); // { session, students, counts }
+  const [mode, setMode] = useState("attendance"); // attendance | recitation
+  const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState({}); // `${kind}:${enrollmentId}` -> status that failed to save
   const [error, setError] = useState(null);
-  const [openingErr, setOpeningErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(0);
 
-  const load = () => {
-    if (!sessionId) return;
-    setStatus("loading");
-    Promise.all([sessionsApi.get(sessionId), attendanceApi.list({ session_id: sessionId })])
-      .then(([s, a]) => { setSession(s); setRecords(a.results || a); setStatus("ready"); })
-      .catch((e) => { setError(e instanceof ApiError ? e.message : "تعذّر تحميل بيانات الحضور."); setStatus("error"); });
-  };
+  useEffect(() => {
+    schedulingApi.sessions.list({ status: "open" }).then((d) => setSessions(listOf(d))).catch(() => {});
+  }, [roster?.session?.status]);
 
-  useEffect(load, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(async (id) => {
+    setError(null);
+    try { setRoster(await schedulingApi.sessions.roster(id)); setIndex(0); setFailed({}); }
+    catch (e) { setRoster(null); setError(e instanceof ApiError ? e.message : "تعذّر تحميل الجلسة."); }
+  }, []);
+  useEffect(() => { if (sessionId) load(sessionId); else setRoster(null); }, [sessionId, load]);
 
-  const openSession = async () => {
-    setOpeningErr(null);
+  const students = roster?.students || [];
+  const current = students[index];
+  const isOpen = roster?.session.status === "open";
+  const field = mode === "attendance" ? "attendance" : "recitation";
+
+  const counts = useMemo(() => {
+    const c = { present: 0, absent: 0, studied: 0, not_studied: 0 };
+    students.forEach((s) => { if (s.attendance) c[s.attendance] += 1; if (s.recitation) c[s.recitation] += 1; });
+    return c;
+  }, [students]);
+
+  const save = useCallback(async (enrollmentId, status, kind) => {
+    inFlight.current += 1;
+    const key = `${kind}:${enrollmentId}`;
     try {
-      const updated = await sessionsApi.open(sessionId);
-      setSession(updated);
-      load();
+      await (kind === "attendance" ? schedulingApi.markAttendance : schedulingApi.markRecitation)(sessionId, enrollmentId, status);
+      setFailed((f) => { const n = { ...f }; delete n[key]; return n; });
     } catch (e) {
-      setOpeningErr(e instanceof ApiError ? e.message : "تعذّر فتح الجلسة.");
-    }
-  };
+      setFailed((f) => ({ ...f, [key]: status }));
+      if (e instanceof ApiError && e.status === 400) setError(e.message);
+    } finally { inFlight.current -= 1; }
+  }, [sessionId]);
 
-  const toggle = async (record) => {
-    const next = record.status === "present" ? "absent" : "present";
-    const updated = await attendanceApi.setStatus(record.id, next).catch(() => null);
-    if (updated) setRecords((list) => list.map((r) => (r.id === updated.id ? updated : r)));
+  const mark = (status) => {
+    if (!current || !isOpen) return;
+    setRoster((r) => ({ ...r, students: r.students.map((s) => (s.enrollment_id === current.enrollment_id ? { ...s, [field]: status } : s)) }));
+    save(current.enrollment_id, status, field);
+    setIndex((i) => Math.min(i + 1, students.length)); // advance at once — never wait on the network
+  };
+  const skip = () => setIndex((i) => Math.min(i + 1, students.length)); // records nothing
+
+  const retry = (s, kind) => save(s.enrollment_id, failed[`${kind}:${s.enrollment_id}`], kind);
+
+  const sessionAction = async (fn) => {
+    setBusy(true); setError(null);
+    try { await fn(sessionId); await load(sessionId); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "تعذّر تنفيذ الإجراء."); }
+    finally { setBusy(false); }
   };
 
   if (!sessionId) {
     return (
       <>
-        <div className="dash-section-head"><h2>الحضور</h2></div>
-        <SessionPicker onPick={(id) => setParams({ session: String(id) })} />
+        <PageHeader infoKey="attendance" title="الحضور والتسميع" />
+        {sessions.length === 0
+          ? <Empty title="لا توجد جلسة مفتوحة" text="افتح جلسة من صفحة «الجلسات» أولًا ثم عد إلى هنا." />
+          : <>
+              <p className="field-msg">اختر الجلسة المفتوحة:</p>
+              <div className="list-rows">{sessions.map((s) => (
+                <button key={s.id} className="list-row dash-card-btn" onClick={() => setParams({ session: s.id })}>
+                  <strong>{s.group.name}</strong><span className="stat-sub">{fmtDateTime(s.scheduled_at)}</span>
+                </button>))}</div></>}
+        {error && <Banner tone="err">{error}</Banner>}
       </>
     );
   }
 
+  const done = index >= students.length && students.length > 0;
+  const failedKeys = Object.keys(failed);
+
   return (
     <>
-      <div className="dash-section-head"><h2>الحضور</h2></div>
+      <PageHeader infoKey="attendance" title={roster ? `${roster.session.group.name}` : "الحضور والتسميع"}>
+        <button className="mini-btn" onClick={() => setParams({})}>تغيير الجلسة</button>
+        {roster?.session.status === "planned" && <Btn loading={busy} onClick={() => sessionAction(schedulingApi.sessions.open)}>فتح الجلسة</Btn>}
+        {roster?.session.status === "open" && <Btn variant="ghost" loading={busy} onClick={() => sessionAction(schedulingApi.sessions.close)}>إغلاق الجلسة</Btn>}
+        {roster?.session.status === "closed" && <Btn variant="ghost" loading={busy} onClick={() => sessionAction(schedulingApi.sessions.reopen)}>إعادة فتح للتصحيح</Btn>}
+      </PageHeader>
+      {error && <Banner tone="err">{error}</Banner>}
+      {failedKeys.length > 0 && <Banner tone="err">تعذّر حفظ {failedKeys.length} تسجيل — تحقق من الاتصال ثم اضغط «إعادة المحاولة» بجانب الاسم أدناه.</Banner>}
+      {roster && !isOpen && <Banner tone="info">{roster.session.status === "planned" ? "الجلسة لم تُفتح بعد؛ افتحها لتبدأ التسجيل." : "الجلسة مغلقة. أعد فتحها إن أردت تصحيح تسجيل."}</Banner>}
 
-      {status === "loading" && <p className="field-msg">جاري تحميل البيانات...</p>}
-      {status === "error" && <Banner tone="err">{error}</Banner>}
-
-      {status === "ready" && session && (
+      {roster && (
         <>
-          <div className="dash-card" style={{ marginBottom: 18 }}>
-            <div className="k"><CalendarClock size={14} /> {fmt(session.scheduled_at)} — {session.group.name}</div>
-            <div className="v" style={{ fontSize: "1rem" }}>{STATUS_LABEL[session.status]}</div>
+          <div className="dash-filters">
+            <div className="seg" role="tablist">
+              <button className={mode === "attendance" ? "active" : ""} onClick={() => { setMode("attendance"); setIndex(0); }}>الحضور</button>
+              <button className={mode === "recitation" ? "active" : ""} onClick={() => { setMode("recitation"); setIndex(0); }}>التسميع</button>
+            </div>
+            <span className="chip-s good">حاضر {counts.present}</span><span className="chip-s bad">غائب {counts.absent}</span>
+            <span className="chip-s good">ذاكر {counts.studied}</span><span className="chip-s bad">لم يذاكر {counts.not_studied}</span>
           </div>
 
-          {session.status === "planned" && (
-            <>
-              {openingErr && <Banner tone="err">{openingErr}</Banner>}
-              <ComingSoon title="لم تُفتح هذه الجلسة بعد" text="افتح الجلسة أولًا لبدء تسجيل حضور الطلاب.">
-              </ComingSoon>
-              <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
-                <Btn onClick={openSession}><LockOpen size={16} /> فتح الجلسة</Btn>
-              </div>
-            </>
-          )}
-
-          {session.status !== "planned" && records.length === 0 && (
-            <ComingSoon title="لا يوجد طلاب في هذه المجموعة" text="أضف طلابًا إلى هذه المجموعة من صفحة «الطلاب» أولًا." />
-          )}
-
-          {session.status !== "planned" && records.length > 0 && (
-            <div className="dash-table-wrap">
-              <table className="dash-table">
-                <thead><tr><th>الطالب</th><th>الحالة</th></tr></thead>
-                <tbody>
-                  {records.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.student.name}</td>
-                      <td>
-                        <button className={"dash-pill" + (r.status === "present" ? " on" : "")} onClick={() => toggle(r)}>
-                          {r.status === "present" ? "حاضر" : "غائب"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {students.length === 0 ? <Empty title="لا يوجد طلاب نشطون في هذه المجموعة" text="أضف طلابًا لهذه المجموعة من صفحة «الطلاب»." /> : (
+            <div className="fs-card" aria-live="polite">
+              {done ? (<><div className="fs-name">انتهيت من كل الطلاب ✅</div><div className="fs-sub">يمكنك مراجعة القائمة أدناه وتصحيح أي تسجيل، ثم إغلاق الجلسة.</div></>) : (
+                <>
+                  <div className="fs-sub">الطالب {index + 1} من {students.length} — {mode === "attendance" ? "الحضور" : "التسميع"}</div>
+                  <div className="fs-name">{current.name}</div>
+                  <div className="fs-sub">{current[field] ? `مسجّل: ${LABEL[current[field]]}` : "لم يُسجَّل بعد"}</div>
+                  <div className="fs-actions">
+                    {mode === "attendance" ? (<>
+                      <button className="tap good" disabled={!isOpen} onClick={() => mark("present")}>حاضر</button>
+                      <button className="tap bad" disabled={!isOpen} onClick={() => mark("absent")}>غائب</button>
+                    </>) : (<>
+                      <button className="tap good" disabled={!isOpen} onClick={() => mark("studied")}>ذاكر</button>
+                      <button className="tap bad" disabled={!isOpen} onClick={() => mark("not_studied")}>لم يذاكر</button>
+                      <button className="tap skip" onClick={skip}>تخطي</button>
+                    </>)}
+                  </div>
+                  <div className="row-actions" style={{ justifyContent: "center", marginBlockStart: 16 }}>
+                    <button className="mini-btn" disabled={index === 0} onClick={() => setIndex((i) => i - 1)}><ChevronRight size={14} /> السابق</button>
+                    <button className="mini-btn" onClick={skip}>التالي <ChevronLeft size={14} /></button>
+                  </div>
+                </>)}
             </div>
           )}
+
+          <div className="dash-section-head"><h2>القائمة</h2></div>
+          <div className="list-rows">
+            {students.map((s, i) => (
+              <div key={s.enrollment_id} className="list-row">
+                <button className="dash-linkish" onClick={() => setIndex(i)}>{s.name}</button>
+                <div className="row-actions">
+                  {["attendance", "recitation"].map((kind) => s[kind] && <span key={kind} className={"chip-s " + TONE[s[kind]]}>{LABEL[s[kind]]}</span>)}
+                  {["attendance", "recitation"].map((kind) => failed[`${kind}:${s.enrollment_id}`] && (
+                    <button key={kind} className="mini-btn danger" onClick={() => retry(s, kind)}>لم يُحفظ — إعادة المحاولة</button>))}
+                </div>
+              </div>))}
+          </div>
         </>
       )}
     </>
