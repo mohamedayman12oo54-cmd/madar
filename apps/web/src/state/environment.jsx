@@ -14,7 +14,7 @@
 // `select()` below is only ever called with an id that just came back from
 // one of those authorized lists (or from the enter/ endpoints, which
 // validate ownership server-side) — never with a value the UI invented.
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { envApi } from "../auth/api.js";
 import { clearActiveEnvironmentId, getActiveEnvironmentId, setActiveEnvironmentId } from "../lib/api.js";
 import { useSession } from "./session.jsx";
@@ -25,8 +25,12 @@ export function EnvironmentProvider({ children }) {
   const { status: sessionStatus } = useSession();
   // status: "idle" | "checking" | "ready" | "none"
   const [state, setState] = useState({ status: "idle", environment: null });
+  // Bumped on every select/clear/revalidate so a slow, stale revalidation can
+  // never overwrite (or wipe) a selection the person made after it started.
+  const epoch = useRef(0);
 
   const revalidate = useCallback(async () => {
+    const mine = ++epoch.current;
     const id = getActiveEnvironmentId();
     if (!id) {
       setState({ status: "none", environment: null });
@@ -35,8 +39,10 @@ export function EnvironmentProvider({ children }) {
     setState((s) => ({ ...s, status: "checking" }));
     try {
       const data = await envApi.context(); // reads the id back out of storage itself
+      if (mine !== epoch.current) return;
       setState({ status: "ready", environment: data });
     } catch {
+      if (mine !== epoch.current) return;
       clearActiveEnvironmentId();
       setState({ status: "none", environment: null });
     }
@@ -54,11 +60,13 @@ export function EnvironmentProvider({ children }) {
   // `env` must come from an authorized source — see file header. `role`
   // defaults to "owner" since today only teachers reach the dashboard.
   const select = useCallback((env, role = "owner") => {
+    epoch.current++;
     setActiveEnvironmentId(env.id);
     setState({ status: "ready", environment: { id: env.id, name: env.name, initials: env.initials, role } });
   }, []);
 
   const clear = useCallback(() => {
+    epoch.current++;
     clearActiveEnvironmentId();
     setState({ status: "none", environment: null });
   }, []);
