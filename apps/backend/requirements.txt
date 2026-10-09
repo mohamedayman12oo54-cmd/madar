@@ -3,3 +3,7 @@ djangorestframework==3.17.2
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
 python-dotenv==1.2.2
+
+# PostgreSQL driver. Required when DB_ENGINE=django.db.backends.postgresql.
+# The binary wheel avoids needing libpq/build tools on the host.
+psycopg[binary]==3.3.6
