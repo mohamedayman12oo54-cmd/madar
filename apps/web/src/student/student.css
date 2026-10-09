@@ -1,0 +1,76 @@
+/* Student area — mobile-first. Reuses the dashboard design tokens/classes. */
+.stu{min-height:100vh;min-height:100dvh;background:var(--cream);display:flex;flex-direction:column;
+  /* Nothing may force the shell wider than the viewport (no zooming out). */
+  width:100%;max-width:100%;overflow-x:hidden}
+.stu *,.stu *::before,.stu *::after{min-width:0}
+/* Wide children (tables, pre, long records) scroll inside their own box
+   instead of widening the page. */
+.stu table,.stu pre{display:block;max-width:100%;overflow-x:auto}
+.stu img,.stu video{max-width:100%;height:auto}
+.stu-top{position:sticky;top:0;z-index:20;background:var(--panel);border-block-end:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px}
+.stu-top .brand{display:flex;align-items:center;gap:8px;min-width:0}
+.stu-top .brand img{height:30px}
+.stu-env{font-size:.82rem;color:var(--navy);display:flex;align-items:center;gap:8px;min-width:0}
+.stu-env .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+.stu-top-end{display:flex;align-items:center;gap:6px}
+.stu-icon-btn{position:relative;display:inline-grid;place-items:center;width:38px;height:38px;border-radius:12px;border:1px solid var(--line-2);background:var(--panel);color:var(--navy);cursor:pointer}
+.stu-icon-btn .dash-badge{position:absolute;top:-6px;inset-inline-start:-6px}
+.stu-body{flex:1;width:100%;max-width:880px;margin-inline:auto;padding:16px 14px 96px}
+.stu-tabs{position:fixed;inset-inline:0;bottom:0;z-index:30;background:var(--panel);border-block-start:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.stu-tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:12px;color:var(--soft);font-size:.72rem;text-decoration:none}
+.stu-tab.active{color:var(--navy);background:var(--fill);font-weight:700}
+.stu-tab span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:360px){
+  .stu-tab{font-size:.66rem;padding:6px 1px}
+  .stu-top{padding:10px 10px;gap:6px}
+  .stu-icon-btn{width:34px;height:34px}
+  .stu-env .name{max-width:24vw}
+}
+@media(min-width:900px){
+  /* Stays FIXED (never `static`): a static bar sits after <main> in the DOM,
+     so it scrolls out of view and only reappears at the bottom of the page.
+     Floating pill, always visible; only the content scrolls. */
+  .stu-tabs{
+    position:fixed;bottom:16px;inset-inline:0;
+    max-width:880px;margin-inline:auto;width:calc(100% - 28px);
+    border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 18px 40px -22px rgba(20,24,38,.55)
+  }
+  .stu-body{padding-bottom:116px}
+  .stu-env .name{max-width:260px}
+}
+.stu-hello{font-size:1.25rem;font-weight:700;color:var(--navy);margin-block-end:2px}
+.stu-sub{color:var(--soft);font-size:.88rem;margin-block-end:16px}
+.stu-q{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-block-end:14px}
+.stu-q h3{font-size:1rem;margin-block-end:10px;line-height:1.7}
+.stu-opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;margin-block-end:8px;cursor:pointer;font-size:.95rem}
+.stu-opt input{accent-color:var(--navy)}
+.stu-opt.right{border-color:#2e7d32;background:#e3f1e4}
+.stu-opt.wrong{border-color:#b3261e;background:#f7dedc}
+.stu-score{font-size:2rem;font-weight:800;color:var(--navy);text-align:center;margin-block:6px}
+.stu-unread{border-inline-start:4px solid var(--navy)}
+
+/* ---------- AI Study Assistant ----------
+   The sources block is real provenance: it lists the PUBLISHED Knowledge Base
+   documents the backend actually retrieved for that answer. */
+.ai-ask{margin-block-start:16px;gap:10px}
+.ai-ask-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ai-suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-block-start:14px}
+.ai-answer{margin-block-start:18px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:16px}
+.ai-answer-head{display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--navy);margin-block-end:8px}
+.ai-answer-body{white-space:pre-wrap;line-height:1.9;color:var(--navy)}
+.ai-spin{animation:ai-rot 1s linear infinite}
+@keyframes ai-rot{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ai-spin{animation:none}}
+
+.ai-sources{margin-block-start:14px;padding-block-start:12px;border-block-start:1px dashed var(--line-2)}
+.ai-sources-head{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;color:var(--soft);margin-block-end:8px}
+.ai-source-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.ai-source{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.84rem;color:var(--navy);
+  background:var(--fill);border-radius:10px;padding:7px 10px}
+.ai-source-title{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.ai-source-ver{color:var(--soft);font-size:.76rem}
+
+.ai-history-row{text-align:start;width:100%}
+.ai-history-main{min-width:0;display:grid;gap:2px}
+.ai-history-q{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
