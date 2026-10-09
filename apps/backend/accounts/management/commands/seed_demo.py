@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from academics.models import Enrollment, Grade, Group
 from accounts.models import User
 from environments.models import Environment, EnvironmentMembership
 
@@ -60,8 +61,27 @@ class Command(BaseCommand):
         unclaimed.save()
         EnvironmentMembership.objects.get_or_create(user=unclaimed, environment=env_a, defaults={"role": "student"})
 
+        inactive, _ = User.objects.update_or_create(
+            phone="201116665555",
+            defaults=dict(role=User.Role.STUDENT, name="طالب موقوف", is_active=False, is_verified=False),
+        )
+        inactive.set_unusable_password()
+        inactive.save()
+        EnvironmentMembership.objects.get_or_create(user=inactive, environment=env_a, defaults={"role": "student"})
+
+        # Students need an Enrollment to exist for a teacher; ACTIVE ones can
+        # claim/log in, the inactive one cannot (until some teacher activates it).
+        grade, _ = Grade.objects.get_or_create(environment=env_a, name="الصف الثالث الثانوي", defaults={"fee_amount": 300})
+        group, _ = Group.objects.get_or_create(environment=env_a, grade=grade, name="مجموعة السبت")
+        for user, active in ((claimed, True), (unclaimed, True), (inactive, False)):
+            enrollment, _ = Enrollment.objects.get_or_create(
+                environment=env_a, student=user, defaults={"grade": grade, "student_name": user.name, "is_active": active},
+            )
+            enrollment.groups.add(group)
+
         self.stdout.write(self.style.SUCCESS("Demo data ready. Password for every seeded account: " + DEMO_PASSWORD))
         self.stdout.write("  Team login:    identifier=team@madar")
         self.stdout.write("  Teacher login: identifier=ahmed@madar.test  (or phone 201001234567)")
         self.stdout.write("  Student login (already claimed): phone=201119998888")
         self.stdout.write("  Student claim (try /auth/student/claim): phone=201117776666")
+        self.stdout.write("  Student deactivated by the teacher (cannot claim/login): phone=201116665555")
