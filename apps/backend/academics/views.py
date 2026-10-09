@@ -1,9 +1,10 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import ProtectedError, Q
 from rest_framework import generics, serializers, status
 from rest_framework.response import Response
 
 from accounts.permissions import IsTeacher
+from accounts.phones import digits_only
 from accounts.throttles import StudentAddRateThrottle
 from environments.tenancy import IsEnvironmentMember, TenantScopedQuerySetMixin
 
@@ -89,21 +90,27 @@ class GroupDetailView(TenantScopedQuerySetMixin, generics.RetrieveUpdateDestroyA
             raise serializers.ValidationError({"name": "يوجد مجموعة بنفس الاسم في هذا الصف بالفعل."})
 
     def perform_destroy(self, instance):
-        if instance.enrollments.exists():
+        if instance.member_enrollments.exists():
             raise serializers.ValidationError("لا يمكن حذف مجموعة بها طلاب — انقلهم أولًا.")
-        instance.delete()
+        try:
+            instance.delete()
+        except ProtectedError:  # sessions reference the group (history is never silently erased)
+            raise serializers.ValidationError("لا يمكن حذف مجموعة لها جلسات مسجلة.")
 
 
 class EnrollmentListCreateView(TenantScopedQuerySetMixin, generics.ListAPIView):
-    """GET: the teacher's student roster for the active environment (this IS
-    the "Students" list the dashboard's Students section reads — a student's
-    presence in an environment is exactly their Enrollment into it).
+    """GET: the teacher's student roster for the active environment (a
+    student's presence in an environment is exactly their Enrollment into it).
     POST: enroll a student (existing or new) — see EnrollmentCreateSerializer."""
 
     permission_classes = IS_ENV_OWNER
     serializer_class = EnrollmentSerializer
-    queryset = Enrollment.objects.select_related("student", "grade", "group")
-    throttle_classes = [StudentAddRateThrottle]  # only meaningfully limits POST; harmless on GET
+    queryset = Enrollment.objects.select_related("student", "grade").prefetch_related("groups")
+
+    def get_throttles(self):
+        # Only creating students costs anything; reading the roster must never
+        # be locked out by the "add student" budget.
+        return [StudentAddRateThrottle()] if self.request.method == "POST" else []
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -111,12 +118,16 @@ class EnrollmentListCreateView(TenantScopedQuerySetMixin, generics.ListAPIView):
         if grade_id := params.get("grade_id"):
             qs = qs.filter(grade_id=grade_id)
         if group_id := params.get("group_id"):
-            qs = qs.filter(group_id=group_id)
+            qs = qs.filter(groups__id=group_id)
         if is_active := params.get("is_active"):
             qs = qs.filter(is_active=is_active.lower() in ("1", "true", "yes"))
         if search := params.get("search", "").strip():
-            qs = qs.filter(Q(student__name__icontains=search) | Q(student__phone__icontains=search))
-        return qs
+            cond = Q(student_name__icontains=search)
+            digits = digits_only(search).lstrip("0")
+            if digits:
+                cond |= Q(student__phone__contains=digits)
+            qs = qs.filter(cond)
+        return qs.distinct()
 
     def post(self, request, *args, **kwargs):
         ser = EnrollmentCreateSerializer(data=request.data, context={"request": request})
@@ -125,10 +136,11 @@ class EnrollmentListCreateView(TenantScopedQuerySetMixin, generics.ListAPIView):
         return Response(
             {
                 "enrollment_id": enrollment.id,
+                "created": created,
                 "name": ser.validated_data["name"],
                 "phone": ser.validated_data["phone"],
                 "grade_id": enrollment.grade_id,
-                "group_id": enrollment.group_id,
+                "group_ids": [g.id for g in ser.validated_data["groups"]] if created else [],
                 "academic_year": enrollment.academic_year,
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -140,14 +152,12 @@ class EnrollmentDetailView(TenantScopedQuerySetMixin, generics.RetrieveUpdateAPI
     drop — "removing" a student is `PATCH {"is_active": false}`."""
 
     permission_classes = IS_ENV_OWNER
-    queryset = Enrollment.objects.select_related("student", "grade", "group")
+    queryset = Enrollment.objects.select_related("student", "grade").prefetch_related("groups")
 
     def get_serializer_class(self):
         return EnrollmentUpdateSerializer if self.request.method in ("PUT", "PATCH") else EnrollmentSerializer
 
     def update(self, request, *args, **kwargs):
+        kwargs["partial"] = True  # PUT behaves like PATCH: every field is optional
         super().update(request, *args, **kwargs)
-        # Respond with the full read shape (including nested student/grade),
-        # not the bare {"group": ..., "is_active": ...} the write serializer
-        # would otherwise produce.
         return Response(EnrollmentSerializer(self.get_object()).data)
