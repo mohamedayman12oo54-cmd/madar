@@ -26,7 +26,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from ai.models import AIOperation
-from ai.providers import AIProviderError, get_provider
+from django.db import transaction
+
+from ai.providers import AIProviderError, get_provider, validate_questions
+from knowledge.retrieval import as_citations, as_context, select_sources
 
 
 def claim(op_id: int) -> bool:
@@ -75,12 +78,27 @@ class Command(BaseCommand):
                 continue  # another worker got it
             op = AIOperation.objects.get(pk=op_id)
             try:
-                result = get_provider().generate(op.prompt)
+                if op.kind == AIOperation.Kind.QUIZ_GENERATION:
+                    questions = validate_questions(get_provider().generate_quiz(op.evidence.get("title", ""), op.evidence.get("text", "")))
+                    result = "quiz-ready"
+                elif op.kind == AIOperation.Kind.STATE_RECOMMENDATION:
+                    op.suggested_state, result = get_provider().recommend_state(op.evidence)
+                else:
+                    # Study Assistant: ground the answer in the central curated
+                    # KB (docs: scope.md "Study Assistant <- central curated
+                    # Knowledge Base"). Only PUBLISHED documents are
+                    # authoritative, and the exact ones used are persisted so
+                    # the answer can show its sources.
+                    docs = select_sources(op.prompt)
+                    result = get_provider().generate(op.prompt, as_context(docs))
+                    op.sources = as_citations(docs)
             except Exception as exc:  # any provider failure -> explicit `failed`
                 message = str(exc) if isinstance(exc, AIProviderError) else "تعذّر إكمال الطلب."
                 op.status = AIOperation.Status.FAILED
                 op.error = message[:255]
                 op.result = ""
+                op.suggested_state = ""
+                op.sources = []
                 failed += 1
             else:
                 op.status = AIOperation.Status.COMPLETED
@@ -88,7 +106,18 @@ class Command(BaseCommand):
                 op.error = ""
                 completed += 1
             op.completed_at = timezone.now()
-            op.save(update_fields=["status", "result", "error", "completed_at"])
+            with transaction.atomic():
+                # The quiz is persisted in the SAME transaction that marks the
+                # operation completed: a crash can never leave "completed but
+                # no quiz", and a failed operation never leaves a partial quiz.
+                if op.status == AIOperation.Status.COMPLETED and op.kind == AIOperation.Kind.QUIZ_GENERATION:
+                    from studentarea.models import Quiz
+
+                    Quiz.objects.create(
+                        environment_id=op.environment_id, enrollment_id=op.enrollment_id, content_id=op.content_id,
+                        content_title=op.evidence.get("title", "")[:200], operation=op, questions=questions,
+                    )
+                op.save(update_fields=["status", "result", "error", "completed_at", "suggested_state", "sources"])
 
         self.stdout.write(self.style.SUCCESS(
             f"Processed {completed + failed} AI operation(s): {completed} completed, {failed} failed"
