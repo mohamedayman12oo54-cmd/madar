@@ -1,8 +1,9 @@
+import { phoneError } from "../../lib/phone.js";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PartyPopper } from "lucide-react";
 import {
-  AuthShell, AuthCard, Head, Field, TextInput, PasswordInput, Btn, Banner, Otp, Timer,
+  AuthShell, AuthCard, Head, Field, TextInput, PhoneInput, PasswordInput, Btn, Banner, Otp, Timer,
   Stepper, StateView, SuccessRing, EnvCard, PasswordChecklist, passwordValid,
 } from "../ui.jsx";
 import { authApi, envApi, fieldErrorsFrom } from "../api.js";
@@ -72,7 +73,7 @@ export function TeacherSignup() {
     const x = {};
     if (!f.name.trim()) x.name = "هذا الحقل مطلوب.";
     if (!emailOk(f.email)) x.email = "أدخل بريدًا إلكترونيًا صحيحًا.";
-    if (f.phone.replace(/\D/g, "").length < 8) x.phone = "أدخل رقم هاتف صحيح.";
+    { const pe = phoneError(f.phone); if (pe) x.phone = pe; }
     if (!passwordValid(f.pw)) x.pw = "كلمة المرور لا تحقق المتطلبات المطلوبة.";
     if (f.pw2 !== f.pw) x.pw2 = "كلمتا المرور غير متطابقتين.";
     setFe(x); return Object.keys(x).length === 0;
@@ -137,7 +138,7 @@ export function TeacherSignup() {
           <div className="auth-body">
             <Field label="الاسم الكامل" required error={fe.name}><TextInput value={f.name} onChange={on("name")} placeholder="أدخل اسمك الكامل" error={fe.name} /></Field>
             <Field label="البريد الإلكتروني" required error={fe.email}><TextInput ltr value={f.email} onChange={on("email")} placeholder="you@example.com" error={fe.email} /></Field>
-            <Field label="رقم الهاتف" required error={fe.phone}><TextInput ltr value={f.phone} onChange={on("phone")} placeholder="1XXXXXXXXX" error={fe.phone} /></Field>
+            <Field label="رقم الهاتف" required error={fe.phone}><PhoneInput value={f.phone} onChange={on("phone")} error={fe.phone} /></Field>
             <Field label="كلمة المرور" required error={fe.pw}>
               <PasswordInput value={f.pw} onChange={on("pw")} placeholder="أدخل كلمة المرور" error={fe.pw} />
               <PasswordChecklist value={f.pw} />
