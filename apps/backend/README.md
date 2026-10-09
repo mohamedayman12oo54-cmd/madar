@@ -91,7 +91,7 @@ the teacher one, and pointed the link at it.
 - **Passwords**: hashed with Django's default (PBKDF2); the password policy
   (`accounts/validators.py`) is kept in exact lockstep with the frontend's
   `PW_RULES` in `src/auth/ui.jsx` — if one changes, update the other.
-- **JWT** via `djangorestframework-simplejwt`: short-lived access tokens (30
+- **JWT** via `djangorestframework-simplest`: short-lived access tokens (30
   min), rotating refresh tokens with blacklisting (`/auth/logout/` actually
   revokes the refresh token, not just a client-side "forget the token").
 - **OTP**: 6 digits, 5-minute expiry, hashed at rest (never stored in

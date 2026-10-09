@@ -29,4 +29,10 @@ urlpatterns = [
     path("api/v1/scheduling/", include("scheduling.urls")),
     path("api/v1/financials/", include("financials.urls")),
     path("api/v1/evaluation/", include("evaluation.urls")),
+    path("api/v1/notifications/", include("notifications.urls")),
+    path("api/v1/content/", include("content.urls")),
+    path("api/v1/ai/", include("ai.urls")),
+    path("api/v1/knowledge/", include("knowledge.urls")),
+    path("api/v1/parent/", include("parents.urls")),
+    path("api/v1/student/", include("studentarea.urls")),
 ]

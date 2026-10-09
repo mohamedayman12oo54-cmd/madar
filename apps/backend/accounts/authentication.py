@@ -18,4 +18,12 @@ class MadarJWTAuthentication(JWTAuthentication):
         user = super().get_user(validated_token)
         if validated_token.get("sv", 0) != user.session_version:
             raise AuthenticationFailed("انتهت الجلسة، برجاء تسجيل الدخول مرة أخرى.", code="session_revoked")
+        if user.role == "student":
+            # Checked on EVERY request (not only at login) so a teacher
+            # deactivating a student takes effect immediately, even for a
+            # token the student already holds.
+            from academics.access import student_has_active_enrollment
+
+            if not student_has_active_enrollment(user):
+                raise AuthenticationFailed("حسابك غير مفعّل لدى أي معلّم حاليًا.", code="student_inactive")
         return user

@@ -306,3 +306,36 @@ h1,h2,h3,h4,p,a,label,li{overflow-wrap:break-word}
   html{scroll-behavior:auto}
   *{animation-duration:.001ms!important;animation-delay:0s!important;transition-duration:.001ms!important}
 }
+
+/* ---------- install (PWA) invitation ---------- */
+.install-card{
+  position:fixed;z-index:500;
+  inset-inline:14px;inset-block-end:calc(14px + env(safe-area-inset-bottom,0px));
+  margin-inline:auto;max-width:430px;
+  display:flex;align-items:center;gap:12px;
+  padding:13px 14px;border-radius:16px;
+  background:var(--panel,#fff);border:1px solid var(--line,#e6e2da);
+  box-shadow:0 20px 48px -22px rgba(20,24,38,.55);
+  animation:install-in .32s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes install-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.install-card{animation:none}}
+
+.install-icon{flex:0 0 auto;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+  background:var(--fill,#f3f0ea);color:var(--navy,#313851)}
+.install-main{flex:1 1 auto;min-width:0}
+.install-main strong{display:block;font-size:.92rem;color:var(--navy,#313851)}
+.install-main p{margin:3px 0 0;font-size:.79rem;line-height:1.6;color:var(--soft,#6b7186)}
+.inline-ico{vertical-align:-2px;margin-inline:2px}
+
+.install-actions{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.install-btn{border:0;border-radius:11px;padding:9px 15px;cursor:pointer;font:inherit;font-weight:700;
+  font-size:.84rem;background:var(--navy,#313851);color:#fff}
+.install-close{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;cursor:pointer;
+  border:1px solid var(--line-2,#ddd8ce);background:transparent;color:var(--soft,#6b7186)}
+.install-close:hover{background:var(--fill,#f3f0ea)}
+
+/* Desktop: a corner card rather than a full-width bar. */
+@media(min-width:720px){
+  .install-card{inset-inline:auto 20px;inset-block-end:20px;margin-inline:0;max-width:390px}
+}

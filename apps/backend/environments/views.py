@@ -10,6 +10,14 @@ from .serializers import StudentEnvironmentSerializer, TeacherEnvironmentSeriali
 from .tenancy import IsEnvironmentMember
 
 
+def _active_environment_ids(user):
+    """Environments where THIS student is currently ACTIVE (a teacher can
+    deactivate them; other teachers' environments are unaffected)."""
+    from academics.models import Enrollment
+
+    return Enrollment.objects.filter(student_id=user.id, is_active=True).values_list("environment_id", flat=True)
+
+
 class TeacherEnvironmentListView(APIView):
     permission_classes = [IsTeacher]
 
@@ -38,7 +46,8 @@ class StudentEnvironmentListView(APIView):
 
     def get(self, request):
         memberships = EnvironmentMembership.objects.filter(
-            user=request.user, role=EnvironmentMembership.Role.STUDENT
+            user=request.user, role=EnvironmentMembership.Role.STUDENT,
+            environment_id__in=_active_environment_ids(request.user),
         ).select_related("environment", "environment__owner")
         data = StudentEnvironmentSerializer(memberships, many=True).data
         return Response(data)
@@ -49,7 +58,8 @@ class StudentEnvironmentEnterView(APIView):
 
     def post(self, request, pk):
         membership = EnvironmentMembership.objects.filter(
-            environment_id=pk, user=request.user, role=EnvironmentMembership.Role.STUDENT
+            environment_id=pk, user=request.user, role=EnvironmentMembership.Role.STUDENT,
+            environment_id__in=_active_environment_ids(request.user),
         ).first()
         if not membership:
             return Response({"detail": "بيئة غير موجودة."}, status=status.HTTP_404_NOT_FOUND)
@@ -81,3 +91,98 @@ class EnvironmentContextView(APIView):
         else:
             data["initials"] = env.initials
         return Response(data)
+
+
+class EnvironmentSettingsView(APIView):
+    """The teacher's current environment (header-scoped): read + rename.
+    Owner-only. Environment cardinality / creation of extra environments is
+    deliberately NOT here: the docs leave it unresolved."""
+
+    permission_classes = [IsTeacher, IsEnvironmentMember.for_role("owner")]
+
+    def _data(self, env):
+        return {"id": env.id, "name": env.name, "subject_stage": env.subject_stage,
+                "academic_year": env.academic_year, "created_at": env.created_at}
+
+    def get(self, request):
+        return Response(self._data(request.environment))
+
+    def patch(self, request):
+        env = request.environment
+        allowed = {"name", "subject_stage"}
+        if not isinstance(request.data, dict) or set(request.data) - allowed:
+            return Response({"detail": "يمكن تعديل الاسم والمرحلة فقط.", "code": "validation_error"}, status=400)
+        fields = {}
+        if "name" in request.data:
+            name = str(request.data["name"]).strip()
+            if not (2 <= len(name) <= 150):
+                return Response({"detail": "تحقق من البيانات المدخلة.", "code": "validation_error",
+                                 "fields": {"name": "اسم البيئة بين حرفين و150 حرفًا."}}, status=400)
+            fields["name"] = name
+            fields["initials"] = name[:1]
+        if "subject_stage" in request.data:
+            stage = str(request.data["subject_stage"]).strip()
+            if len(stage) > 150:
+                return Response({"detail": "تحقق من البيانات المدخلة.", "code": "validation_error",
+                                 "fields": {"subject_stage": "النص طويل جدًا."}}, status=400)
+            fields["subject_stage"] = stage
+        for k, v in fields.items():
+            setattr(env, k, v)
+        env.save(update_fields=list(fields) or None)
+        return Response(self._data(env))
+
+
+class OverviewView(APIView):
+    """Real, server-computed dashboard numbers for the caller's own environment
+    (never client-supplied, never fabricated). All aggregates are filtered by
+    `request.environment`."""
+
+    permission_classes = [IsTeacher, IsEnvironmentMember.for_role("owner")]
+
+    def get(self, request):
+        from decimal import Decimal
+
+        from django.db.models import Count, Q
+
+        from academics.models import Enrollment, Grade, Group
+        from config.months import current_month
+        from financials.models import MonthlyPayment
+        from notifications.models import Notification
+        from scheduling.models import SessionInstance
+
+        env = request.environment
+        today = timezone.localdate()
+        month = current_month()
+        enrollments = Enrollment.objects.filter(environment=env)
+        active = enrollments.filter(is_active=True)
+        sessions = SessionInstance.objects.filter(environment=env)
+        todays = sessions.filter(scheduled_at__date=today).select_related("group").order_by("scheduled_at")
+        upcoming = sessions.filter(status="planned", scheduled_at__gte=timezone.now()).select_related("group").order_by("scheduled_at")[:5]
+
+        expected = sum((e.grade.fee_amount for e in active.select_related("grade")), Decimal("0"))
+        paid_rows = MonthlyPayment.objects.filter(environment=env, month=month, status="paid", enrollment__is_active=True)
+        collected = sum((p.amount for p in paid_rows), Decimal("0"))
+        notif = {r["delivery_status"]: r["n"] for r in Notification.objects.filter(environment=env).values("delivery_status").annotate(n=Count("id"))}
+
+        def money(value):
+            return str(Decimal(value).quantize(Decimal("0.01")))
+
+        def brief(s):
+            return {"id": s.id, "group": s.group.name, "scheduled_at": s.scheduled_at, "status": s.status}
+
+        return Response({
+            "environment": {"name": env.name, "academic_year": env.academic_year},
+            "students": {"active": active.count(), "inactive": enrollments.filter(is_active=False).count()},
+            "structure": {"grades": Grade.objects.filter(environment=env).count(), "groups": Group.objects.filter(environment=env).count()},
+            "sessions": {
+                "today": [brief(s) for s in todays],
+                "open": sessions.filter(status="open").count(),
+                "upcoming": [brief(s) for s in upcoming],
+            },
+            "payments": {
+                "month": month.strftime("%Y-%m"), "paid": paid_rows.count(), "students": active.count(),
+                "expected_total": money(expected), "collected_total": money(collected),
+                "outstanding_total": money(expected - collected),
+            },
+            "notifications": {"pending": notif.get("pending", 0), "failed": notif.get("failed", 0)},
+        })

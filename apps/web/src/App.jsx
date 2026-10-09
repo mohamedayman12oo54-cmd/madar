@@ -23,6 +23,7 @@ import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
 import { AuthGallery, AuthStateScreen, LogoutConfirm, LoadingDemo } from "./auth/screens/AuthStates.jsx";
 
 import AppRoutes from "./dashboard/AppRoutes.jsx";
+import StudentRoutes from "./student/StudentRoutes.jsx";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -73,6 +74,8 @@ export default function App() {
   const location = useLocation();
   const isAuth = location.pathname.startsWith("/auth");
   const isApp = location.pathname.startsWith("/app");
+  // NOT startsWith("/learn"): keep the match exact so no marketing path can collide with it.
+  const isLearn = location.pathname === "/learn" || location.pathname.startsWith("/learn/");
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -98,6 +101,14 @@ export default function App() {
     return (
       <MotionConfig reducedMotion="user">
         <AppRoutes />
+      </MotionConfig>
+    );
+  }
+
+  if (isLearn) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <StudentRoutes />
       </MotionConfig>
     );
   }

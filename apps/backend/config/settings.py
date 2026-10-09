@@ -5,16 +5,14 @@ Configuration is environment-driven (see .env.example) so the exact same
 codebase runs safely in development and production — only the .env file
 changes. Nothing sensitive is hard-coded here.
 """
-
 import os
 import sys
 from datetime import timedelta
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
-from dotenv import load_dotenv
 from corsheaders.defaults import default_headers
-
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -43,59 +41,34 @@ def env_int(name, default):
     val = os.environ.get(name)
     if val is None or not val.strip():
         return default
-
     try:
         return int(val)
     except ValueError:
-        raise ImproperlyConfigured(
-            f"{name} must be an integer, got {val!r}."
-        )
+        raise ImproperlyConfigured(f"{name} must be an integer, got {val!r}.")
 
 
 # ---------------------------------------------------------------- core ----
-
 # SECURITY WARNING: keep the secret key used in production secret, and set
 # it via the DJANGO_SECRET_KEY environment variable — never commit a real
 # one. The fallback only exists so `runserver` works in DEBUG without a .env.
-
 _DEV_SECRET_KEY = "insecure-dev-only-key-do-not-use-in-production"
+SECRET_KEY = env_str("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 
-SECRET_KEY = env_str(
-    "DJANGO_SECRET_KEY",
-    _DEV_SECRET_KEY,
-)
-
-DEBUG = env_bool(
-    "DJANGO_DEBUG",
-    default=False,
-)
+DEBUG = env_bool("DJANGO_DEBUG", default=False)
 
 
 # ------------------------------------------------- production guard rails --
-
 # With DEBUG off the app refuses to start on configuration that is unsafe by
 # construction, instead of booting and relying on someone reading a warning.
-
-_PLACEHOLDER_PREFIXES = (
-    "change-me",
-    "changeme",
-    "insecure",
-    "your-",
-    "secret",
-)
+_PLACEHOLDER_PREFIXES = ("change-me", "changeme", "insecure", "your-", "secret")
 
 
 def _https_only(name, values):
-    bad = [
-        v
-        for v in values
-        if v == "*" or not v.startswith("https://")
-    ]
-
+    bad = [v for v in values if v == "*" or not v.startswith("https://")]
     if bad:
         raise ImproperlyConfigured(
-            f"{name} must contain only https:// origins when "
-            f"DJANGO_DEBUG is off (offending: {bad})."
+            f"{name} must contain only https:// origins when DJANGO_DEBUG is off "
+            f"(offending: {bad})."
         )
 
 
@@ -107,25 +80,19 @@ if not DEBUG:
         or len(set(SECRET_KEY)) < 8
     ):
         raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY is missing, a placeholder, or too weak "
-            "(need >= 50 chars, not a 'change-me' style value). "
-            "Generate one with: "
-            'python -c "from django.core.management.utils import '
-            'get_random_secret_key as g; print(g())"'
+            "DJANGO_SECRET_KEY is missing, a placeholder, or too weak (need >= 50 chars, "
+            "not a 'change-me' style value). Generate one with: "
+            'python -c "from django.core.management.utils import get_random_secret_key as g; print(g())"'
         )
 
 
 # In production there is no localhost default: the host list must be explicit.
-
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "localhost,127.0.0.1" if DEBUG else "",
 )
 
-if not DEBUG and (
-    not ALLOWED_HOSTS
-    or "*" in ALLOWED_HOSTS
-):
+if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
     raise ImproperlyConfigured(
         "DJANGO_ALLOWED_HOSTS must list explicit hostnames "
         "(no '*', not empty) when DJANGO_DEBUG is off."
@@ -133,7 +100,6 @@ if not DEBUG and (
 
 
 # ------------------------------------------------------------ apps/mw -----
-
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -152,6 +118,12 @@ INSTALLED_APPS = [
     "scheduling",
     "financials",
     "evaluation",
+    "notifications",
+    "content",
+    "ai",
+    "knowledge",
+    "parents",
+    "studentarea",
 ]
 
 
@@ -190,11 +162,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 
 # --------------------------------------------------------------- data -----
-
 # SQLite by default (zero setup for dev/small deployments). Point
 # DATABASE_URL-style vars at Postgres in production if you like — kept
 # simple/explicit here rather than pulling in another dependency.
-
 DATABASES = {
     "default": {
         "ENGINE": env_str(
@@ -209,23 +179,27 @@ DATABASES = {
         "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", ""),
         "PORT": os.environ.get("DB_PORT", ""),
+        # Reusing connections matters on PostgreSQL (each new connection forks
+        # a backend process). 0 = close after every request, which is the safe
+        # default for SQLite/local dev. CONN_HEALTH_CHECKS stops a pooled
+        # connection that the server already dropped from surfacing as a
+        # request error.
+        "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 0),
+        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", default=False),
     }
 }
 
 
 # ------------------------------------------------------------- cache -------
-
 # Throttle counters (accounts/throttles.py) live in the cache, so the cache
 # must be SHARED by every web worker or each worker enforces its own limit
 # (and a restart wipes it). Django's built-in database cache satisfies that
 # with no new dependency: run `python manage.py createcachetable` once per
 # deployment. Local dev and the test suite use in-process memory.
-
 CACHE_BACKEND = env_str(
     "DJANGO_CACHE_BACKEND",
     "locmem" if DEBUG else "db",
 ).lower()
-
 
 if "test" in sys.argv or CACHE_BACKEND == "locmem":
     CACHES = {
@@ -249,30 +223,37 @@ else:
     )
 
 
+# Which ai/providers.py implementation the worker uses. Only "stub" exists —
+# no LLM credentials are configured anywhere in this project.
+AI_PROVIDER = env_str("AI_PROVIDER", "stub")
+
+
+# Test runs only: PBKDF2 is deliberately slow (that is its job in production);
+# a fast hasher keeps the suite quick without touching real password security.
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 AUTH_USER_MODEL = "accounts.User"
 
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "UserAttributeSimilarityValidator"
-        )
+        "NAME":
+            "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
     },
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "CommonPasswordValidator"
-        )
+        "NAME":
+            "django.contrib.auth.password_validation.CommonPasswordValidator"
     },
     {
-        "NAME": "accounts.validators.MadarPasswordValidator"
+        "NAME":
+            "accounts.validators.MadarPasswordValidator"
     },
 ]
 
 
 # ------------------------------------------------------------- i18n/tz ----
-
 LANGUAGE_CODE = "ar"
 
 TIME_ZONE = env_str(
@@ -285,7 +266,6 @@ USE_TZ = True
 
 
 # ------------------------------------------------------------- static -----
-
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
@@ -293,12 +273,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # --------------------------------------------------------- DRF / JWT ------
-
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         # SimpleJWT + session_version check (revoked sessions stop working
         # immediately) — see accounts/authentication.py.
         "accounts.authentication.MadarJWTAuthentication",
+        # Guardians have no User row; they present a signed, read-only
+        # session bound to one Enrollment (parents/auth.py).
+        "parents.auth.ParentSessionAuthentication",
     ),
 
     # Secure by default: every view requires auth unless it explicitly
@@ -323,7 +305,13 @@ REST_FRAMEWORK = {
         "otp-target": "5/hour",
 
         # --- per authenticated user ---
+        "scan": "240/min",
+        "video-upload": "20/hour",
         "student-add": "300/hour",
+        "ai-submit": "30/hour",
+        "broadcast": "20/hour",
+        "password-change": "10/hour",
+        "token-refresh": "300/hour",
     },
 
     # How many reverse proxies sit in front of Django and append to
@@ -348,13 +336,11 @@ REST_FRAMEWORK = {
     # pagination for free by using generics/viewsets. The current teacher/
     # student environment lists are plain APIViews and stay unpaginated on
     # purpose (see environments/tenancy.py:StandardPagination).
-    "DEFAULT_PAGINATION_CLASS": (
-        "environments.tenancy.StandardPagination"
-    ),
+    "DEFAULT_PAGINATION_CLASS":
+        "environments.tenancy.StandardPagination",
 
-    "EXCEPTION_HANDLER": (
-        "config.exceptions.api_exception_handler"
-    ),
+    "EXCEPTION_HANDLER":
+        "config.exceptions.api_exception_handler",
 
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
 }
@@ -373,7 +359,6 @@ SIMPLE_JWT = {
 
 
 # ------------------------------------------------------------- CORS -------
-
 # Explicit allow-list only — never a wildcard, since that would let any
 # website read API responses on a logged-in user's behalf if credentials
 # were ever involved. We use header-based JWT (no cookies), so credentials
@@ -381,25 +366,25 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
-    if DEBUG
-    else "",
+    "http://localhost:5173,http://127.0.0.1:5173" if DEBUG else "",
 )
 
 CORS_ALLOW_CREDENTIALS = False
 
-# The frontend sends this custom header to identify the active
-# Madar environment/tenant. It must be explicitly allowed during
-# the browser's CORS preflight request.
+
+# Custom header sent by the Madar frontend to identify
+# the active environment/tenant.
 CORS_ALLOW_HEADERS = [
     *default_headers,
     "x-madar-environment",
 ]
 
+
 CSRF_TRUSTED_ORIGINS = env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     "",
 )
+
 
 if not DEBUG:
     _https_only(
@@ -414,41 +399,58 @@ if not DEBUG:
 
 
 # --------------------------------------------------------- security -------
-
 SECURE_CONTENT_TYPE_NOSNIFF = True
-
 X_FRAME_OPTIONS = "DENY"
-
 SECURE_REFERRER_POLICY = "same-origin"
-
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 
 
 # Request bodies are small JSON documents (Phase 5 file handling will set its
 # own, separate limits). An explicit cap keeps oversized JSON from being
 # buffered in memory.
-
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1_000_000
+
+# --- Private media (uploaded videos) ----------------------------------------
+# NOT under STATIC_ROOT and never mapped to a public URL: every byte is served
+# by an authenticated, authorisation-checked view (content.streaming). Uploads
+# are large, so they stream to a temp file instead of being buffered in memory.
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT") or str(BASE_DIR / "private-media")
+MEDIA_URL = None  # deliberately unset: there is no public media URL
+
+VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 512 * 1024 * 1024)      # 512 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = env_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 2 * 1024 * 1024)
+# Uploaded files must never be executable, and the private dir must not be
+# world-readable.
+FILE_UPLOAD_PERMISSIONS = 0o640
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750
+
+# How long a signed playback URL stays valid. Short enough that a copied link
+# dies quickly; long enough to start a video on a slow connection.
+VIDEO_PLAYBACK_TTL_SECONDS = env_int("VIDEO_PLAYBACK_TTL_SECONDS", 300)
+# Which content/providers.py implementation serves video. "local" = Madar
+# stores and streams it itself (one rendition, no transcoding). A hosted
+# provider would be added there, not by changing the domain.
+VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
+# When behind nginx, set this to the internal location to hand streaming off
+# to the web server (X-Accel-Redirect) instead of piping bytes through Django.
+VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
 
 
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
-
 SECURE_SSL_REDIRECT = env_bool(
     "DJANGO_SECURE_SSL_REDIRECT",
     default=not DEBUG,
 )
 
 SESSION_COOKIE_SECURE = not DEBUG
-
 CSRF_COOKIE_SECURE = not DEBUG
 
 SESSION_COOKIE_HTTPONLY = True
 
-# Django admin only; the API uses Bearer tokens, not cookies
 CSRF_COOKIE_HTTPONLY = True
+# Django admin only; the API uses Bearer tokens, not cookies
 
 SESSION_COOKIE_SAMESITE = "Lax"
-
 CSRF_COOKIE_SAMESITE = "Lax"
 
 SECURE_HSTS_SECONDS = (
@@ -475,7 +477,6 @@ SECURE_HSTS_PRELOAD = env_bool(
 # SECURE_SSL_REDIRECT would redirect forever unless it can learn the original
 # scheme. Only enable this when the proxy OVERWRITES X-Forwarded-Proto (never
 # passes a client-supplied value through) — otherwise clients could forge it.
-
 if env_bool(
     "DJANGO_BEHIND_TLS_PROXY",
     default=False,
@@ -489,7 +490,6 @@ if env_bool(
 # Dev-only convenience: return the generated OTP code in API responses so
 # the whole flow is testable without a real SMS/email provider wired up.
 # Hard-gated on DEBUG, so it cannot be enabled in production by an env var.
-
 EXPOSE_OTP_IN_RESPONSE = (
     DEBUG
     and env_bool(
@@ -500,7 +500,6 @@ EXPOSE_OTP_IN_RESPONSE = (
 
 
 # ------------------------------------------------------------ logging -----
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

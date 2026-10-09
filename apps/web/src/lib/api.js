@@ -10,7 +10,13 @@
 //   screens can map { fields: { phone: "..." } } straight onto their
 //   existing per-field error state.
 
-const BASE_URL = import.meta.env?.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+export const BASE_URL = import.meta.env?.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+
+// A production build must talk to the API over HTTPS only: otherwise tokens and
+// passwords would cross the network in clear text. Fail loudly at startup.
+if (import.meta.env?.PROD && !/^https:\/\//i.test(BASE_URL)) {
+  throw new Error("VITE_API_URL must be an https:// URL in production builds.");
+}
 
 const TOKEN_KEY = "madar.tokens";
 
@@ -62,7 +68,10 @@ export function clearActiveEnvironmentId() {
 
 export class ApiError extends Error {
   constructor(status, data) {
-    super(data?.detail || "حدث خطأ غير متوقع.");
+    // A form-level failure (e.g. wrong login) arrives as fields.non_field_errors;
+    // show THAT sentence instead of the generic "check your input".
+    const formLevel = data?.fields?.non_field_errors;
+    super((Array.isArray(formLevel) && typeof formLevel[0] === "string" && formLevel[0]) || data?.detail || "حدث خطأ غير متوقع.");
     this.status = status;
     this.data = data || {};
     this.code = data?.code;
@@ -117,9 +126,11 @@ export function refreshAccessToken() {
  *   `tenant`: attach X-Madar-Environment (the currently active environment,
  *   if one is set) — for calls to tenant-scoped endpoints. Implies `auth`.
  */
-export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false } = {}) {
+export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false, raw = false } = {}) {
   const doFetch = async () => {
-    const headers = { "Content-Type": "application/json" };
+    // `raw` sends a FormData body (file upload): the browser must set its own
+    // multipart Content-Type WITH the boundary, so we must not set one.
+    const headers = raw ? {} : { "Content-Type": "application/json" };
     if (auth || tenant) {
       const tokens = getTokens();
       if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;
@@ -131,7 +142,7 @@ export async function apiFetch(path, { method = "GET", body, auth = false, tenan
     return fetch(`${BASE_URL}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)),
     });
   };
 
@@ -155,5 +166,6 @@ export const api = {
   get: (path, opts) => apiFetch(path, { ...opts, method: "GET" }),
   post: (path, body, opts) => apiFetch(path, { ...opts, method: "POST", body }),
   patch: (path, body, opts) => apiFetch(path, { ...opts, method: "PATCH", body }),
+  put: (path, body, opts) => apiFetch(path, { ...opts, method: "PUT", body }),
   delete: (path, opts) => apiFetch(path, { ...opts, method: "DELETE" }),
 };

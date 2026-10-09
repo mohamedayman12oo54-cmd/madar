@@ -17,7 +17,9 @@ def normalize_phone(raw: str) -> str:
     number can never be registered twice under different formatting,
     and it matches how the frontend sends the value (it strips
     everything but digits before hitting the API)."""
-    return re.sub(r"\D", "", raw or "")
+    from .phones import digits_only
+
+    return digits_only(raw)
 
 
 class User(AbstractUser):
@@ -115,6 +117,7 @@ class PendingAuth(models.Model):
         TEACHER_RESET = "teacher_reset", "Teacher password reset"
         STUDENT_CLAIM = "student_claim", "Student claim"
         STUDENT_RESET = "student_reset", "Student password reset"
+        PARENT_ACCESS = "parent_access", "Guardian read-only access"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     purpose = models.CharField(max_length=20, choices=Purpose.choices)

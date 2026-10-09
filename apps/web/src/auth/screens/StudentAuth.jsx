@@ -1,3 +1,4 @@
+import { phoneError } from "../../lib/phone.js";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SearchX } from "lucide-react";
@@ -5,24 +6,30 @@ import {
   AuthShell, AuthCard, Head, Field, PhoneInput, PasswordInput, Btn, Banner, Otp, Timer,
   StateView, SuccessRing, EnvCard, PasswordChecklist, passwordValid,
 } from "../ui.jsx";
-import { authApi, envApi, saveSession } from "../api.js";
+import { authApi, envApi } from "../api.js";
 import { ApiError } from "../../lib/api.js";
+import { useSession } from "../../state/session.jsx";
+import { useEnvironment } from "../../state/environment.jsx";
 
 /* ---------------- Student Login (returning: phone + password) ---------------- */
 export function StudentLogin() {
   const nav = useNavigate();
+  const session = useSession();
   const [phone, setPhone] = useState(""); const [pw, setPw] = useState("");
   const [fe, setFe] = useState({}); const [err, setErr] = useState(null); const [loading, setLoading] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     const f = {};
-    if (phone.replace(/\D/g, "").length < 8) f.phone = "أدخل رقم هاتف صحيح.";
+    { const pe = phoneError(phone); if (pe) f.phone = pe; }
     if (!pw) f.pw = "هذا الحقل مطلوب.";
     setFe(f); if (Object.keys(f).length) return;
     setErr(null); setLoading(true);
     try {
       const data = await authApi.studentLogin(phone, pw);
-      saveSession(data);
+      // session.login (not the bare token saver): it also updates the in-memory
+      // session, otherwise ProtectedRoute still sees "anonymous" and bounces
+      // the student straight back to this login page.
+      session.login(data);
       nav("/auth/student/environments");
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "تعذّر الاتصال بالخادم، حاول مرة أخرى.");
@@ -50,6 +57,7 @@ export function StudentLogin() {
 /* ---------------- Student Claim (activate teacher-created identity) ---------------- */
 export function StudentClaim() {
   const nav = useNavigate();
+  const session = useSession();
   const [phase, setPhase] = useState("entry"); // entry | otp | setpw | success | notfound
   const [phone, setPhone] = useState(""); const [otp, setOtp] = useState(""); const [otpErr, setOtpErr] = useState(null);
   const [pw, setPw] = useState(""); const [pw2, setPw2] = useState(""); const [pwErr, setPwErr] = useState(null);
@@ -57,7 +65,7 @@ export function StudentClaim() {
   const [pendingId, setPendingId] = useState(null);
 
   const send = async () => {
-    if (phone.replace(/\D/g, "").length < 8) { setFe({ phone: "أدخل رقم هاتف صحيح." }); return; }
+    { const pe = phoneError(phone); if (pe) { setFe({ phone: pe }); return; } }
     setFe({}); setLoading(true);
     try {
       const data = await authApi.studentClaimRequest(phone);
@@ -91,7 +99,7 @@ export function StudentClaim() {
     setPwErr(null); setLoading(true);
     try {
       const data = await authApi.studentClaimActivate({ pending_id: pendingId, password: pw, password2: pw2 });
-      saveSession(data);
+      session.login(data);
       setPhase("success");
     } catch (e) {
       setPwErr(e instanceof ApiError ? e.message : "تعذّر الاتصال بالخادم.");
@@ -155,7 +163,7 @@ export function StudentForgot() {
   const [pendingId, setPendingId] = useState(null);
 
   const step1 = async () => {
-    if (phone.replace(/\D/g, "").length < 8) { setErr("أدخل رقم هاتف صحيح."); return; }
+    { const pe = phoneError(phone); if (pe) { setErr(pe); return; } }
     setErr(null); setLoading(true);
     try {
       const data = await authApi.studentForgotRequest(phone);
@@ -238,6 +246,7 @@ export function StudentForgot() {
 
 export function StudentEnvSelect() {
   const nav = useNavigate();
+  const envStore = useEnvironment();
   const [envs, setEnvs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -247,7 +256,7 @@ export function StudentEnvSelect() {
     envApi.studentList()
       .then((data) => {
         if (!alive) return;
-        if (data.length === 1) { enter(data[0].id); return; }
+        if (data.length === 1) { enter(data[0]); return; }
         setEnvs(data);
       })
       .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : "تعذّر تحميل البيئات."); })
@@ -256,9 +265,20 @@ export function StudentEnvSelect() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const enter = async (id) => {
-    try { await envApi.studentEnter(id); } catch { /* proceed regardless */ }
-    nav("/");
+  const enter = async (env) => {
+    try {
+      await envApi.studentEnter(env.id); // server validates the student really belongs here
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        setErr("هذه البيئة لم تعد متاحة لحسابك. تواصل مع معلّمك.");
+        return;
+      }
+      // network hiccup: fall through — the route guard re-checks server-side
+    }
+    // Without this the environment store stays "none" and ProtectedRoute
+    // sends the student back here forever.
+    envStore.select(env, "student");
+    nav("/learn", { replace: true });
   };
 
   return (<AuthShell><AuthCard>
@@ -268,7 +288,7 @@ export function StudentEnvSelect() {
       {err && <Banner tone="err">{err}</Banner>}
       <div className="env-list">
         {envs.map((e) => (
-          <EnvCard key={e.id} initials={e.initials} name={e.name} meta={e.meta} last={e.last} onEnter={() => enter(e.id)} />
+          <EnvCard key={e.id} initials={e.initials} name={e.name} meta={e.meta} last={e.last} onEnter={() => enter(e)} />
         ))}
       </div>
       {!loading && !err && envs.length === 0 && (

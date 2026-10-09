@@ -1,3 +1,4 @@
+from accounts.testing import ensure_active_enrollment
 from accounts.testing import TestCase
 from rest_framework.test import APIClient
 
@@ -50,6 +51,7 @@ class TeacherEnvironmentTests(TestCase):
 
     def test_student_cannot_access_teacher_endpoint(self):
         student = User.objects.create_user(role=User.Role.STUDENT, phone="201099999999", password=VALID_PW, is_active=True)
+        ensure_active_enrollment(student)
         login = self.client.post("/api/v1/auth/student/login/", {"phone": "201099999999", "password": VALID_PW})
         c2 = APIClient()
         c2.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
@@ -69,6 +71,7 @@ class StudentEnvironmentTests(TestCase):
             role=User.Role.STUDENT, name="Student", phone="201091919191", password=VALID_PW, is_active=True,
         )
         EnvironmentMembership.objects.create(user=self.student, environment=self.env, role="student")
+        ensure_active_enrollment(self.student, env=self.env)
         login = self.client.post("/api/v1/auth/student/login/", {"phone": "201091919191", "password": VALID_PW})
         auth(self.client, login)
 

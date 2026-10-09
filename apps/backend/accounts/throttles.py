@@ -32,10 +32,15 @@ from .models import normalize_phone
 
 def normalize_target(raw: str) -> str:
     """Canonical form of a phone/email identifier, for throttle keys only."""
+    from .phones import try_canonical_phone
+
     value = (raw or "").strip()
     if "@" in value:
         return value.lower()
-    return normalize_phone(value) or value.lower()
+    # Canonical form first: "010 1234 5678", "+20 10 1234 5678" and
+    # "201012345678" must all share ONE bucket, or varying the format would
+    # mint a fresh throttle allowance per request.
+    return try_canonical_phone(value, default_country="EG") or normalize_phone(value) or value.lower()
 
 
 class IPRateThrottle(SimpleRateThrottle):
@@ -107,3 +112,33 @@ class OTPTargetRateThrottle(TargetRateThrottle):
 # ---- user-keyed ------------------------------------------------------------
 class StudentAddRateThrottle(UserRateThrottle):
     scope = "student-add"
+
+
+class AISubmitRateThrottle(UserRateThrottle):
+    """AI submissions cost real compute/money once a real provider is wired
+    in — cap them per teacher."""
+
+    scope = "ai-submit"
+
+
+class RefreshRateThrottle(IPRateThrottle):
+    """Token refresh is unauthenticated by nature; cap it per IP (generous,
+    because a whole classroom can share one NAT address)."""
+
+    scope = "token-refresh"
+
+
+class BroadcastRateThrottle(UserRateThrottle):
+    scope = "broadcast"
+
+
+class PasswordChangeRateThrottle(UserRateThrottle):
+    scope = "password-change"
+
+
+class ScanRateThrottle(UserRateThrottle):
+    """Badge scanning is a tight loop in a classroom (a whole group in a few
+    minutes), so the cap is generous — it exists to stop a scripted attacker
+    grinding tokens or replaying writes, not to slow a teacher down."""
+
+    scope = "scan"

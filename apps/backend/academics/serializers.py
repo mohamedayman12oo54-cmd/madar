@@ -1,7 +1,9 @@
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
-from accounts.models import User, normalize_phone
+from accounts.models import User
+from accounts.phones import digits_only
+from accounts.serializers import clean_phone
 from environments.models import EnvironmentMembership
 
 from .models import Enrollment, Grade, Group
@@ -28,14 +30,24 @@ class GradeSerializer(serializers.ModelSerializer):
 class GroupSerializer(serializers.ModelSerializer):
     grade_id = serializers.IntegerField(read_only=True)
     student_count = serializers.SerializerMethodField()
+    schedules = serializers.SerializerMethodField()
 
     class Meta:
         model = Group
-        fields = ["id", "name", "grade_id", "student_count", "created_at"]
+        fields = ["id", "name", "grade_id", "student_count", "schedules", "created_at"]
         read_only_fields = ["id", "created_at"]
 
     def get_student_count(self, obj):
-        return obj.enrollments.filter(is_active=True).count()
+        return obj.member_enrollments.filter(is_active=True).count()
+
+    def get_schedules(self, obj):
+        """The weekly slots this group meets on, so the UI can name the days
+        ("السبت، الثلاثاء") instead of showing a group with no timing."""
+        return [
+            {"id": s.id, "weekday": s.weekday, "weekday_label": s.get_weekday_display(),
+             "start_time": s.start_time}
+            for s in obj.schedules.all()
+        ]
 
 
 class GroupWriteSerializer(serializers.ModelSerializer):
@@ -92,68 +104,101 @@ class GroupRenameSerializer(serializers.ModelSerializer):
         return GroupSerializer(instance, context=self.context).data
 
 
+NOT_ADDABLE = "لا يمكن إضافة هذا الرقم كطالب."
+PHONE_IN_USE = "لا يمكن استخدام هذا الرقم."
+MAX_GROUPS_PER_STUDENT = 20
+
+
 class EnrollmentSerializer(serializers.ModelSerializer):
-    """Read shape for GET (list/retrieve). Student's name/phone here are the
-    GLOBAL identity fields (accounts.User) — safe to show because this is
-    always scoped to the caller's OWN environment (TenantScopedQuerySetMixin);
-    this is the "authorized enrollment relationship" the spec requires for a
-    teacher to see a student's identity at all."""
+    """Read shape for GET (list/retrieve). Names shown here are the TEACHER-
+    SCOPED `student_name` (never another teacher's wording of a shared global
+    account); the phone is the global login identity, shown only because this
+    is always scoped to the caller's OWN environment (TenantScopedQuerySetMixin)
+    — the "authorized enrollment relationship" the spec requires."""
 
     student = serializers.SerializerMethodField()
     grade = serializers.SerializerMethodField()
-    group = serializers.SerializerMethodField()
+    groups = serializers.SerializerMethodField()
+    can_edit_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Enrollment
-        fields = ["id", "student", "grade", "group", "academic_year", "is_active", "created_at"]
+        fields = [
+            "id", "student", "grade", "groups", "academic_year", "is_active",
+            "parent_name", "parent_phone", "can_edit_phone", "qr_token", "created_at",
+        ]
 
     def get_student(self, obj):
-        return {"id": obj.student_id, "name": obj.student.name, "phone": obj.student.phone}
+        return {"id": obj.student_id, "name": obj.display_name, "phone": obj.student.phone}
 
     def get_grade(self, obj):
         return {"id": obj.grade_id, "name": obj.grade.name, "fee_amount": str(obj.grade.fee_amount)}
 
-    def get_group(self, obj):
-        return {"id": obj.group_id, "name": obj.group.name} if obj.group_id else None
+    def get_groups(self, obj):
+        return [{"id": g.id, "name": g.name} for g in obj.groups.all()]
+
+    def get_can_edit_phone(self, obj):
+        # Only a typo-fix on an account nobody has claimed and no other
+        # teacher uses. A claimed or shared phone is a global identity.
+        return (not obj.student.is_active) and obj.student.enrollments.count() == 1
 
 
-class EnrollmentCreateSerializer(serializers.Serializer):
-    """Enroll a student (existing global account or a brand-new
-    pre-registered one) into the caller's OWN environment
-    (`self.context["request"].environment` — resolved server-side by
-    IsEnvironmentMember, never from this payload) under a given grade.
+def _resolve_groups(env, ids, grade):
+    """Validate group ids against the caller's environment and the enrollment's
+    GRADE (INV-4). Returns the Group rows."""
+    ids = list(dict.fromkeys(ids))  # de-duplicate, keep order
+    if len(ids) > MAX_GROUPS_PER_STUDENT:
+        raise serializers.ValidationError({"group_ids": "عدد المجموعات أكبر من المسموح."})
+    groups = list(Group.objects.filter(environment=env, id__in=ids))
+    if len(groups) != len(ids):
+        raise serializers.ValidationError({"group_ids": "مجموعة غير موجودة."})
+    if any(g.grade_id != grade.id for g in groups):
+        raise serializers.ValidationError({"group_ids": "المجموعة لا تنتمي لصف هذا الطالب."})
+    return groups
 
-    Supersedes the old `POST /environments/students/` (Phase 0/S5) — same
-    privacy contract, carried forward and strengthened: nothing about an
-    EXISTING global account (its real name, whether it's claimed, its id) is
-    ever read back into the response; the response only ever echoes what
-    THIS caller submitted, plus their own new Enrollment id. The one
-    remaining phone-shaped failure ("this number belongs to a non-student
-    account") keeps its single generic message. The improvement over Phase 0:
-    there is no `environment_id` field here at all — the tenant comes only
-    from the header (environments/tenancy.py), so the exact bug class Phase 1
-    was built to close (any environment_id a client could type into a body)
-    is now structurally impossible, not just validated away.
+
+class _ParentFieldsMixin:
+    def validate_parent_name(self, value):
+        return value.strip()
+
+    def validate_parent_phone(self, value):
+        """Normalises to the canonical form. `clean_phone` raises on anything
+        that is not a real number, so a typo cannot be stored."""
+        value = (value or "").strip()
+        return clean_phone(value) if value else ""
+
+
+class EnrollmentCreateSerializer(_ParentFieldsMixin, serializers.Serializer):
+    """Enroll a student (existing global account or a brand-new pre-registered
+    one) into the caller's OWN environment (`request.environment`, resolved
+    server-side by IsEnvironmentMember — never from this payload).
+
+    Privacy contract (kept from Phase 0): nothing about an EXISTING global
+    account (its real name, whether it is claimed, its id) is ever read back;
+    the response only echoes what THIS caller submitted plus their own
+    Enrollment id. A phone that belongs to a non-student account gets one
+    generic message. The global account's name is NEVER overwritten by a
+    second teacher.
     """
 
     name = serializers.CharField(max_length=150)
-    phone = serializers.CharField()
+    phone = serializers.CharField(max_length=32)
     grade_id = serializers.IntegerField()
-    group_id = serializers.IntegerField(required=False, allow_null=True)
-
-    NOT_ADDABLE = "لا يمكن إضافة هذا الرقم كطالب."
+    group_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    is_active = serializers.BooleanField(required=False, default=True)
+    parent_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    # Mandatory at enrolment: the guardian number is the only contact Madar
+    # has for a student who has not claimed their account yet.
+    parent_phone = serializers.CharField(max_length=32, required=True, allow_blank=False)
 
     def validate_name(self, value):
         value = value.strip()
-        if not value:
-            raise serializers.ValidationError("هذا الحقل مطلوب.")
+        if len(value) < 2:
+            raise serializers.ValidationError("أدخل اسم الطالب (حرفان على الأقل).")
         return value
 
     def validate_phone(self, value):
-        digits = normalize_phone(value)
-        if len(digits) < 8:
-            raise serializers.ValidationError("أدخل رقم هاتف صحيح.")
-        return digits
+        return clean_phone(value)
 
     def validate_grade_id(self, value):
         env = self.context["request"].environment
@@ -162,67 +207,113 @@ class EnrollmentCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("صف غير موجود.")
         return grade
 
-    def validate_group_id(self, value):
-        if value is None:
-            return None
-        env = self.context["request"].environment
-        group = Group.objects.filter(id=value, environment=env).first()
-        if not group:
-            raise serializers.ValidationError("مجموعة غير موجودة.")
-        return group
-
     def validate(self, attrs):
         if User.objects.filter(phone=attrs["phone"]).exclude(role=User.Role.STUDENT).exists():
-            raise serializers.ValidationError({"phone": self.NOT_ADDABLE})
-        group = attrs.get("group_id")
-        if group is not None and group.grade_id != attrs["grade_id"].id:
-            raise serializers.ValidationError({"group_id": "المجموعة لا تنتمي لهذا الصف."})
+            raise serializers.ValidationError({"phone": NOT_ADDABLE})
+        env = self.context["request"].environment
+        attrs["groups"] = _resolve_groups(env, attrs.get("group_ids", []), attrs["grade_id"])
         return attrs
 
     def save(self):
         env = self.context["request"].environment
-        grade = self.validated_data["grade_id"]
-        group = self.validated_data.get("group_id")
-        phone = self.validated_data["phone"]
+        v = self.validated_data
+        phone = v["phone"]
         with transaction.atomic():
             user = User.objects.filter(phone=phone).first()
             if not user:
                 try:
                     with transaction.atomic():
                         user = User.objects.create_user(
-                            phone=phone, role=User.Role.STUDENT, name=self.validated_data["name"],
+                            phone=phone, role=User.Role.STUDENT, name=v["name"],
                             is_active=False, is_verified=False, password=None,
                         )
                 except IntegrityError:
                     # Lost a race with another teacher adding the same phone.
                     user = User.objects.filter(phone=phone, role=User.Role.STUDENT).first()
                     if user is None:
-                        raise serializers.ValidationError({"phone": self.NOT_ADDABLE})
+                        raise serializers.ValidationError({"phone": NOT_ADDABLE})
             enrollment, created = Enrollment.objects.get_or_create(
-                environment=env, student=user, defaults={"grade": grade, "group": group},
+                environment=env, student=user,
+                defaults={
+                    "grade": v["grade_id"], "student_name": v["name"], "is_active": v["is_active"],
+                    "parent_name": v["parent_name"], "parent_phone": v["parent_phone"],
+                },
             )
+            if created:
+                enrollment.groups.set(v["groups"])
             EnvironmentMembership.objects.get_or_create(
                 user=user, environment=env, defaults={"role": EnvironmentMembership.Role.STUDENT},
             )
         return enrollment, created
 
 
-class EnrollmentUpdateSerializer(serializers.ModelSerializer):
-    """PATCH only — deliberately excludes `grade` and `academic_year`
-    (immutable once set; see academics/models.py) and `student`/`environment`
-    (never re-parentable via the API). Only `group` and `is_active` may move."""
+class EnrollmentUpdateSerializer(_ParentFieldsMixin, serializers.Serializer):
+    """PATCH only. Deliberately excludes `grade`/`academic_year` (immutable —
+    INV-3) and `student`/`environment` (never re-parentable).
 
-    class Meta:
-        model = Enrollment
-        fields = ["group", "is_active"]
-        extra_kwargs = {"group": {"required": False, "allow_null": True}}
+    Editable by the teacher, all TEACHER-SCOPED except `phone`:
+      student_name, parent_name, parent_phone, group_ids, is_active
+    `phone` is the student's GLOBAL login identity, so it is only correctable
+    while the account is unclaimed AND this is the student's only enrollment
+    (a typo fix) — otherwise one teacher could hijack or lock out an account
+    other teachers or the student rely on."""
 
-    def validate_group(self, value):
-        if value is None:
-            return None
-        env = self.context["request"].environment
-        if value.environment_id != env.id:
-            raise serializers.ValidationError("مجموعة غير موجودة.")
-        if value.grade_id != self.instance.grade_id:
-            raise serializers.ValidationError("المجموعة لا تنتمي لصف هذا الطالب.")
+    student_name = serializers.CharField(max_length=150, required=False)
+    parent_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    parent_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False)
+    group_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    is_active = serializers.BooleanField(required=False)
+
+    def validate_student_name(self, value):
+        value = value.strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("أدخل اسم الطالب (حرفان على الأقل).")
         return value
+
+    def validate_phone(self, value):
+        return clean_phone(value)
+
+    def validate(self, attrs):
+        if "group_ids" in attrs:
+            env = self.context["request"].environment
+            attrs["groups"] = _resolve_groups(env, attrs["group_ids"], self.instance.grade)
+        return attrs
+
+    def update(self, instance, validated):
+        user = instance.student
+        with transaction.atomic():
+            new_phone = validated.get("phone")
+            if new_phone and new_phone != user.phone:
+                if user.is_active or user.enrollments.count() != 1:
+                    raise serializers.ValidationError(
+                        {"phone": "لا يمكن تعديل الرقم بعد تفعيل الطالب لحسابه أو ارتباطه بمعلّم آخر."}
+                    )
+                if User.objects.filter(phone=new_phone).exclude(pk=user.pk).exists():
+                    raise serializers.ValidationError({"phone": PHONE_IN_USE})
+                user.phone = new_phone
+                try:
+                    with transaction.atomic():
+                        user.save(update_fields=["phone"])
+                except IntegrityError:
+                    raise serializers.ValidationError({"phone": PHONE_IN_USE})
+
+            for field in ("student_name", "parent_name", "parent_phone"):
+                if field in validated:
+                    setattr(instance, field, validated[field])
+            was_active = instance.is_active
+            if "is_active" in validated:
+                instance.is_active = validated["is_active"]
+            instance.save()
+            if "groups" in validated:
+                instance.groups.set(validated["groups"])
+
+            if was_active and not instance.is_active and user.is_active:
+                # Deactivated by this teacher. If no other teacher keeps the
+                # student active, cut off every session they hold right now.
+                from academics.access import student_has_active_enrollment
+                from accounts.session_revocation import revoke_all_sessions
+
+                if not student_has_active_enrollment(user):
+                    revoke_all_sessions(user)
+        return instance

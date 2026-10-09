@@ -1,3 +1,4 @@
+from accounts.testing import ensure_active_enrollment, make_enrollment
 """Phase 2 — Grade and Group: CRUD, ownership rules, cross-tenant isolation."""
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -95,6 +96,7 @@ class GradeTests(TenantTestCase):
         student.set_password("Str0ng!Pass")
         student.is_active = True
         student.save()
+        ensure_active_enrollment(student, env=self.env_a)
         from rest_framework.test import APIClient
         c = APIClient()
         tok = c.post("/api/v1/auth/student/login/", {"phone": student.phone, "password": "Str0ng!Pass"}).data["access"]
@@ -173,7 +175,7 @@ class GroupTests(TenantTestCase):
         from academics.models import Enrollment
         group = Group.objects.create(environment=self.env_a, grade=self.grade_a, name="G")
         student = self.make_student_in(self.env_a, "201050000002")
-        Enrollment.objects.create(environment=self.env_a, student=student, grade=self.grade_a, group=group)
+        make_enrollment(self.env_a, student, self.grade_a, group)
         r = self.client_a.delete(group_url(group.id), **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 400)
         self.assertTrue(Group.objects.filter(pk=group.id).exists())

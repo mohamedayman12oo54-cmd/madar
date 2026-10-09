@@ -1,6 +1,4 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-
 from . import views
 
 urlpatterns = [
@@ -30,7 +28,9 @@ urlpatterns = [
     path("otp/<str:flow>/resend/", views.OTPResendView.as_view()),
 
     # session
-    path("token/refresh/", TokenRefreshView.as_view()),
+    path("token/refresh/", views.ThrottledTokenRefreshView.as_view()),
     path("logout/", views.LogoutView.as_view()),
     path("me/", views.MeView.as_view()),
+    path("change-password/", views.ChangePasswordView.as_view()),
+    path("sign-out-everywhere/", views.SignOutEverywhereView.as_view()),
 ]

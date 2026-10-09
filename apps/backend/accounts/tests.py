@@ -1,4 +1,4 @@
-from accounts.testing import TestCase
+from accounts.testing import TestCase, ensure_active_enrollment
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -192,6 +192,7 @@ class StudentClaimFlowTests(TestCase):
             is_active=False, password=None,
         )
         EnvironmentMembership.objects.create(user=self.pre_reg, environment=self.env, role="student")
+        ensure_active_enrollment(self.pre_reg, env=self.env)
 
     def test_claim_unknown_phone_returns_not_found(self):
         r = self.client.post("/api/v1/auth/student/claim/", {"phone": "201230009999"})
@@ -233,6 +234,7 @@ class StudentForgotPasswordTests(TestCase):
             role=User.Role.STUDENT, name="Student", phone="201230005555",
             password=VALID_PW, is_active=True,
         )
+        ensure_active_enrollment(self.student)
 
     def test_full_reset_flow(self):
         r = self.client.post("/api/v1/auth/student/forgot/", {"phone": "201230005555"})

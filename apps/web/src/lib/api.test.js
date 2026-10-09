@@ -138,3 +138,11 @@ test("getActiveEnvironmentId / setActiveEnvironmentId / clearActiveEnvironmentId
   clearActiveEnvironmentId();
   assert.equal(getActiveEnvironmentId(), null);
 });
+
+test("a form-level error shows its own message instead of the generic one", async () => {
+  const { ApiError } = await import("./api.js");
+  const e = new ApiError(400, { detail: "تحقق من البيانات المدخلة.", code: "validation_error", fields: { non_field_errors: ["بيانات الدخول غير صحيحة، حاول مرة أخرى."] } });
+  assert.equal(e.message, "بيانات الدخول غير صحيحة، حاول مرة أخرى.");
+  const plain = new ApiError(400, { detail: "تحقق من البيانات المدخلة.", fields: { phone: ["x"] } });
+  assert.equal(plain.message, "تحقق من البيانات المدخلة.");
+});

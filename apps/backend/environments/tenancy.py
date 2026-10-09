@@ -85,6 +85,15 @@ def resolve_environment(request):
     )
     if membership is None:
         raise EnvironmentForbidden()
+    if membership.role == EnvironmentMembership.Role.STUDENT:
+        # A student whose teacher deactivated them can no longer act inside
+        # that environment, even though the membership row still exists.
+        from academics.models import Enrollment
+
+        if not Enrollment.objects.filter(
+            environment_id=environment_id, student_id=request.user.id, is_active=True
+        ).exists():
+            raise EnvironmentForbidden()
     return membership
 
 
