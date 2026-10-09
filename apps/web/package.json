@@ -8,17 +8,19 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/api.test.js src/lib/poll.test.js src/dashboard/nav.test.js"
+    "test": "node --test src/lib/api.test.js src/lib/poll.test.js src/lib/phone.test.js src/lib/dates.test.js src/lib/video.test.js src/dashboard/nav.test.js src/lib/pwa.test.mjs src/components/install.test.mjs src/lib/routes.conformance.test.mjs src/auth/modal.test.mjs src/dashboard/render.smoke.test.mjs"
   },
   "dependencies": {
     "framer-motion": "^11.3.19",
     "lucide-react": "^0.427.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^30.1.2",
     "vite": "^5.4.2"
   }
 }
