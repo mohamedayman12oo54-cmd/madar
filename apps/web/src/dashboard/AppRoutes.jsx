@@ -7,15 +7,11 @@ import GroupsPage from "./GroupsPage.jsx";
 import SessionsPage from "./SessionsPage.jsx";
 import AttendancePage from "./AttendancePage.jsx";
 import EvaluationPage from "./EvaluationPage.jsx";
+import ScannerPage from "./ScannerPage.jsx";
 import FinancialsPage from "./FinancialsPage.jsx";
 import ContentPage from "./ContentPage.jsx";
-import AiPage from "./AiPage.jsx";
 import NotificationsPage from "./NotificationsPage.jsx";
-import ComingSoon from "./ComingSoon.jsx";
-
-const SECTIONS = [
-  ["settings", "الإعدادات"],
-];
+import SettingsPage from "./SettingsPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -27,14 +23,12 @@ export default function AppRoutes() {
           <Route path="groups" element={<GroupsPage />} />
           <Route path="sessions" element={<SessionsPage />} />
           <Route path="attendance" element={<AttendancePage />} />
+          <Route path="scan" element={<ScannerPage />} />
           <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="financials" element={<FinancialsPage />} />
           <Route path="content" element={<ContentPage />} />
-          <Route path="ai" element={<AiPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
-          {SECTIONS.map(([path, label]) => (
-            <Route key={path} path={path} element={<ComingSoon title={label} />} />
-          ))}
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
     </Routes>
