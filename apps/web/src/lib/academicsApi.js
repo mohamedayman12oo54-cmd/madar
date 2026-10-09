@@ -25,6 +25,7 @@ export const groupsApi = {
 };
 
 export const enrollmentsApi = {
+  get: (id) => api.get(`/academics/enrollments/${id}/`, { tenant: true }),
   list: (params) => api.get(`/academics/enrollments/${qs(params)}`, { tenant: true }),
   create: (payload) => api.post("/academics/enrollments/", payload, { tenant: true }),
   update: (id, payload) => api.patch(`/academics/enrollments/${id}/`, payload, { tenant: true }),
