@@ -121,6 +121,9 @@ INSTALLED_APPS = [
     "notifications",
     "content",
     "ai",
+    "knowledge",
+    "parents",
+    "studentarea",
 ]
 
 
@@ -176,6 +179,13 @@ DATABASES = {
         "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", ""),
         "PORT": os.environ.get("DB_PORT", ""),
+        # Reusing connections matters on PostgreSQL (each new connection forks
+        # a backend process). 0 = close after every request, which is the safe
+        # default for SQLite/local dev. CONN_HEALTH_CHECKS stops a pooled
+        # connection that the server already dropped from surfacing as a
+        # request error.
+        "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 0),
+        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", default=False),
     }
 }
 
@@ -216,6 +226,12 @@ else:
 # Which ai/providers.py implementation the worker uses. Only "stub" exists —
 # no LLM credentials are configured anywhere in this project.
 AI_PROVIDER = env_str("AI_PROVIDER", "stub")
+
+
+# Test runs only: PBKDF2 is deliberately slow (that is its job in production);
+# a fast hasher keeps the suite quick without touching real password security.
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 
 AUTH_USER_MODEL = "accounts.User"
@@ -262,6 +278,9 @@ REST_FRAMEWORK = {
         # SimpleJWT + session_version check (revoked sessions stop working
         # immediately) — see accounts/authentication.py.
         "accounts.authentication.MadarJWTAuthentication",
+        # Guardians have no User row; they present a signed, read-only
+        # session bound to one Enrollment (parents/auth.py).
+        "parents.auth.ParentSessionAuthentication",
     ),
 
     # Secure by default: every view requires auth unless it explicitly
@@ -286,8 +305,13 @@ REST_FRAMEWORK = {
         "otp-target": "5/hour",
 
         # --- per authenticated user ---
+        "scan": "240/min",
+        "video-upload": "20/hour",
         "student-add": "300/hour",
         "ai-submit": "30/hour",
+        "broadcast": "20/hour",
+        "password-change": "10/hour",
+        "token-refresh": "300/hour",
     },
 
     # How many reverse proxies sit in front of Django and append to
@@ -385,6 +409,31 @@ SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 # own, separate limits). An explicit cap keeps oversized JSON from being
 # buffered in memory.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1_000_000
+
+# --- Private media (uploaded videos) ----------------------------------------
+# NOT under STATIC_ROOT and never mapped to a public URL: every byte is served
+# by an authenticated, authorisation-checked view (content.streaming). Uploads
+# are large, so they stream to a temp file instead of being buffered in memory.
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT") or str(BASE_DIR / "private-media")
+MEDIA_URL = None  # deliberately unset: there is no public media URL
+
+VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 512 * 1024 * 1024)      # 512 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = env_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 2 * 1024 * 1024)
+# Uploaded files must never be executable, and the private dir must not be
+# world-readable.
+FILE_UPLOAD_PERMISSIONS = 0o640
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750
+
+# How long a signed playback URL stays valid. Short enough that a copied link
+# dies quickly; long enough to start a video on a slow connection.
+VIDEO_PLAYBACK_TTL_SECONDS = env_int("VIDEO_PLAYBACK_TTL_SECONDS", 300)
+# Which content/providers.py implementation serves video. "local" = Madar
+# stores and streams it itself (one rendition, no transcoding). A hosted
+# provider would be added there, not by changing the domain.
+VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
+# When behind nginx, set this to the internal location to hand streaming off
+# to the web server (X-Accel-Redirect) instead of piping bytes through Django.
+VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
 
 
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
