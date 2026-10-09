@@ -173,3 +173,159 @@ textarea.inp{resize:vertical;min-height:96px;font-family:inherit}
   .dash-session-actions{width:100%}
   .dash-session-actions .abtn{flex:1}
 }
+
+/* ---- teacher dashboard additions ---- */
+.info-btn{display:inline-grid;place-items:center;margin-inline-start:8px;vertical-align:middle;width:30px;height:30px;border-radius:50%;
+  border:1px solid var(--line-2);background:var(--panel);color:var(--navy);cursor:pointer;transition:background .2s,border-color .2s}
+.info-btn:hover{background:var(--fill);border-color:var(--navy)}
+.info-body h4{font-size:.9rem;color:var(--navy);margin:14px 0 6px}
+.info-body ul{margin:0 0 6px;padding-inline-start:20px;display:grid;gap:6px;color:var(--ink);font-size:.9rem;line-height:1.7}
+.info-body .abtn{margin-block-start:14px;width:100%}
+.dash-head-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.month-inp{width:auto;min-width:150px}
+.confirm-actions{display:grid;gap:10px}
+.abtn-danger{background:#b3261e;color:#fff;border-color:#b3261e}
+.abtn-danger:hover{background:#8f1d17}
+.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:180px;overflow:auto;padding:4px}
+.check-item{display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--ink);cursor:pointer}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.mini-btn{padding:6px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel);color:var(--navy);font-size:.82rem;cursor:pointer}
+.mini-btn:hover{border-color:var(--navy)}
+.mini-btn.danger{color:#b3261e;border-color:#e6b8b4}
+.mini-btn:disabled{opacity:.5;cursor:not-allowed}
+.dash-pill.off{color:var(--soft)}
+.tag-list{display:flex;gap:6px;flex-wrap:wrap}
+.dash-note{background:var(--fill);border-radius:14px;padding:12px 14px;font-size:.88rem;color:var(--ink);line-height:1.7;margin-block-end:16px}
+.stat-sub{font-size:.8rem;color:var(--soft);margin-block-start:4px}
+.progress{height:8px;border-radius:99px;background:var(--fill);overflow:hidden;margin-block-start:10px}
+.progress>i{display:block;height:100%;background:var(--navy);border-radius:99px;transition:width .4s}
+.list-rows{display:grid;gap:8px}
+.list-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:12px;overflow:hidden}
+.seg button{padding:9px 18px;background:var(--panel);color:var(--navy);border:0;cursor:pointer;font-size:.9rem}
+.seg button.active{background:var(--navy);color:var(--cream)}
+/* fast session */
+.fs-card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px 18px;text-align:center;margin-block-end:16px}
+.fs-name{font-size:1.5rem;font-weight:700;color:var(--navy);margin:6px 0 4px}
+.fs-sub{color:var(--soft);font-size:.88rem;margin-block-end:18px}
+.fs-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.tap{padding:22px 10px;border-radius:18px;border:2px solid var(--line-2);background:var(--panel);font-size:1.15rem;font-weight:700;cursor:pointer;color:var(--navy);transition:transform .08s}
+.tap:active{transform:scale(.97)}
+.tap.good{border-color:#2e7d32;color:#2e7d32}.tap.good.picked{background:#2e7d32;color:#fff}
+.tap.bad{border-color:#b3261e;color:#b3261e}.tap.bad.picked{background:#b3261e;color:#fff}
+.tap.skip{color:var(--soft)}
+.chip-s{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.78rem;background:var(--fill);color:var(--navy)}
+.chip-s.good{background:#e3f1e4;color:#2e7d32}.chip-s.bad{background:#f7dedc;color:#b3261e}.chip-s.warn{background:#fdf0d5;color:#8a5a00}
+.stars{display:inline-flex;gap:2px}
+.stars button{border:0;background:none;font-size:1.25rem;cursor:pointer;color:var(--line-2);padding:0 1px}
+.stars button.on{color:#d19a00}
+.sel-inline{width:auto;min-width:140px;padding-block:7px}
+.video-frame{aspect-ratio:16/9;width:100%;border:0;border-radius:14px;background:#000}
+.dash-linkish{color:var(--navy);text-decoration:underline;font-weight:600}
+
+/* ---------- QR scanner (phone-first) ---------- */
+.scan-stage{margin-block:14px;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  background:#0d1020;aspect-ratio:4/3;max-height:46vh;display:grid;place-items:center}
+.scan-video{width:100%;height:100%;object-fit:cover}
+.scan-placeholder{display:grid;justify-items:center;gap:8px;color:#9aa3c0;text-align:center;padding:16px}
+.scan-placeholder p{margin:0;font-size:.86rem}
+.scan-controls{display:flex;gap:10px;flex-wrap:wrap;margin-block-end:12px}
+.scan-manual{display:flex;gap:8px;margin-block-end:14px;flex-wrap:wrap}
+.scan-manual .inp{flex:1 1 220px;min-width:0}
+
+.scan-card{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:16px;margin-block-start:14px;display:grid;gap:14px}
+.scan-id{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.scan-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fill);color:var(--navy);flex:0 0 auto}
+.scan-id-main{min-width:0;flex:1 1 auto}
+.scan-id-main strong{display:block;overflow-wrap:anywhere}
+
+.scan-state{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:0}
+.scan-state > div{background:var(--fill);border-radius:12px;padding:10px 12px;min-width:0}
+.scan-state dt{font-size:.74rem;color:var(--soft);margin:0}
+.scan-state dd{margin:2px 0 0;font-weight:700;color:var(--navy)}
+
+.scan-actions{display:flex;gap:10px;flex-wrap:wrap}
+.scan-actions > *{flex:1 1 150px}
+@media(max-width:480px){
+  .scan-stage{aspect-ratio:1/1;max-height:40vh}
+  .scan-actions > *{flex:1 1 100%}
+}
+
+/* printable student badge */
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.badge-print{display:grid;justify-items:center;gap:6px;text-align:center;padding:12px;
+  border:1px solid var(--line);border-radius:14px;background:#fff}
+.badge-qr svg{width:220px;height:220px;max-width:100%}
+@media print{
+  body *{visibility:hidden}
+  .badge-print,.badge-print *{visibility:visible}
+  .badge-print{position:fixed;inset-block-start:16mm;inset-inline:0;margin-inline:auto;border:0}
+}
+
+/* ---------- video upload + player ---------- */
+.upload-field{display:grid;gap:10px}
+.upload-current{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--fill);
+  border-radius:12px;padding:9px 12px;font-size:.85rem;color:var(--navy)}
+.upload-name{font-weight:600;min-width:0;overflow-wrap:anywhere;flex:1 1 140px}
+.upload-drop{display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;
+  border:1.5px dashed var(--line-2);border-radius:14px;padding:18px;color:var(--soft);
+  background:var(--panel);transition:border-color .15s,color .15s}
+.upload-drop:hover{border-color:var(--navy);color:var(--navy)}
+.upload-bar{position:relative;height:26px;border-radius:999px;background:var(--fill);overflow:hidden}
+.upload-bar-fill{height:100%;background:var(--navy);transition:width .2s ease}
+.upload-pct{position:absolute;inset:0;display:grid;place-items:center;font-size:.76rem;font-weight:700;color:var(--navy)}
+
+.player{width:100%;aspect-ratio:16/9;border-radius:14px;background:#000;display:block;max-width:100%}
+.player-state{display:flex;align-items:center;justify-content:center;gap:8px;aspect-ratio:16/9;
+  border-radius:14px;background:var(--fill);color:var(--soft);font-size:.88rem;text-align:center;padding:12px}
+.player-state.err{color:var(--danger,#b3261e)}
+
+/* ---------- session calendar ----------
+   Day-first layout: the named day and its date lead, sessions sit under it.
+   A teacher scans by day, not by row. */
+.cal{display:grid;gap:16px;margin-block-start:14px}
+.cal-day{border:1px solid var(--line);border-radius:18px;background:var(--panel);overflow:hidden}
+.cal-day.is-today{border-color:var(--navy);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 12%,transparent)}
+
+.cal-day-head{display:flex;align-items:center;gap:14px;padding:14px 16px;
+  border-block-end:1px solid var(--line);background:var(--fill)}
+.cal-date{flex:0 0 auto;width:54px;display:grid;justify-items:center;gap:1px;
+  background:var(--panel);border:1px solid var(--line-2);border-radius:14px;padding:7px 0}
+.cal-day.is-today .cal-date{background:var(--navy);border-color:var(--navy)}
+.cal-dnum{font-size:1.32rem;font-weight:700;color:var(--navy);line-height:1}
+.cal-dname{font-size:.68rem;color:var(--soft)}
+.cal-day.is-today .cal-dnum,.cal-day.is-today .cal-dname{color:#fff}
+.cal-day-main{min-width:0}
+.cal-day-main h3{margin:0;font-size:.98rem;font-weight:700;color:var(--navy);line-height:1.5}
+.cal-hint{font-size:.76rem;color:var(--soft)}
+
+.cal-sessions{display:grid}
+.cal-session{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;
+  border-block-start:1px solid var(--line);position:relative}
+.cal-sessions > .cal-session:first-child{border-block-start:0}
+/* status rail on the inline-start edge */
+.cal-session::before{content:"";position:absolute;inset-block:10px;inset-inline-start:0;
+  width:3px;border-radius:3px;background:var(--line-2)}
+.cal-session.s-open::before{background:#1f9d55}
+.cal-session.s-closed::before{background:var(--soft)}
+.cal-time{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);
+  font-size:.88rem;min-width:72px}
+.cal-session-main{flex:1 1 160px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cal-session-main strong{overflow-wrap:anywhere}
+
+@media(max-width:560px){
+  .cal-day-head{padding:12px}
+  .cal-session{padding:12px;align-items:flex-start}
+  .cal-time{min-width:auto}
+  .cal-session .row-actions{flex:1 1 100%}
+}
+.group-days{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-block-start:8px;
+  font-size:.8rem;color:var(--navy);background:var(--fill);border-radius:10px;padding:6px 9px}
+/* the human-readable badge code */
+.badge-code{display:inline-block;margin-block-start:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:1.44rem;font-weight:700;letter-spacing:.34em;padding:7px 8px 7px 14px;
+  border-radius:10px;background:var(--fill);color:var(--navy)}
+.badge-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;
+  letter-spacing:.12em;opacity:.75;margin-inline-start:4px}
+.code-input{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.3em;
+  text-transform:uppercase;text-align:center;font-size:1.05rem}
