@@ -1,3 +1,4 @@
+from accounts.testing import ensure_active_enrollment
 """
 Phase 1 / Tenant Foundation — tests for the active-environment resolution
 mechanism (environments/tenancy.py) via its reference endpoint,
@@ -74,6 +75,7 @@ class EnvironmentContextResolutionTests(TenantTestCase):
         student.set_password("Str0ng!Pass")
         student.is_active = True
         student.save()
+        ensure_active_enrollment(student, env=self.env_a)
         tok = c.post("/api/v1/auth/student/login/", {"phone": student.phone, "password": "Str0ng!Pass"}).data
         c.credentials(HTTP_AUTHORIZATION="Bearer " + tok["access"])
         r = c.get(CONTEXT_URL, **self.with_env(self.env_a.id))
