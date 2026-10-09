@@ -14,7 +14,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import PendingAuth, User
-from accounts.testing import TestCase
+from accounts.testing import TestCase, ensure_active_enrollment
 from environments.models import Environment, EnvironmentMembership
 
 PW = "Str0ng!Pass"
@@ -30,10 +30,12 @@ def make_teacher(email="t@example.com", phone="201001111111"):
 
 
 def make_student(phone="201002222222", active=True):
-    return User.objects.create_user(
+    user = User.objects.create_user(
         role=User.Role.STUDENT, name="S", phone=phone, password=PW if active else None,
         is_active=active, is_verified=active,
     )
+    ensure_active_enrollment(user)  # a student needs at least one ACTIVE teacher
+    return user
 
 
 def make_pending(purpose, payload=None, target="x", verified=False):
