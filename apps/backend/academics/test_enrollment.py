@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import SimpleRateThrottle
 
 from accounts.models import User
+from accounts.testing import make_enrollment
 from environments.models import EnvironmentMembership
 from environments.tenancy_testing import TenantTestCase
 
@@ -42,7 +43,7 @@ class EnrollmentCreateTests(TenantTestCase):
         self.grade_b = Grade.objects.create(environment=self.env_b, name="الصف الأول")
 
     def enroll_a(self, **overrides):
-        body = {"name": "طالب جديد", "phone": "201060000001", "grade_id": self.grade_a.id}
+        body = {"name": "طالب جديد", "phone": "201060000001", "grade_id": self.grade_a.id, "parent_phone": "201111000001"}
         body.update(overrides)
         return self.client_a.post(ENROLL_URL, body, **self.with_env(self.env_a.id))
 
@@ -68,7 +69,7 @@ class EnrollmentCreateTests(TenantTestCase):
         grade_a2 = Grade.objects.create(environment=env_a2, name="ابتدائي")
         self.enroll_a()
         r2 = self.client_a.post(
-            ENROLL_URL, {"name": "طالب جديد", "phone": "201060000001", "grade_id": grade_a2.id},
+            ENROLL_URL, {"name": "طالب جديد", "phone": "201060000001", "grade_id": grade_a2.id, "parent_phone": "201111000001"},
             **self.with_env(env_a2.id),
         )
         self.assertEqual(r2.status_code, 201)
@@ -83,7 +84,7 @@ class EnrollmentCreateTests(TenantTestCase):
         alone decides the tenant."""
         r = self.client_b.post(
             ENROLL_URL,
-            {"name": "X", "phone": "201060000099", "grade_id": self.grade_a.id, "environment_id": self.env_a.id},
+            {"name": "X", "phone": "201060000099", "grade_id": self.grade_a.id, "environment_id": self.env_a.id, "parent_phone": "201111000001"},
             **self.with_env(self.env_b.id),
         )
         # grade_id belongs to env_a, not env_b (the header) -> rejected on THAT basis
@@ -92,7 +93,7 @@ class EnrollmentCreateTests(TenantTestCase):
 
     def test_cannot_enroll_using_another_teachers_grade_even_with_own_header(self):
         r = self.client_b.post(
-            ENROLL_URL, {"name": "X", "phone": "201060000098", "grade_id": self.grade_a.id},
+            ENROLL_URL, {"name": "X", "phone": "201060000098", "grade_id": self.grade_a.id, "parent_phone": "201111000001"},
             **self.with_env(self.env_b.id),
         )
         self.assertEqual(r.status_code, 400)
@@ -101,15 +102,15 @@ class EnrollmentCreateTests(TenantTestCase):
     def test_group_must_belong_to_the_same_grade(self):
         other_grade = Grade.objects.create(environment=self.env_a, name="آخر")
         other_group = Group.objects.create(environment=self.env_a, grade=other_grade, name="G")
-        r = self.enroll_a(group_id=other_group.id)
+        r = self.enroll_a(group_ids=[other_group.id])
         self.assertEqual(r.status_code, 400)
-        self.assertIn("group_id", r.json()["fields"])
+        self.assertIn("group_ids", r.json()["fields"])
 
     def test_group_in_same_grade_is_accepted(self):
         group = Group.objects.create(environment=self.env_a, grade=self.grade_a, name="G")
-        r = self.enroll_a(group_id=group.id)
+        r = self.enroll_a(group_ids=[group.id])
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(Enrollment.objects.get(pk=r.json()["enrollment_id"]).group_id, group.id)
+        self.assertEqual(list(Enrollment.objects.get(pk=r.json()["enrollment_id"]).groups.values_list("id", flat=True)), [group.id])
 
     def test_non_student_phone_gets_one_generic_message(self):
         r = self.enroll_a(phone=self.teacher_a.phone)
@@ -155,7 +156,7 @@ class EnrollmentCreateTests(TenantTestCase):
             self.enroll_a(phone="201060000201")
             self.assertEqual(self.enroll_a(phone="201060000202").status_code, 429)
             r = self.client_b.post(
-                ENROLL_URL, {"name": "x", "phone": "201060000203", "grade_id": self.grade_b.id},
+                ENROLL_URL, {"name": "طالب ب", "phone": "201060000203", "grade_id": self.grade_b.id, "parent_phone": "201111000001"},
                 **self.with_env(self.env_b.id),
             )
             self.assertEqual(r.status_code, 201)
@@ -168,12 +169,12 @@ class EnrollmentListTests(TenantTestCase):
         self.group_a = Group.objects.create(environment=self.env_a, grade=self.grade_a, name="G1")
         self.s1 = self.make_student_in(self.env_a, "201080000001", name="أحمد محمد")
         self.s2 = self.make_student_in(self.env_a, "201080000002", name="سارة علي")
-        Enrollment.objects.create(environment=self.env_a, student=self.s1, grade=self.grade_a, group=self.group_a)
-        Enrollment.objects.create(environment=self.env_a, student=self.s2, grade=self.grade_a)
+        make_enrollment(self.env_a, self.s1, self.grade_a, self.group_a)
+        make_enrollment(self.env_a, self.s2, self.grade_a)
         # a decoy in Teacher B's environment
         grade_b = Grade.objects.create(environment=self.env_b, name="أول")
         s3 = self.make_student_in(self.env_b, "201080000003", name="Other Teacher's Student")
-        Enrollment.objects.create(environment=self.env_b, student=s3, grade=grade_b)
+        make_enrollment(self.env_b, s3, grade_b)
 
     def _items(self, r):
         data = r.json()
@@ -219,19 +220,17 @@ class EnrollmentDetailTests(TenantTestCase):
         self.group_a2 = Group.objects.create(environment=self.env_a, grade=self.grade_a, name="G2")
         self.other_grade = Grade.objects.create(environment=self.env_a, name="آخر")
         self.student = self.make_student_in(self.env_a, "201090000001", name="طالب")
-        self.enrollment = Enrollment.objects.create(
-            environment=self.env_a, student=self.student, grade=self.grade_a, group=self.group_a1,
-        )
+        self.enrollment = make_enrollment(self.env_a, self.student, self.grade_a, self.group_a1)
 
     def test_move_to_another_group_in_the_same_grade(self):
-        r = self.client_a.patch(enrollment_url(self.enrollment.id), {"group": self.group_a2.id}, **self.with_env(self.env_a.id))
+        r = self.client_a.patch(enrollment_url(self.enrollment.id), {"group_ids": [self.group_a2.id]}, **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 200, r.content)
         self.enrollment.refresh_from_db()
-        self.assertEqual(self.enrollment.group_id, self.group_a2.id)
+        self.assertEqual(list(self.enrollment.groups.values_list("id", flat=True)), [self.group_a2.id])
 
     def test_cannot_move_to_a_group_from_a_different_grade(self):
         other_group = Group.objects.create(environment=self.env_a, grade=self.other_grade, name="X")
-        r = self.client_a.patch(enrollment_url(self.enrollment.id), {"group": other_group.id}, **self.with_env(self.env_a.id))
+        r = self.client_a.patch(enrollment_url(self.enrollment.id), {"group_ids": [other_group.id]}, **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 400)
 
     def test_deactivate_and_reactivate(self):
@@ -270,3 +269,32 @@ class EnrollmentDetailTests(TenantTestCase):
         self.assert_cross_tenant_denied("patch", enrollment_url(self.enrollment.id), body={"is_active": False})
 
 
+class GuardianPhoneRequiredTests(TenantTestCase):
+    """A guardian number is mandatory when enrolling a student: for an
+    unclaimed student it is the only contact Madar holds."""
+
+    def setUp(self):
+        super().setUp()
+        from academics.models import Grade
+        self.grade = Grade.objects.create(environment=self.env_a, name="أول")
+
+    def post(self, **body):
+        payload = {"name": "طالب", "phone": "201060000777", "grade_id": self.grade.id, **body}
+        return self.client_a.post("/api/v1/academics/enrollments/", payload, **self.with_env(self.env_a.id))
+
+    def test_enrolling_without_a_guardian_number_is_rejected(self):
+        r = self.post()
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn("parent_phone", r.json().get("fields", r.json()))
+
+    def test_blank_guardian_number_is_rejected(self):
+        self.assertEqual(self.post(parent_phone="").status_code, 400)
+
+    def test_invalid_guardian_number_is_rejected(self):
+        self.assertEqual(self.post(parent_phone="+20 123").status_code, 400)
+
+    def test_valid_guardian_number_is_stored_canonically(self):
+        r = self.post(parent_phone="+20 100 765 4321")
+        self.assertEqual(r.status_code, 201, r.content)
+        from academics.models import Enrollment
+        self.assertEqual(Enrollment.objects.get(pk=r.json()["enrollment_id"]).parent_phone, "201007654321")
