@@ -156,12 +156,84 @@
 .stepper span{width:26px;height:5px;border-radius:100px;background:var(--line-2);transition:background .3s,width .3s var(--e-out)}
 .stepper span.on{background:linear-gradient(90deg,var(--navy),#4A5270);width:32px}
 
-/* ---------- modal ---------- */
-.modal-back{position:fixed;inset:0;z-index:400;background:rgba(20,24,38,.5);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:grid;place-items:center;padding:24px}
-.modal{width:100%;max-width:400px;background:var(--panel);border-radius:24px;padding:30px;text-align:center;box-shadow:0 44px 100px -40px rgba(20,24,38,.6)}
-.modal .mt{font-size:1.22rem;font-weight:700;color:var(--navy)}
-.modal .mx{color:var(--muted);margin-block-start:8px;line-height:1.6}
-.modal .ma{display:grid;gap:10px;margin-block-start:22px}
+/* ---------- modal / dialog (shared by EVERY form in the app) ----------
+   Structure is always:  header (sticky) -> body (the ONLY scroller) -> footer
+   (sticky). The panel can never exceed the viewport, so a long form is fully
+   reachable at normal browser zoom; the page behind is scroll-locked in JS. */
+.modal-back{
+  position:fixed;inset:0;z-index:400;
+  background:rgba(20,24,38,.5);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  padding:clamp(12px,3vh,28px) clamp(12px,3vw,28px);
+  overflow:hidden;overscroll-behavior:contain
+}
+.modal{
+  position:relative;display:flex;flex-direction:column;
+  width:100%;min-width:0;min-height:0;
+  max-height:100%;                 /* never taller than the padded viewport */
+  background:var(--panel);border-radius:22px;text-align:start;
+  box-shadow:0 44px 100px -40px rgba(20,24,38,.6);
+  outline:none;overflow:hidden      /* corners clip the scrolling body */
+}
+/* Consistent, responsive widths. clamp() keeps them usable on a 1024px
+   laptop and on a 2560px monitor without changing font size. */
+.modal-sm{max-width:440px}
+.modal-md{max-width:clamp(440px,62vw,680px)}
+.modal-lg{max-width:clamp(440px,78vw,900px)}
+
+/* --- header: stays visible while the body scrolls --- */
+.modal-head{
+  flex:0 0 auto;position:relative;
+  padding:22px 54px 14px 26px;
+  border-block-end:1px solid var(--line);background:var(--panel)
+}
+.modal .mt{font-size:1.16rem;font-weight:700;color:var(--navy);line-height:1.5}
+.modal .mx{color:var(--muted);margin-block-start:6px;line-height:1.6;font-size:.88rem}
+.modal-x{
+  position:absolute;inset-block-start:16px;inset-inline-end:16px;
+  width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
+  border:1px solid var(--line-2);background:transparent;color:var(--navy);cursor:pointer
+}
+.modal-x:hover{background:var(--fill)}
+
+/* --- body: the single scroll container --- */
+.modal .ma{
+  flex:1 1 auto;min-height:0;
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:20px 26px;display:grid;gap:12px
+}
+.modal .ma > *{min-width:0}
+
+/* --- footer: action buttons always reachable --- */
+.modal-foot{
+  flex:0 0 auto;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;
+  padding:14px 26px calc(14px + env(safe-area-inset-bottom));
+  border-block-start:1px solid var(--line);background:var(--panel)
+}
+.modal-foot > *{flex:0 1 auto}
+
+/* Multi-column form inside wide dialogs: fewer rows -> far shorter modal,
+   which is what stops big forms running off the screen in the first place. */
+.modal-md .dash-form,.modal-lg .dash-form{
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:start
+}
+.modal-md .dash-form > .form-wide,.modal-lg .dash-form > .form-wide{grid-column:1/-1}
+
+@media(max-width:640px){
+  .modal-back{padding:0;align-items:stretch}
+  .modal{max-width:none;border-radius:0;max-height:100%}
+  .modal-head{padding:18px 50px 12px 18px}
+  .modal .ma{padding:16px 18px}
+  .modal-foot{padding:12px 18px calc(12px + env(safe-area-inset-bottom))}
+  .modal-md .dash-form,.modal-lg .dash-form{grid-template-columns:1fr}
+  .modal-foot > *{flex:1 1 100%}
+}
+/* Very short windows (laptop + open devtools): keep the body usable. */
+@media(max-height:560px){
+  .modal-head{padding-block:14px 10px}
+  .modal .ma{padding-block:14px}
+}
 
 /* ---------- loaders / success ---------- */
 .orbit-loader{width:18px;height:18px;border-radius:50%;border:2px solid rgba(246,243,237,.4);border-top-color:var(--cream);animation:aspin .8s linear infinite}
@@ -198,3 +270,8 @@
   .orbit-loader,.orbit-big .spin{animation-duration:.001ms}
   .success-ring .sr-c,.success-ring .sr-k{animation:none;stroke-dashoffset:0}
 }
+
+/* country-aware phone field */
+.phone-row{display:flex;gap:8px;align-items:stretch}
+.phone-row .phone-sel{flex:0 0 46%;max-width:190px;padding-inline:10px;text-overflow:ellipsis}
+.phone-row .phone-num{flex:1;min-width:0;text-align:left;letter-spacing:.04em}
