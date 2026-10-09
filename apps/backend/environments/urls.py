@@ -8,4 +8,6 @@ urlpatterns = [
     path("student/", views.StudentEnvironmentListView.as_view()),
     path("student/<int:pk>/enter/", views.StudentEnvironmentEnterView.as_view()),
     path("context/", views.EnvironmentContextView.as_view()),
+    path("current/", views.EnvironmentSettingsView.as_view()),
+    path("overview/", views.OverviewView.as_view()),
 ]
