@@ -9,12 +9,16 @@
 
 .dash-boot{min-height:100vh;display:grid;place-items:center;background:var(--cream)}
 
-.dash{min-height:100vh;background:var(--surface);display:flex}
+/* The shell is exactly one viewport tall and never scrolls itself, so the
+   sidebar and topbar cannot drift out of view. The page content is the only
+   scroller — previously the whole document scrolled and `position:sticky`
+   only *looked* like a fixed sidebar. */
+.dash{height:100vh;height:100dvh;background:var(--surface);display:flex;overflow:hidden}
 
 /* ---------- sidebar (desktop) ---------- */
 .dash-side{
   width:264px;flex:none;background:var(--panel);border-inline-start:1px solid var(--line);
-  display:flex;flex-direction:column;position:sticky;inset-block-start:0;height:100vh;padding:20px 16px;
+  display:flex;flex-direction:column;height:100%;min-height:0;padding:20px 16px;
 }
 .dash-brand{display:flex;align-items:center;gap:10px;padding:8px 10px 22px}
 .dash-brand img{height:30px;width:auto}
@@ -29,12 +33,12 @@
 .dash-side-foot{border-block-start:1px solid var(--line);padding-block-start:14px;margin-block-start:10px}
 
 /* ---------- topbar ---------- */
-.dash-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.dash-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .dash-top{
   height:66px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:14px;
   padding-inline:20px;border-block-end:1px solid var(--line);
   background:rgba(252,251,247,.75);-webkit-backdrop-filter:saturate(150%) blur(16px);backdrop-filter:saturate(150%) blur(16px);
-  position:sticky;inset-block-start:0;z-index:20;
+  z-index:20;
 }
 .dash-top-start{display:flex;align-items:center;gap:12px;min-width:0}
 .dash-menu-btn{display:none;width:38px;height:38px;border-radius:11px;border:1px solid var(--line-2);background:transparent;color:var(--navy);align-items:center;justify-content:center;flex:none}
@@ -72,7 +76,8 @@
 .dash-user-menu button.danger{color:#8f3423}
 .dash-user-menu button.danger:hover{background:rgba(180,68,47,.08)}
 
-.dash-body{flex:1;padding:26px clamp(18px,3vw,32px) 60px}
+.dash-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:26px clamp(18px,3vw,32px) 60px;scroll-padding-block-start:12px}
 
 /* ---------- mobile drawer ---------- */
 .dash-drawer-back{position:fixed;inset:0;background:rgba(20,24,38,.45);z-index:290;
@@ -134,7 +139,7 @@
 }
 .dash-table td{padding:13px 16px;border-block-end:1px solid var(--line);font-size:.9rem;color:var(--ink);white-space:nowrap}
 .dash-table tr:last-child td{border-block-end:0}
-.ltr-cell{direction:ltr;text-align:end;font-variant-numeric:tabular-nums}
+.ltr-cell{direction:ltr;unicode-bidi:isolate;text-align:end;font-variant-numeric:tabular-nums}
 
 .dash-pill{padding:5px 13px;border-radius:100px;font-size:.78rem;font-weight:700;border:1px solid var(--line-2);background:var(--fill);color:var(--soft)}
 .dash-pill.on{background:rgba(60,122,84,.12);border-color:rgba(60,122,84,.3);color:#2f6a49}
@@ -178,9 +183,6 @@ textarea.inp{resize:vertical;min-height:96px;font-family:inherit}
 .info-btn{display:inline-grid;place-items:center;margin-inline-start:8px;vertical-align:middle;width:30px;height:30px;border-radius:50%;
   border:1px solid var(--line-2);background:var(--panel);color:var(--navy);cursor:pointer;transition:background .2s,border-color .2s}
 .info-btn:hover{background:var(--fill);border-color:var(--navy)}
-.info-body h4{font-size:.9rem;color:var(--navy);margin:14px 0 6px}
-.info-body ul{margin:0 0 6px;padding-inline-start:20px;display:grid;gap:6px;color:var(--ink);font-size:.9rem;line-height:1.7}
-.info-body .abtn{margin-block-start:14px;width:100%}
 .dash-head-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .month-inp{width:auto;min-width:150px}
 .confirm-actions{display:grid;gap:10px}
@@ -329,3 +331,96 @@ textarea.inp{resize:vertical;min-height:96px;font-family:inherit}
   letter-spacing:.12em;opacity:.75;margin-inline-start:4px}
 .code-input{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.3em;
   text-transform:uppercase;text-align:center;font-size:1.05rem}
+
+/* ---------- sent broadcast log ---------- */
+.msg-row{align-items:center;gap:12px}
+.msg-main{flex:1 1 auto;min-width:0}
+.msg-main strong{display:block;overflow-wrap:anywhere}
+.msg-body{white-space:pre-wrap;line-height:1.85;color:var(--navy);margin:0 0 14px;overflow-wrap:anywhere}
+.msg-sub{margin:0 0 8px;font-size:.84rem;font-weight:700;color:var(--soft)}
+.msg-recipients{list-style:none;margin:0;padding:0;display:grid;gap:5px;max-height:320px;overflow-y:auto}
+.msg-recipients li{display:flex;justify-content:space-between;gap:10px;background:var(--fill);
+  border-radius:10px;padding:7px 11px;font-size:.85rem}
+
+/* drag-and-drop target */
+.upload-drop{flex-direction:column;gap:6px;padding:26px 18px;text-align:center}
+.upload-drop.is-dragging{border-color:var(--navy);border-style:solid;
+  background:color-mix(in srgb,var(--navy) 6%,var(--panel));color:var(--navy)}
+
+/* ---------- content form sections ---------- */
+.form-section{margin-block-start:6px}
+.form-section:first-child{margin-block-start:0}
+.form-section-title{margin:0 0 2px;font-size:.82rem;font-weight:700;color:var(--soft);
+  letter-spacing:.02em;padding-block-end:7px;border-block-end:1px solid var(--line)}
+.form-section .field-msg{margin-block-start:7px}
+
+/* the pending state before the item exists */
+.upload-pending{display:flex;align-items:center;gap:12px;padding:16px;border-radius:14px;
+  background:var(--fill);color:var(--soft)}
+.upload-pending strong{display:block;color:var(--navy);font-size:.9rem}
+.upload-pending p{margin:2px 0 0}
+
+/* ---------- drag & drop zone ---------- */
+.upload-drop{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  min-height:170px;padding:26px 18px;text-align:center;cursor:pointer;
+  border:2px dashed var(--line-2);border-radius:16px;background:var(--panel);
+  color:var(--soft);transition:border-color .15s ease,background .15s ease,color .15s ease;
+}
+.upload-drop:hover{border-color:var(--navy);color:var(--navy);
+  background:color-mix(in srgb,var(--navy) 4%,var(--panel))}
+.upload-drop.is-dragging{border-style:solid;border-color:var(--navy);color:var(--navy);
+  background:color-mix(in srgb,var(--navy) 8%,var(--panel))}
+.upload-drop strong{color:var(--navy);font-size:.95rem}
+.upload-drop > span{display:block;line-height:1.7}
+
+/* draft guidance — why a video is not reaching students yet */
+.draft-hint{display:flex;align-items:center;gap:7px;flex:1 1 100%;order:3;
+  margin-block-start:8px;padding:8px 11px;border-radius:11px;
+  background:color-mix(in srgb,#b8860b 10%,var(--panel));
+  color:#8a6400;font-size:.8rem;line-height:1.6}
+.mini-btn.is-primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:700}
+.mini-btn.is-primary:hover{opacity:.92}
+
+/* ---- sessions: pick grade -> groups ---- */
+.pick-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pick-chip{min-height:40px;padding:8px 16px;border-radius:99px;border:1.5px solid var(--line-2);background:var(--panel);color:var(--navy);
+  font-weight:600;font-size:.88rem;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.pick-chip:hover{border-color:var(--navy)}
+.pick-chip.is-sel{background:var(--navy);border-color:var(--navy);color:var(--cream)}
+.pick-all{border-style:dashed}
+.pick-all.is-sel{border-style:solid}
+
+/* ---- small screens: drawer + session cards + pager ---- */
+.dash-nav{min-height:0}
+.dash-drawer{height:100vh;height:100dvh;max-height:100dvh;overflow:hidden;
+  padding-block-end:calc(18px + env(safe-area-inset-bottom))}
+.dash-drawer .dash-nav{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-block-end:8px}
+.dash-body{padding-block-end:calc(60px + env(safe-area-inset-bottom))}
+
+.cal-session .mini-btn{display:inline-flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;line-height:1.3}
+@media(max-width:560px){
+  /* actions sit under the lesson as an even grid: equal widths, real tap targets */
+  .cal-session .row-actions{flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-block-start:2px}
+  .cal-session .mini-btn{min-height:42px;padding:8px 10px;font-size:.86rem;border-radius:12px;width:100%}
+  .cal-session-main{flex-basis:calc(100% - 96px)}
+  .dash-head-actions{width:100%}
+  .dash-head-actions > *{flex:1 1 150px}
+  .dash-pager{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;margin-block-start:20px}
+  .dash-pager button{min-height:44px}
+}
+
+/* ---- guests of a session ---- */
+.guest-sec{margin-block-start:28px}
+.guest-row{align-items:flex-start;gap:10px 14px;flex-wrap:wrap}
+.guest-main{min-width:0;flex:1 1 220px;display:grid;gap:3px}
+.guest-note{font-size:.8rem;color:var(--soft);line-height:1.6}
+.guest-row .row-actions .mini-btn{display:inline-flex;align-items:center;gap:5px}
+.guest-pick{max-height:min(52dvh,420px);overflow-y:auto}
+.guest-pick-row{align-items:flex-end;gap:10px;flex-wrap:wrap}
+.guest-pick-main{flex:1 1 220px;display:grid;gap:6px;min-width:0}
+@media(max-width:560px){
+  .guest-row .row-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;width:100%}
+  .guest-row .row-actions .mini-btn{min-height:42px;justify-content:center;width:100%}
+  .guest-pick-row > .abtn{width:100%}
+}
