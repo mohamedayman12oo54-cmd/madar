@@ -47,12 +47,20 @@ export const schedulingApi = {
   sessions: {
     list: (params) => api.get(`/scheduling/sessions/${qs(params)}`, T),
     create: (payload) => api.post("/scheduling/sessions/", payload, T),
+    bulk: (payload) => api.post("/scheduling/sessions/bulk/", payload, T),
     reschedule: (id, scheduled_at) => api.patch(`/scheduling/sessions/${id}/`, { scheduled_at }, T),
     generate: (payload) => api.post("/scheduling/sessions/generate/", payload, T),
     open: (id) => api.post(`/scheduling/sessions/${id}/open/`, {}, T),
     close: (id) => api.post(`/scheduling/sessions/${id}/close/`, {}, T),
     reopen: (id) => api.post(`/scheduling/sessions/${id}/reopen/`, {}, T),
     roster: (id) => api.get(`/scheduling/sessions/${id}/roster/`, T),
+    remove: (id) => api.delete(`/scheduling/sessions/${id}/`, T),
+    // students of OTHER groups who attend this session as guests
+    guestCandidates: (id, q) => api.get(`/scheduling/sessions/${id}/guest-candidates/${qs({ q })}`, T),
+    addGuest: (id, enrollment_id, home_session_id) =>
+      api.post(`/scheduling/sessions/${id}/guests/`, { enrollment_id, ...(home_session_id ? { home_session_id } : {}) }, T),
+    markGuest: (id, enrollment_id, body) => apiPut(`/scheduling/sessions/${id}/guests/${enrollment_id}/`, body),
+    removeGuest: (id, enrollment_id) => api.delete(`/scheduling/sessions/${id}/guests/${enrollment_id}/`, T),
   },
   markAttendance: (session_id, enrollment_id, status) =>
     apiPut("/scheduling/attendance/mark/", { session_id, enrollment_id, status }),
@@ -169,6 +177,8 @@ export const contentApi = {
 export const notificationsApi = {
   list: (params) => api.get(`/notifications/${qs(params)}`, T),
   summary: () => api.get("/notifications/summary/", T),
+  broadcasts: () => api.get("/notifications/broadcasts/", T),
+  broadcastDetail: (id) => api.get(`/notifications/broadcasts/${id}/`, T),
   broadcast: (payload) => api.post("/notifications/broadcast/", payload, T),
   retryFailed: () => api.post("/notifications/retry-failed/", {}, T),
 };
