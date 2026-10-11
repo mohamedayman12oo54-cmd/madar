@@ -35,8 +35,8 @@ from config.months import current_month
 from environments.tenancy import IsEnvironmentMember
 from financials.models import MonthlyPayment
 
-from .models import AttendanceRecord, RecitationRecord, SessionInstance
-from .services import mark_attendance, mark_recitation
+from .models import AttendanceRecord, GuestVisit, RecitationRecord, SessionInstance
+from .services import is_member, mark_attendance, mark_guest, mark_recitation
 
 
 def _record(fn, session, enrollment, status_value):
@@ -47,6 +47,19 @@ def _record(fn, session, enrollment, status_value):
         fn(session, enrollment, status_value)
     except DjangoValidationError as exc:
         raise serializers.ValidationError({"detail": list(exc.messages)})
+
+def _record_any(kind, session, enrollment, status_value):
+    """Badge scanned at a session of ANOTHER group: record it as a guest visit
+    (carried into his own group's session when that opens) instead of failing.
+    Same-group scans go through the unchanged manual-screen services."""
+    if enrollment.environment_id == session.environment_id and not is_member(session, enrollment):
+        try:
+            mark_guest(session, enrollment, kind, status_value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"detail": list(exc.messages)})
+        return
+    _record(mark_attendance if kind == "attendance" else mark_recitation, session, enrollment, status_value)
+
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
 
@@ -78,6 +91,7 @@ def _snapshot(enrollment, session):
     month = current_month()
     attendance = AttendanceRecord.objects.filter(session=session, enrollment=enrollment).first() if session else None
     recitation = RecitationRecord.objects.filter(session=session, enrollment=enrollment).first() if session else None
+    visit = GuestVisit.objects.filter(session=session, enrollment=enrollment).select_related("home_session__group").first() if session else None
     payment = MonthlyPayment.objects.filter(enrollment=enrollment, month=month).first()
     return {
         "enrollment_id": enrollment.id,
@@ -85,8 +99,11 @@ def _snapshot(enrollment, session):
         "grade": enrollment.grade.name,
         "is_active": enrollment.is_active,
         "session_id": session.id if session else None,
-        "attendance": attendance.status if attendance else None,
-        "recitation": recitation.status if recitation else None,
+        "attendance": attendance.status if attendance else (visit.attendance or None if visit else None),
+        "recitation": recitation.status if recitation else (visit.recitation or None if visit else None),
+        "guest": ({"home_session": ({"id": visit.home_session_id, "scheduled_at": visit.home_session.scheduled_at,
+                                     "group": visit.home_session.group.name} if visit.home_session_id else None)}
+                  if visit else None),
         "month": month.strftime("%Y-%m"),
         "fee_amount": str(enrollment.grade.fee_amount),
         "payment_status": payment.status if payment else MonthlyPayment.Status.UNPAID,
@@ -130,7 +147,7 @@ class ScanAttendanceView(APIView):
         ser.is_valid(raise_exception=True)
         enrollment = _enrollment_for(request, ser.validated_data["token"])
         session = _session_for(request, ser.validated_data["session_id"])
-        _record(mark_attendance, session, enrollment, ser.validated_data["status"])
+        _record_any("attendance", session, enrollment, ser.validated_data["status"])
         return Response(_snapshot(enrollment, session))
 
 
@@ -150,7 +167,7 @@ class ScanRecitationView(APIView):
         ser.is_valid(raise_exception=True)
         enrollment = _enrollment_for(request, ser.validated_data["token"])
         session = _session_for(request, ser.validated_data["session_id"])
-        _record(mark_recitation, session, enrollment, ser.validated_data["status"])
+        _record_any("recitation", session, enrollment, ser.validated_data["status"])
         return Response(_snapshot(enrollment, session))
 
 
