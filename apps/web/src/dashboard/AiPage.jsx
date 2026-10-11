@@ -5,13 +5,12 @@ import { aiApi, AI_TERMINAL } from "../lib/aiApi.js";
 import { pollUntilDone } from "../lib/poll.js";
 import { ApiError } from "../lib/api.js";
 import { PageHeader } from "./common.jsx";
+import { fmtDateTime } from "../lib/dates.js";
 
 const STATUS_LABEL = { pending: "بانتظار المعالجة…", processing: "جارٍ إعداد الإجابة…", completed: "مكتملة", failed: "فشلت" };
 const MAX_PROMPT = 2000;
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
-}
+const fmt = fmtDateTime;
 
 function newKey() {
   return globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`;
