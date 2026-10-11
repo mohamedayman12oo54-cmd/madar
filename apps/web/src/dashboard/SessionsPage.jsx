@@ -5,6 +5,8 @@ import { Field, Btn, Banner, Modal } from "../auth/ui.jsx";
 import { schedulingApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
 import { useGroups } from "./useGroups.js";
+import { useGrades } from "./useGrades.js";
+import DateTimePicker from "../components/DateTimePicker.jsx";
 import { groupByDay, timeLabel } from "../lib/dates.js";
 import { Confirm, Empty, PageHeader, fmtDateTime } from "./common.jsx";
 
@@ -14,26 +16,59 @@ const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 const toIso = (local) => new Date(local).toISOString();
 const toLocalInput = (iso) => { const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 
-function AddSessionModal({ groups, onClose, onCreated }) {
-  const [groupId, setGroupId] = useState(groups[0]?.id || "");
+function AddSessionModal({ grades, groups, onClose, onCreated }) {
+  // A session belongs to ONE group, so "a grade" means one session per group
+  // of that grade. The teacher picks the grade, then which of its groups.
+  const [gradeId, setGradeId] = useState(grades[0]?.id || "");
+  const [picked, setPicked] = useState([]);
   const [when, setWhen] = useState(toLocalInput(new Date().toISOString()));
   const [err, setErr] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  const ofGrade = groups.filter((g) => String(g.grade_id) === String(gradeId));
+  const allPicked = ofGrade.length > 0 && ofGrade.every((g) => picked.includes(g.id));
+  const toggle = (id) => setPicked((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  const toggleAll = () => setPicked(allPicked ? [] : ofGrade.map((g) => g.id));
+  const changeGrade = (id) => { setGradeId(id); setPicked([]); };
+
   const submit = async (e) => {
-    e.preventDefault(); setErr(null); setSaving(true);
-    try { await schedulingApi.sessions.create({ group_id: Number(groupId), scheduled_at: toIso(when) }); onCreated(); }
-    catch (e2) { setErr(e2 instanceof ApiError ? (e2.fields ? Object.values(e2.fields).flat().join(" ") : e2.message) : "تعذّر إنشاء الجلسة."); }
+    e.preventDefault(); setErr(null);
+    if (!picked.length) { setErr("اختر مجموعة واحدة على الأقل."); return; }
+    setSaving(true);
+    try { onCreated(await schedulingApi.sessions.bulk({ grade_id: Number(gradeId), group_ids: picked, scheduled_at: toIso(when) })); }
+    catch (e2) { setErr(e2 instanceof ApiError ? (e2.fields ? Object.values(e2.fields).flat().join(" ") : e2.message) : "تعذّر إنشاء الجلسات."); }
     finally { setSaving(false); }
   };
   return (
-    <Modal size="md" title="جلسة إضافية (تعويض أو خارج الموعد)" text="يمكنك تسجيل حصة فعلية حتى لو لم تكن ضمن المواعيد الأسبوعية." onClose={onClose}>
-      <form onSubmit={submit} className="dash-form">
+    <Modal size="md" title="جلسة إضافية (تعويض أو خارج الموعد)"
+      text="اختر الصف ثم مجموعة أو أكثر (أو كل مجموعات الصف) وحدّد اليوم والوقت." onClose={onClose}>
+      <form onSubmit={submit} className="dash-form" noValidate>
         {err && <Banner tone="err">{err}</Banner>}
-        <Field label="المجموعة" required>
-          <select className="inp" value={groupId} onChange={(e) => setGroupId(e.target.value)}>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
+        <Field label="الصف" required>
+          <select className="inp" value={gradeId} onChange={(e) => changeGrade(e.target.value)}>
+            {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
         </Field>
-        <Field label="التاريخ والوقت" required><input className="inp" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required /></Field>
-        <Btn type="submit" loading={saving} loadingText="جارٍ الإنشاء…">إنشاء الجلسة</Btn>
+        <Field label="التاريخ والوقت" required><DateTimePicker value={when} onChange={setWhen} /></Field>
+        <Field className="form-wide" label="المجموعات" required>
+          {ofGrade.length === 0 ? <p className="field-msg">لا توجد مجموعات في هذا الصف.</p> : (
+            <div className="pick-chips" role="group" aria-label="المجموعات">
+              <button type="button" className={"pick-chip pick-all" + (allPicked ? " is-sel" : "")} aria-pressed={allPicked} onClick={toggleAll}>
+                كل مجموعات الصف ({ofGrade.length})
+              </button>
+              {ofGrade.map((g) => (
+                <button key={g.id} type="button" className={"pick-chip" + (picked.includes(g.id) ? " is-sel" : "")}
+                  aria-pressed={picked.includes(g.id)} onClick={() => toggle(g.id)}>{g.name}</button>
+              ))}
+            </div>
+          )}
+        </Field>
+        <p className="stat-sub form-wide">
+          {picked.length ? `سيتم إنشاء ${picked.length} جلسة (جلسة لكل مجموعة).` : "لم تختر أي مجموعة بعد."} لا تتكرر جلسة موجودة لنفس المجموعة في نفس الموعد.
+        </p>
+        <Btn type="submit" loading={saving} loadingText="جارٍ الإنشاء…" disabled={!picked.length}>
+          {picked.length > 1 ? `إنشاء ${picked.length} جلسات` : "إنشاء الجلسة"}
+        </Btn>
       </form>
     </Modal>
   );
@@ -74,7 +109,7 @@ function RescheduleModal({ session, onClose, onDone }) {
     <Modal title="تعديل موعد الجلسة" onClose={onClose}>
       <form onSubmit={submit} className="dash-form">
         {err && <Banner tone="err">{err}</Banner>}
-        <Field label="التاريخ والوقت" required><input className="inp" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required /></Field>
+        <Field label="التاريخ والوقت" required><DateTimePicker value={when} onChange={setWhen} /></Field>
         <Btn type="submit">حفظ</Btn>
       </form>
     </Modal>
@@ -83,6 +118,8 @@ function RescheduleModal({ session, onClose, onDone }) {
 
 export default function SessionsPage() {
   const { groups, status: groupsStatus } = useGroups();
+  const { grades } = useGrades();
+  const [gradeFilter, setGradeFilter] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [data, setData] = useState({ results: [], next: null, previous: null });
@@ -93,13 +130,15 @@ export default function SessionsPage() {
   const [notice, setNotice] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
-  useEffect(() => { setPage(1); }, [groupFilter, statusFilter]);
+  useEffect(() => { setPage(1); }, [gradeFilter, groupFilter, statusFilter]);
+  const filterGroups = gradeFilter ? groups.filter((g) => String(g.grade_id) === String(gradeFilter)) : groups;
+  const gradeName = (id) => grades.find((g) => g.id === id)?.name;
   const reload = () => {
-    schedulingApi.sessions.list({ group_id: groupFilter, status: statusFilter, page })
+    schedulingApi.sessions.list({ grade_id: gradeFilter, group_id: groupFilter, status: statusFilter, page })
       .then((d) => { setData(Array.isArray(d) ? { results: d } : d); setStatus("ready"); })
       .catch((e) => { setError(e instanceof ApiError ? e.message : "تعذّر تحميل الجلسات."); setStatus("error"); });
   };
-  useEffect(reload, [groupFilter, statusFilter, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [gradeFilter, groupFilter, statusFilter, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act = async (id, fn, okText) => {
     setBusyId(id); setNotice(null);
@@ -112,12 +151,13 @@ export default function SessionsPage() {
     <>
       <PageHeader infoKey="sessions" title="الجلسات">
         <Btn variant="ghost" onClick={() => setModal("generate")} disabled={groups.length === 0}><Wand2 size={16} /> توليد من المواعيد</Btn>
-        <Btn onClick={() => setModal("add")} disabled={groups.length === 0}><CalendarPlus size={16} /> جلسة إضافية</Btn>
+        <Btn onClick={() => setModal("add")} disabled={groups.length === 0 || grades.length === 0}><CalendarPlus size={16} /> جلسة إضافية</Btn>
       </PageHeader>
       {groupsStatus === "ready" && groups.length === 0 && <Banner tone="info">أنشئ مجموعة أولًا من صفحة «المجموعات».</Banner>}
       {notice && <Banner tone={notice.tone}>{notice.text}</Banner>}
       <div className="dash-filters">
-        <select className="inp" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><option value="">كل المجموعات</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
+        <select className="inp" aria-label="الصف" value={gradeFilter} onChange={(e) => { setGradeFilter(e.target.value); setGroupFilter(""); }}><option value="">كل الصفوف</option>{grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
+        <select className="inp" aria-label="المجموعة" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><option value="">كل المجموعات</option>{filterGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
         <select className="inp" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="">كل الحالات</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
       </div>
       {status === "loading" && <p className="field-msg">جاري تحميل الجلسات...</p>}
@@ -143,6 +183,7 @@ export default function SessionsPage() {
                   <div className="cal-time">{timeLabel(s.scheduled_at)}</div>
                   <div className="cal-session-main">
                     <strong>{s.group?.name || s.group_name}</strong>
+                    {gradeName(s.group?.grade_id) && <span className="stat-sub">{gradeName(s.group.grade_id)}</span>}
                     <span className={"chip-s " + TONE[s.status]}>{STATUS[s.status]}</span>
                     {s.reopened_count ? <span className="stat-sub">أُعيد فتحها {s.reopened_count} مرة</span> : null}
                   </div>
@@ -154,6 +195,7 @@ export default function SessionsPage() {
                       <Link className="mini-btn" to={`/app/attendance?session=${s.id}`}>الحضور والتسميع</Link>
                       <button className="mini-btn" disabled={busyId === s.id} onClick={() => act(s.id, schedulingApi.sessions.close, "تم إغلاق الجلسة.")}>إغلاق</button></>}
                     {s.status === "closed" && <button className="mini-btn" disabled={busyId === s.id} onClick={() => setModal({ reopen: s })}>إعادة فتح للتصحيح</button>}
+                    <button className="mini-btn danger" disabled={busyId === s.id} onClick={() => setModal({ remove: s })}>حذف</button>
                   </div>
                 </article>
               ))}
@@ -167,9 +209,15 @@ export default function SessionsPage() {
           <button disabled={!data.next} onClick={() => setPage((p) => p + 1)}>التالي</button>
         </div>
       )}
-      {modal === "add" && <AddSessionModal groups={groups} onClose={() => setModal(null)} onCreated={() => { setModal(null); reload(); }} />}
+      {modal === "add" && <AddSessionModal grades={grades} groups={groups} onClose={() => setModal(null)} onCreated={(r) => { setModal(null); setNotice({ tone: "info", text: r.created ? `تم إنشاء ${r.created} جلسة.${r.skipped?.length ? ` وتم تخطي ${r.skipped.length} لأن لها جلسة في نفس الموعد.` : ""}` : "كل المجموعات المختارة لديها جلسة في هذا الموعد بالفعل." }); reload(); }} />}
       {modal === "generate" && <GenerateModal groups={groups} onClose={() => setModal(null)} onDone={(n) => { setModal(null); setNotice({ tone: "info", text: n ? `تم إنشاء ${n} جلسة مخططة.` : "لا توجد جلسات جديدة لإنشائها." }); reload(); }} />}
       {modal?.reschedule && <RescheduleModal session={modal.reschedule} onClose={() => setModal(null)} onDone={() => { setModal(null); reload(); }} />}
+      {modal?.remove && (
+        <Confirm danger title="حذف الجلسة؟" confirmLabel="حذف الجلسة"
+          text={`ستُحذف جلسة ${modal.remove.group?.name || ""} المقررة ${fmtDateTime(modal.remove.scheduled_at)} نهائيًا. إن كانت تحمل تسجيلات حضور أو تسميع فلن تُحذف حتى لا تضيع البيانات.`}
+          onClose={() => setModal(null)}
+          onConfirm={async () => { await act(modal.remove.id, schedulingApi.sessions.remove, "تم حذف الجلسة."); setModal(null); }} />
+      )}
       {modal?.reopen && (
         <Confirm title="إعادة فتح الجلسة؟" confirmLabel="إعادة الفتح"
           text="ستُفتح نفس الجلسة لتصحيح الحضور أو التسميع. الإشعارات التي أُرسلت سابقًا لا تُسحب، وقد يصدر إشعار جديد إذا صحّحت إلى «غائب» أو «لم يذاكر»."
