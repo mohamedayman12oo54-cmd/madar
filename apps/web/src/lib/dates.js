@@ -123,3 +123,53 @@ export function scheduleSummary(schedules) {
     .map((d) => DAY_NAMES[d]);
   return names.join("، ");
 }
+
+/* ------------------------------------------------------------------ *
+ * One date/time format for the whole app.
+ *
+ * Every screen used to call toLocaleString() with its own options, so the
+ * same instant could read three different ways. Everything now goes through
+ * these helpers:
+ *
+ *   fmtDate      "١٢ أكتوبر ٢٠٢٦"
+ *   fmtTime      "٤:٠٠ م"
+ *   fmtDateTime  "١٢ أكتوبر ٢٠٢٦ • ٤:٠٠ م"
+ *   fmtMonth     "أكتوبر ٢٠٢٦"
+ *
+ * They never throw: a missing / invalid value renders as an em dash instead
+ * of the string "Invalid Date" leaking into the UI.
+ * ------------------------------------------------------------------ */
+const valid = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const d = asDate(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+export const fmtDate = (value) => {
+  const d = valid(value);
+  return d ? new Intl.DateTimeFormat(AR, { day: "numeric", month: "long", year: "numeric" }).format(d) : "—";
+};
+
+export const fmtTime = (value) => {
+  const d = valid(value);
+  return d ? new Intl.DateTimeFormat(AR, { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
+};
+
+export const fmtDateTime = (value) => {
+  const d = valid(value);
+  return d ? `${fmtDate(d)} • ${fmtTime(d)}` : "—";
+};
+
+/** "YYYY-MM" (what a month picker holds) → "أكتوبر ٢٠٢٦". */
+export const fmtMonth = (ym) => {
+  const m = /^(\d{4})-(\d{2})/.exec(String(ym || ""));
+  if (!m) return ym ? String(ym) : "—";
+  return new Intl.DateTimeFormat(AR, { month: "long", year: "numeric" }).format(new Date(Number(m[1]), Number(m[2]) - 1, 1));
+};
+
+/** "HH:mm" or "HH:mm:ss" (what the backend sends for a weekly slot) → "٤:٠٠ م". */
+export const fmtClock = (hhmm) => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ""));
+  if (!m) return "—";
+  return fmtTime(new Date(2000, 0, 1, Number(m[1]), Number(m[2])));
+};
