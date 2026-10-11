@@ -1,4 +1,4 @@
-import random
+import secrets
 import re
 import uuid
 from datetime import timedelta
@@ -97,7 +97,27 @@ class User(AbstractUser):
 
 
 def generate_otp_code() -> str:
-    return f"{random.randint(0, 999999):06d}"
+    """A 6-digit OTP from a CRYPTOGRAPHIC generator.
+
+    `random` is a Mersenne Twister: seeded from predictable state and fully
+    reconstructible from enough observed outputs, so an attacker who collects
+    a few codes could predict the next one. `secrets` draws from the OS CSPRNG.
+
+    `randbelow(1_000_000)` is uniform over the whole range (no modulo bias),
+    and the result is formatted — and stored, and compared — as a STRING so
+    that a leading zero survives: "001234" must never become 1234.
+    """
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def supersede_pending(purpose, target):
+    """Invalidate any earlier flow for the same person AND the same purpose.
+
+    Without this, pressing "send code" twice leaves TWO live codes, so an
+    older one that leaked still works. Scoped by purpose as well as target so
+    cancelling a password reset never cancels an unrelated claim flow.
+    """
+    return PendingAuth.objects.filter(purpose=purpose, target=target, verified=False).delete()[0]
 
 
 class PendingAuth(models.Model):
