@@ -20,6 +20,17 @@ SALT = "parents.session"
 SESSION_TTL_SECONDS = 60 * 60 * 6  # a school day; re-verify by OTP after that
 
 
+def guardian_visible_q():
+    """A guardian can follow a child only once the CHILD has activated their own
+    account (claimed it by OTP). The guardian never activates anything: their
+    phone number, as recorded by the teacher, is the only thing they prove.
+    Filter reused at request time, verify time and on every portal request, so
+    deactivating the student ends the guardian's access immediately too."""
+    from django.db.models import Q
+
+    return Q(student__is_active=True, student__is_verified=True)
+
+
 def issue_session(enrollment) -> str:
     return TimestampSigner(salt=SALT).sign(f"{enrollment.id}:{enrollment.parent_phone}")
 
@@ -69,6 +80,7 @@ class ParentSessionAuthentication(authentication.BaseAuthentication):
         enrollment_id, _, phone = raw.partition(":")
         enrollment = (
             Enrollment.objects.filter(pk=enrollment_id, is_active=True)
+            .filter(guardian_visible_q())
             .select_related("grade", "student", "environment").first()
         )
         # The phone is re-checked on every request: if the teacher corrected or
