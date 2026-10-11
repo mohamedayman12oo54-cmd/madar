@@ -1,10 +1,12 @@
+import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarCheck, BookOpenCheck, Wallet, Gauge, Star, Bell } from "lucide-react";
+import { CalendarCheck, BookOpenCheck, Wallet, Gauge, Star, Bell, QrCode } from "lucide-react";
 import { Banner } from "../auth/ui.jsx";
 import { studentApi } from "../lib/studentApi.js";
 import { ApiError } from "../lib/api.js";
-import { PageHeader, Empty } from "../dashboard/common.jsx";
+import { PageHeader, Empty, fmtMonth } from "../dashboard/common.jsx";
+import VideoCard from "./VideoCard.jsx";
 
 export const STATE_LABEL = { good: "جيد", needs_follow_up: "يحتاج متابعة", at_risk: "معرّض للخطر" };
 export const STATE_TONE = { good: "good", needs_follow_up: "warn", at_risk: "bad" };
@@ -26,6 +28,8 @@ export default function HomePage() {
       <PageHeader infoKey="student_home" title="الرئيسية" />
       <div className="stu-hello">مرحبًا {d.student.name} 👋</div>
       <div className="stu-sub">{d.environment.name} — {d.grade}{d.groups.length ? ` — ${d.groups.join("، ")}` : ""}</div>
+
+      {d.student.badge_code && <StudentBadge code={d.student.badge_code} name={d.student.name} />}
       {d.unread_notifications > 0 && (
         <Link to="/learn/notifications" className="dash-note" style={{ display: "block" }}><Bell size={15} /> لديك {d.unread_notifications} إشعار غير مقروء</Link>
       )}
@@ -34,7 +38,7 @@ export default function HomePage() {
           <div className="v">{m.attendance.present}</div><div className="stat-sub">حضور • {m.attendance.absent} غياب</div></div>
         <div className="dash-card"><div className="k"><BookOpenCheck size={14} /> التسميع هذا الشهر</div>
           <div className="v">{m.recitation.studied}</div><div className="stat-sub">ذاكر • {m.recitation.not_studied} لم يذاكر</div></div>
-        <div className="dash-card"><div className="k"><Wallet size={14} /> دفع {m.month}</div>
+        <div className="dash-card"><div className="k"><Wallet size={14} /> دفع {fmtMonth(m.month)}</div>
           <div className="v"><span className={"chip-s " + (m.payment === "paid" ? "good" : "bad")}>{m.payment === "paid" ? "مدفوع" : "غير مدفوع"}</span></div></div>
         <div className="dash-card"><div className="k"><Gauge size={14} /> حالتي</div>
           <div className="v">{m.state ? <span className={"chip-s " + STATE_TONE[m.state]}>{STATE_LABEL[m.state]}</span> : "—"}</div></div>
@@ -43,8 +47,42 @@ export default function HomePage() {
       </div>
       <div className="dash-section-head" style={{ marginBlockStart: 22 }}><h2>آخر الفيديوهات</h2><Link className="dash-linkish" to="/learn/videos">عرض الكل</Link></div>
       {d.latest_videos.length === 0 ? <Empty title="لا توجد فيديوهات بعد" text="ستظهر هنا الفيديوهات التي ينشرها معلمك لك." /> : (
-        <div className="list-rows">{d.latest_videos.map((v) => <Link key={v.id} to="/learn/videos" className="list-row dash-card-btn"><strong>{v.title}</strong></Link>)}</div>
+        <div className="list-rows">{d.latest_videos.map((v) => <VideoCard key={v.id} video={v} />)}</div>
       )}
     </>
+  );
+}
+
+/** The student's own badge: the QR the teacher scans, plus the readable code
+ *  as a fallback when a camera will not cooperate. It is rendered from the
+ *  value the API returns, so a code the teacher rotates appears here on the
+ *  next load rather than going stale. */
+function StudentBadge({ code, name }) {
+  const [svg, setSvg] = useState("");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    QRCode.toString(code, { type: "svg", margin: 1, width: 200, errorCorrectionLevel: "M" })
+      .then((out) => alive && setSvg(out))
+      .catch(() => alive && setSvg(""));
+    return () => { alive = false; };
+  }, [code]);
+
+  return (
+    <section className="stu-badge">
+      <button type="button" className="stu-badge-toggle" onClick={() => setOpen((v) => !v)}>
+        <QrCode size={16} /> {open ? "إخفاء رمزي" : "عرض رمزي للمعلّم"}
+      </button>
+      {open && (
+        <div className="stu-badge-body">
+          {svg
+            ? <div className="stu-badge-qr" aria-label={`رمز ${name}`} dangerouslySetInnerHTML={{ __html: svg }} />
+            : <p className="field-msg">تعذّر عرض الرمز.</p>}
+          <code className="badge-code">{code}</code>
+          <p className="field-msg">اعرض هذا الرمز للمعلّم لتسجيل الحضور أو التسميع أو الرسوم.</p>
+        </div>
+      )}
+    </section>
   );
 }

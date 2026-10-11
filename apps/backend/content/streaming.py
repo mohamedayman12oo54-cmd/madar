@@ -34,9 +34,15 @@ _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
 CHUNK = 64 * 1024
 
 
-def issue_ticket(item_id: int, viewer_id: int) -> str:
-    """A short-lived, signed permission to stream ONE item as ONE viewer."""
-    return TimestampSigner(salt=SIGNER_SALT).sign(f"{item_id}:{viewer_id}")
+def issue_ticket(item_id: int, viewer_id: int, height: int | None = None) -> str:
+    """A short-lived, signed permission to stream ONE item as ONE viewer.
+
+    `height` (e.g. 720) names one transcoded rendition; without it the ticket
+    is for the original file. The height is INSIDE the signed payload, so a
+    client cannot edit a 360p ticket into a 1080p one.
+    """
+    payload = f"{item_id}:{viewer_id}" if not height else f"{item_id}:{viewer_id}:{int(height)}"
+    return TimestampSigner(salt=SIGNER_SALT).sign(payload)
 
 
 def read_ticket(ticket: str, viewer_id: int) -> int:
@@ -51,12 +57,42 @@ def read_ticket(ticket: str, viewer_id: int) -> int:
     except (BadSignature, SignatureExpired):
         raise Http404
     try:
-        item_id, signed_viewer = (int(part) for part in raw.split(":"))
+        item_id, signed_viewer, *_ = (int(part) for part in raw.split(":"))
     except (ValueError, TypeError):
         raise Http404
-    if signed_viewer != viewer_id:
+    if viewer_id is not None and signed_viewer != viewer_id:
         raise Http404  # a shared/stolen link is useless to anyone else
     return item_id
+
+
+def resolve_ticket(ticket: str):
+    """`(item_id, viewer_id)` for a valid ticket, else Http404.
+
+    A `<video src>` cannot carry an Authorization header, so the ticket itself
+    is the credential for the stream endpoint. That is sound because the
+    ticket is signed (unforgeable), short-lived, and names BOTH the item and
+    the viewer — and the stream view still re-checks that viewer's
+    authorisation against the live data before sending a byte."""
+    ttl = getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300)
+    try:
+        raw = TimestampSigner(salt=SIGNER_SALT).unsign(ticket or "", max_age=ttl)
+        item_id, viewer_id = (int(part) for part in raw.split(":"))
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        raise Http404
+    return item_id, viewer_id
+
+
+def resolve_ticket_full(ticket: str):
+    """`(item_id, viewer_id, height_or_None)` for a valid ticket, else Http404."""
+    ttl = getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300)
+    try:
+        raw = TimestampSigner(salt=SIGNER_SALT).unsign(ticket or "", max_age=ttl)
+        parts = [int(part) for part in raw.split(":")]
+        if len(parts) not in (2, 3):
+            raise ValueError
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        raise Http404
+    return parts[0], parts[1], (parts[2] if len(parts) == 3 else None)
 
 
 def _file_iterator(path, start, length):
@@ -71,16 +107,17 @@ def _file_iterator(path, start, length):
             yield chunk
 
 
-def stream_file(item, request):
-    """Stream `item.video_file`, honouring HTTP Range so the player can seek."""
-    field = item.video_file
+def stream_file(item, request, field=None, content_type=None):
+    """Stream `item.video_file` (or a given rendition's file), honouring HTTP
+    Range so the player can seek."""
+    field = field if field is not None else item.video_file
     if not field:
         raise Http404
     path = field.path
     if not os.path.exists(path):
         raise Http404
     size = os.path.getsize(path)
-    content_type = item.content_type or "video/mp4"
+    content_type = content_type or item.content_type or "video/mp4"
 
     # Behind nginx: let the web server push the bytes. The internal location
     # must NOT be reachable from outside (`internal;` in the nginx config).

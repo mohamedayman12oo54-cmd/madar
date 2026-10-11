@@ -19,7 +19,7 @@ import {
 import { Btn, Banner, Field } from "../auth/ui.jsx";
 import { scannerApi, schedulingApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
-import { PageHeader, Empty } from "./common.jsx";
+import { PageHeader, Empty, fmtMonth } from "./common.jsx";
 
 const ATT = { present: "حاضر", absent: "غائب" };
 const REC = { studied: "ذاكر", not_studied: "لم يذاكر" };
@@ -175,9 +175,16 @@ export default function ScannerPage() {
             <dl className="scan-state">
               <div><dt>الحضور</dt><dd>{ATT[student.attendance] || "—"}</dd></div>
               <div><dt>التسميع</dt><dd>{REC[student.recitation] || "—"}</dd></div>
-              <div><dt>رسوم {student.month}</dt><dd>{student.payment_status === "paid" ? "مدفوعة" : "غير مدفوعة"}</dd></div>
+              <div><dt>رسوم {fmtMonth(student.month)}</dt><dd>{student.payment_status === "paid" ? "مدفوعة" : "غير مدفوعة"}</dd></div>
             </dl>
 
+            {student.guest && (
+              <Banner tone="info">
+                ضيف في هذه الجلسة (من مجموعة أخرى) — {student.guest.home_session
+                  ? `سيُسجَّل تلقائيًا في جلسة مجموعته: ${student.guest.home_session.group}`
+                  : "سيُسجَّل تلقائيًا في أول جلسة تُفتح لمجموعته"}.
+              </Banner>
+            )}
             {needSession && <Banner tone="warn">اختر جلسة مفتوحة لتسجيل الحضور أو التسميع.</Banner>}
 
             <div className="scan-actions">

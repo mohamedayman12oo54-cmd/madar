@@ -93,12 +93,32 @@ class OwnRecordsTests(Base):
         peer = self.get("attendance/", client=self.peer).json()
         self.assertEqual([x["status"] for x in peer["results"]], ["absent"])
 
-    def test_payments_show_status_only_never_amounts_and_unrecorded_is_unpaid(self):
-        MonthlyPayment.objects.create(environment=self.env_a, enrollment=self.e1, month=current_month(), status="paid", amount=Decimal("100"))
-        rows = self.get("payments/").json()["results"]
-        self.assertEqual(rows[0], {"month": current_month().strftime("%Y-%m"), "status": "paid"})
-        self.assertEqual(self.get("payments/", client=self.peer).json()["results"][0]["status"], "unpaid")
-        self.assertNotIn("amount", self.get("payments/").content.decode())
+    def test_a_paid_month_carries_a_receipt_and_unrecorded_is_unpaid(self):
+        """Product decision: a paid month gives the student a receipt they can
+        keep (name, grade, group, month, amount, time, reference)."""
+        MonthlyPayment.objects.create(environment=self.env_a, enrollment=self.e1, month=current_month(),
+                                      status="paid", amount=Decimal("100"), paid_at=timezone.now())
+        row = self.get("payments/").json()["results"][0]
+        self.assertEqual(row["status"], "paid")
+        receipt = row["receipt"]
+        self.assertEqual(receipt["amount"], "100.00")
+        self.assertEqual(receipt["month"], current_month().strftime("%Y-%m"))
+        self.assertEqual(receipt["grade"], self.e1.grade.name)
+        self.assertEqual(receipt["student_name"], self.e1.display_name)
+        self.assertTrue(receipt["reference"])
+        self.assertIsNotNone(receipt["paid_at"])
+
+    def test_an_unpaid_month_has_no_receipt(self):
+        row = self.get("payments/").json()["results"][0]
+        self.assertEqual(row["status"], "unpaid")
+        self.assertNotIn("receipt", row)
+
+    def test_a_peers_payment_is_never_visible(self):
+        MonthlyPayment.objects.create(environment=self.env_a, enrollment=self.e1, month=current_month(),
+                                      status="paid", amount=Decimal("100"), paid_at=timezone.now())
+        peer_rows = self.get("payments/", client=self.peer).json()["results"]
+        self.assertEqual(peer_rows[0]["status"], "unpaid")
+        self.assertNotIn("receipt", peer_rows[0])
 
     def test_only_published_rating_and_finalized_state_are_visible(self):
         m = current_month()
@@ -110,10 +130,33 @@ class OwnRecordsTests(Base):
         self.assertEqual(self.get("evaluation/").json()["results"][0]["rating"], 2)
         self.assertEqual(self.get("evaluation/", client=self.peer).json()["results"], [])
 
-    def test_private_teacher_notes_never_leak_anywhere(self):
-        PrivateNote.objects.create(environment=self.env_a, enrollment=self.e1, body="سرّي-جدًا-XYZ")
-        for path in ("overview/", "attendance/", "recitation/", "payments/", "evaluation/", "videos/", "notifications/", "quizzes/"):
-            self.assertNotIn("سرّي-جدًا-XYZ", self.get(path).content.decode(), path)
+    def test_the_teachers_notes_are_shown_in_the_students_evaluation(self):
+        """Product decision: a student sees the notes written about them, so
+        the monthly evaluation is explained rather than a bare label."""
+        PrivateNote.objects.create(environment=self.env_a, enrollment=self.e1, body="ملاحظة-للطالب-XYZ")
+        body = self.get("evaluation/").json()
+        self.assertEqual([n["body"] for n in body["notes"]], ["ملاحظة-للطالب-XYZ"])
+
+    def test_notes_appear_only_in_the_evaluation_section(self):
+        PrivateNote.objects.create(environment=self.env_a, enrollment=self.e1, body="ملاحظة-XYZ")
+        for path in ("overview/", "attendance/", "recitation/", "payments/", "videos/", "notifications/", "quizzes/"):
+            self.assertNotIn("ملاحظة-XYZ", self.get(path).content.decode(), path)
+
+    def test_a_student_never_sees_another_students_notes(self):
+        """The rule that did NOT change: notes stay scoped to one enrolment."""
+        PrivateNote.objects.create(environment=self.env_a, enrollment=self.e2, body="ملاحظة-زميل-XYZ")
+        self.assertNotIn("ملاحظة-زميل-XYZ", self.get("evaluation/").content.decode())
+
+    def test_a_draft_rating_is_still_withheld(self):
+        """Showing notes does not mean showing unfinished work."""
+        from datetime import date
+
+        from evaluation.models import MonthlyRating
+
+        MonthlyRating.objects.create(environment=self.env_a, enrollment=self.e1,
+                                     month=date.today().replace(day=1), value=3, published_at=None)
+        rows = self.get("evaluation/").json()["results"]
+        self.assertTrue(all(r["rating"] is None for r in rows), rows)
 
     def test_overview_summary(self):
         body = self.get("overview/").json()
@@ -346,3 +389,21 @@ class AssistantTests(Base):
 
     def test_a_teacher_cannot_use_the_student_assistant_endpoint(self):
         self.assertEqual(self.client_a.post(S + "assistant/", {"prompt": "x y"}, format="json", **self.with_env(self.env_a.id)).status_code, 403)
+
+
+class BadgeCodeVisibilityTests(Base):
+    """A student can show their own badge from their phone."""
+
+    def test_overview_exposes_the_students_own_badge_code(self):
+        body = self.get("overview/").json()
+        self.assertEqual(body["student"]["badge_code"], self.e1.qr_token)
+        self.assertEqual(len(body["student"]["badge_code"]), 6)
+
+    def test_the_code_follows_the_teachers_rotation(self):
+        """No second copy to drift: rotating on the teacher side shows here."""
+        new_code = self.e1.rotate_qr_token()
+        self.assertEqual(self.get("overview/").json()["student"]["badge_code"], new_code)
+
+    def test_a_student_never_sees_another_students_badge(self):
+        body = self.get("overview/").content.decode()
+        self.assertNotIn(self.e2.qr_token, body)

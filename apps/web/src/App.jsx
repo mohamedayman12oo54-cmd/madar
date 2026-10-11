@@ -19,11 +19,13 @@ import Terms from "./pages/Terms.jsx";
 import AuthEntry from "./auth/screens/AuthEntry.jsx";
 import { TeacherLogin, TeacherSignup, TeacherForgot, TeacherEnvSelect, TeacherWelcome } from "./auth/screens/TeacherAuth.jsx";
 import { StudentLogin, StudentClaim, StudentForgot, StudentEnvSelect } from "./auth/screens/StudentAuth.jsx";
+import { ParentLogin } from "./auth/screens/ParentAuth.jsx";
 import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
 import { AuthGallery, AuthStateScreen, LogoutConfirm, LoadingDemo } from "./auth/screens/AuthStates.jsx";
 
 import AppRoutes from "./dashboard/AppRoutes.jsx";
 import StudentRoutes from "./student/StudentRoutes.jsx";
+import ParentPortal from "./parent/ParentPortal.jsx";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -61,6 +63,7 @@ function AnimatedRoutes({ ready }) {
         <Route path="/auth/student/claim" element={<StudentClaim />} />
         <Route path="/auth/student/forgot" element={<StudentForgot />} />
         <Route path="/auth/student/environments" element={<StudentEnvSelect />} />
+        <Route path="/auth/parent" element={<ParentLogin />} />
         <Route path="/auth/team/login" element={<TeamLogin />} />
         <Route path="/auth/state/:key" element={<AuthStateScreen />} />
 
@@ -76,6 +79,8 @@ export default function App() {
   const isApp = location.pathname.startsWith("/app");
   // NOT startsWith("/learn"): keep the match exact so no marketing path can collide with it.
   const isLearn = location.pathname === "/learn" || location.pathname.startsWith("/learn/");
+
+  const isParent = location.pathname === "/parent";
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -101,6 +106,14 @@ export default function App() {
     return (
       <MotionConfig reducedMotion="user">
         <AppRoutes />
+      </MotionConfig>
+    );
+  }
+
+  if (isParent) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <ParentPortal />
       </MotionConfig>
     );
   }

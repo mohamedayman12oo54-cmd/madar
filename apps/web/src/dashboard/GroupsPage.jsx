@@ -4,7 +4,8 @@ import { Field, TextInput, Btn, Banner, Modal } from "../auth/ui.jsx";
 import { gradesApi, groupsApi } from "../lib/academicsApi.js";
 import { ApiError } from "../lib/api.js";
 import { schedulingApi } from "../lib/dashboardApi.js";
-import { scheduleSummary } from "../lib/dates.js";
+import { fmtClock, scheduleSummary } from "../lib/dates.js";
+import TimePicker from "../components/TimePicker.jsx";
 import { useGrades } from "./useGrades.js";
 import { Confirm, Empty, PageHeader, fmtMoney } from "./common.jsx";
 
@@ -163,7 +164,7 @@ function SchedulesModal({ group, onClose }) {
         <div className="list-rows" style={{ marginBlockEnd: 14 }}>
           {items.map((s) => (
             <div key={s.id} className="list-row">
-              <span><Clock size={14} /> {s.weekday_label} — <span className="ltr-cell">{String(s.start_time).slice(0, 5)}</span></span>
+              <span><Clock size={14} /> {s.weekday_label} — <span>{fmtClock(s.start_time)}</span></span>
               <button className="mini-btn danger" onClick={() => remove(s.id)}><Trash2 size={13} /> حذف</button>
             </div>
           ))}
@@ -175,7 +176,7 @@ function SchedulesModal({ group, onClose }) {
           <select className="inp" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
             {WEEKDAYS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <input className="inp" type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
+          <TimePicker value={time} onChange={setTime} required />
         </div>
         <Btn type="submit" loading={busy} loadingText="جارٍ الإضافة…">إضافة موعد</Btn>
       </form>

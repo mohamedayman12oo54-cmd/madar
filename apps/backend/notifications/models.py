@@ -42,6 +42,16 @@ class Notification(TenantOwnedModel):
     enrollment = models.ForeignKey(
         "academics.Enrollment", on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
     )
+    # Set for BROADCAST rows: the single message this delivery belongs to, so
+    # the teacher's log can collapse N deliveries into one entry and the
+    # student can open the full message.
+    broadcast = models.ForeignKey("notifications.Broadcast", on_delete=models.SET_NULL,
+                                  null=True, blank=True, related_name="deliveries")
+    # Set for NEW_VIDEO rows: the single published video this delivery belongs
+    # to, so the teacher's log shows ONE line per video instead of one per
+    # student (same idea as `broadcast`).
+    content_item = models.ForeignKey("content.ContentItem", on_delete=models.SET_NULL,
+                                     null=True, blank=True, related_name="notifications")
     type = models.CharField(max_length=30, choices=Type.choices)
     title = models.CharField(max_length=150)
     body = models.CharField(max_length=500, blank=True)
@@ -62,3 +72,28 @@ class Notification(TenantOwnedModel):
 
     def __str__(self):
         return f"{self.type} -> {self.recipient_id} [{self.delivery_status}]"
+
+
+class Broadcast(TenantOwnedModel):
+    """One teacher message, recorded ONCE.
+
+    The per-student notifications are the delivery; this is the message. The
+    teacher's log shows one row per broadcast (with who it went to) instead of
+    one row per recipient, which previously made a message to 40 students look
+    like 40 separate messages.
+    """
+
+    title = models.CharField(max_length=150)
+    body = models.TextField(max_length=500, blank=True)
+    grades = models.ManyToManyField("academics.Grade", blank=True, related_name="broadcasts")
+    groups = models.ManyToManyField("academics.Group", blank=True, related_name="broadcasts")
+    recipient_count = models.PositiveIntegerField(default=0)
+    sent_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} -> {self.recipient_count}"

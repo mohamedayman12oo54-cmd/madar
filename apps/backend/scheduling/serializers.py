@@ -124,3 +124,23 @@ class MarkSerializer(serializers.Serializer):
 class GenerateSerializer(serializers.Serializer):
     weeks = serializers.IntegerField(min_value=1, max_value=8, default=2)
     group_id = serializers.IntegerField(required=False)
+
+
+class BulkSessionSerializer(serializers.Serializer):
+    """Plan the same session for several groups at once.
+
+    A session still belongs to exactly ONE group (GROUP OWNS SESSIONS), so
+    "a session for a grade" means one session per group of that grade. Targets:
+      - `group_ids`            -> exactly those groups
+      - `grade_id` alone       -> every group of that grade
+      - `grade_id`+`group_ids` -> those groups, which must belong to the grade
+    """
+
+    scheduled_at = serializers.DateTimeField()
+    grade_id = serializers.IntegerField(required=False)
+    group_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, max_length=200)
+
+    def validate(self, attrs):
+        if not attrs.get("grade_id") and not attrs["group_ids"]:
+            raise serializers.ValidationError({"detail": "اختر صفًا أو مجموعة واحدة على الأقل."})
+        return attrs

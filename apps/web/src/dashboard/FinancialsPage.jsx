@@ -5,7 +5,7 @@ import { financialsApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
-import { Empty, MonthInput, PageHeader, currentMonthValue, fmtDateTime, fmtMoney, useDebounced } from "./common.jsx";
+import { Empty, MonthInput, PageHeader, currentMonthValue, fmtDateTime, fmtMonth, fmtMoney, useDebounced } from "./common.jsx";
 
 function HistoryModal({ row, onClose }) {
   const [items, setItems] = useState(null);
@@ -14,7 +14,7 @@ function HistoryModal({ row, onClose }) {
     <Modal size="md" title={`سجل مدفوعات ${row.name}`} text="الأشهر المسجّلة فقط. الشهر غير المسجل يُعدّ غير مدفوع." onClose={onClose}>
       {items === null ? <p className="field-msg">جاري التحميل...</p> : items.length === 0 ? <p className="field-msg">لا توجد أشهر مسجلة.</p> : (
         <div className="list-rows">{items.map((p) => (
-          <div key={p.id} className="list-row"><strong>{p.month}</strong>
+          <div key={p.id} className="list-row"><strong>{fmtMonth(p.month)}</strong>
             <span className={"chip-s " + (p.status === "paid" ? "good" : "bad")}>{p.status === "paid" ? "مدفوع" : "غير مدفوع"} — {fmtMoney(p.amount)}</span>
             {p.paid_at && <span className="stat-sub">{fmtDateTime(p.paid_at)}</span>}</div>))}</div>)}
     </Modal>

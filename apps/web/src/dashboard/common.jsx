@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleHelp } from "lucide-react";
 import { Btn, Modal } from "../auth/ui.jsx";
 import { PAGE_INFO } from "./pageInfo.js";
+import MonthPicker from "../components/MonthPicker.jsx";
 
 export function useDebounced(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -23,13 +24,12 @@ export function InfoModal({ infoKey, onClose }) {
   const info = PAGE_INFO[infoKey];
   if (!info) return null;
   return (
-    <Modal title={info.title} text={info.what} onClose={onClose}>
+    <Modal title={info.title} text={info.what} onClose={onClose} footer={<Btn onClick={onClose}>فهمت</Btn>}>
       <div className="info-body">
         <h4>ماذا يمكنك أن تفعل هنا؟</h4>
         <ul>{info.can.map((t) => <li key={t}>{t}</li>)}</ul>
         <h4>قواعد مهمة</h4>
         <ul>{info.rules.map((t) => <li key={t}>{t}</li>)}</ul>
-        <Btn onClick={onClose}>فهمت</Btn>
       </div>
     </Modal>
   );
@@ -70,12 +70,10 @@ export function MonthInput({ value, onChange }) {
   const d = new Date();
   const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   const max = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
-  return (
-    <input type="month" className="inp month-inp" value={value} max={max} onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="الشهر" />
-  );
+  return <MonthPicker value={value} max={max} onChange={(v) => v && onChange(v)} />;
 }
 
-export const fmtDateTime = (iso) => new Date(iso).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
+export { fmtDate, fmtTime, fmtDateTime, fmtMonth } from "../lib/dates.js";
 export const fmtMoney = (v) => `${Number(v).toLocaleString("ar-EG", { maximumFractionDigits: 2 })} ج.م`;
 
 export function errMessage(e, fallback) {

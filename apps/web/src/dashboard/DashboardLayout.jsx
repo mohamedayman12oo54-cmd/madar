@@ -6,6 +6,7 @@ import logo from "../assets/madar-logo.png";
 import { useSession } from "../state/session.jsx";
 import { useEnvironment } from "../state/environment.jsx";
 import { notificationsApi } from "../lib/dashboardApi.js";
+import { formatPhone } from "../lib/phone.js";
 import { dashboardNav } from "./nav.js";
 import "./dashboard.css";
 
@@ -62,7 +63,7 @@ function UserMenu() {
           >
             <div className="who">
               <div className="n">{user?.name}</div>
-              <div className="e">{user?.email || user?.phone}</div>
+              <div className="e"><bdi dir="ltr">{user?.email || (user?.phone ? formatPhone(user.phone) : "")}</bdi></div>
             </div>
             <button onClick={() => { setOpen(false); nav("/app/settings"); }}>
               <SettingsIcon size={16} /> الإعدادات

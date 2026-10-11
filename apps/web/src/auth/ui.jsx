@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Check, AlertCircle, Info, ArrowRight, ChevronLeft, X } from "lucide-react";
 import logo from "../assets/madar-logo.png";
-import { COUNTRIES, COUNTRY_BY_ISO, DEFAULT_ISO, cleanNational, parseInternational } from "../lib/phone.js";
+import { COUNTRIES, COUNTRY_BY_ISO, DEFAULT_ISO, cleanNational, dialLabel, parseInternational } from "../lib/phone.js";
 import "./auth.css";
 
 /* ---------------- layout: centered AuthLayout ---------------- */
@@ -128,7 +128,7 @@ export function PhoneInput({ value = "", onChange, error, defaultIso = DEFAULT_I
       <select className={"inp phone-sel" + (error ? " err" : "")} value={iso} disabled={disabled}
         aria-label="دولة رقم الهاتف"
         onChange={(e) => { setIso(e.target.value); emit(e.target.value, national); }}>
-        {COUNTRIES.map((c) => <option key={c.iso} value={c.iso}>{c.name} (+{c.dial})</option>)}
+        {COUNTRIES.map((c) => <option key={c.iso} value={c.iso}>{dialLabel(c)}</option>)}
       </select>
       <input id={id} className={"inp phone-num" + (error ? " err" : "")} type="tel" inputMode="numeric" autoComplete="tel-national"
         disabled={disabled} placeholder={country.example} value={national} maxLength={14}
@@ -313,6 +313,7 @@ export function Modal({ title, text, children, onClose, size = "sm", footer = nu
         onMouseDown={(e) => e.stopPropagation()}
         initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
+        <div className="modal-grab" aria-hidden="true" />
         <header className="modal-head">
           <div className="mt" id={titleId}>{title}</div>
           {text && <div className="mx">{text}</div>}

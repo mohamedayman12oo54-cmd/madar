@@ -87,3 +87,8 @@ export function formatPhone(value) {
   const parsed = parseInternational(value);
   return parsed ? `+${parsed.country.dial} ${parsed.national}` : value ? `+${digitsOnly(value)}` : "";
 }
+
+/** "مصر (+20)" for a country <option>. Inside Arabic text the browser's bidi
+ *  algorithm can move the "+" behind the digits ("20+"); an explicit LTR
+ *  isolate (U+2066 ... U+2069) around the code keeps it as typed, anywhere. */
+export const dialLabel = (c) => `${c.name} (\u2066+${c.dial}\u2069)`;

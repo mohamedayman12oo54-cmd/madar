@@ -80,14 +80,16 @@ h1,h2,h3,h4,p,a,label,li{overflow-wrap:break-word}
 .nactions{display:flex;align-items:center;gap:8px;padding-inline-end:4px}
 .burger{display:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--line-2);background:transparent;color:var(--navy);align-items:center;justify-content:center;flex:none}
 
-.mm{position:fixed;inset:0;z-index:300;background:var(--cream);padding:26px var(--pad) 40px;
+.mm{position:fixed;inset:0;z-index:300;background:var(--cream);padding:26px var(--pad) calc(40px + env(safe-area-inset-bottom));
+  overflow-y:auto;overscroll-behavior:contain;
   display:flex;flex-direction:column;gap:6px;transform:translateY(-100%);visibility:hidden;
   transition:transform .5s var(--e-io),visibility .5s}
 .mm.open{transform:none;visibility:visible}
 .mm .mm-top{display:flex;justify-content:space-between;align-items:center;margin-block-end:20px}
 .mm .mm-top img{height:32px;width:auto}
 .mm a{font-size:1.4rem;font-weight:600;color:var(--navy);padding-block:14px;border-block-end:1px solid var(--line)}
-.mm .btn{margin-block-start:18px;justify-content:center}
+.mm a.btn{margin-block-start:18px;justify-content:center;font-size:1.05rem;padding:15px 24px;border-block-end:0;min-height:52px}
+.mm a.btn-primary,.mm a.btn-primary:hover{color:var(--cream)} /* `.mm a` (navy) used to win and paint navy text on the navy button */
 
 /* ---------- hero (globe centred; message + action/proof flank it, balanced) ---------- */
 .hero{min-height:100vh;position:relative;display:flex;flex-direction:column;overflow:hidden;background:var(--cream)}
@@ -279,10 +281,15 @@ h1,h2,h3,h4,p,a,label,li{overflow-wrap:break-word}
    people will actually see, so it gets its own deliberate treatment rather
    than just a smaller copy of the desktop layout. */
 @media(max-width:680px){
-  .hero{min-height:0}
+  /* The nav is `position:fixed`, so on phones it sat ON TOP of the artwork
+     and hid the globe/wordmark. Reserve its height above the image instead:
+     bar first, picture fully visible underneath. The custom property keeps
+     the reservation and the bar's own offset in sync. */
+  :root{--nav-h:92px}
+  .hero{min-height:0;padding-block-start:var(--nav-h)}
   /* extra safeguard against the nav/wordmark clash above, independent of
      the image fade below — a solid-enough pill regardless of what's behind it */
-  .nav{background:rgba(246,243,237,.86)}
+  .nav{background:var(--cream)}
   .hero-visual{position:relative;inset:auto;width:100%;aspect-ratio:1672/941}
   .hero-bg{background-position:center center}
   /* the image's own baked-in "Madar" wordmark (top ~17-33% of the image)
@@ -339,3 +346,26 @@ h1,h2,h3,h4,p,a,label,li{overflow-wrap:break-word}
 @media(min-width:720px){
   .install-card{inset-inline:auto 20px;inset-block-end:20px;margin-inline:0;max-width:390px}
 }
+
+/* ---------- scrollbars ----------
+   The default bar is a heavy grey slab that fights the palette. This is a
+   slim, on-brand one that only darkens on hover. Firefox gets the standard
+   properties; WebKit/Blink get the pseudo-elements. Both degrade safely. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--navy) 26%, transparent) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--navy) 24%, transparent);
+  border-radius: 999px;
+  /* The border is transparent padding, so the thumb reads as a slim pill
+     rather than filling the whole gutter. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--navy) 46%, transparent); background-clip: content-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+/* Dark surfaces (video stage, player) need a lighter thumb to stay visible. */
+.scan-stage, .player { scrollbar-color: rgba(255,255,255,.3) transparent; }

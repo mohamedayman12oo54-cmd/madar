@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Users, UsersRound, GraduationCap, CalendarClock, Wallet, BellRing } from "lucide-react";
 import { Banner } from "../auth/ui.jsx";
 import { overviewApi } from "../lib/dashboardApi.js";
-import { PageHeader, Empty, fmtDateTime, fmtMoney, errMessage } from "./common.jsx";
+import { PageHeader, Empty, fmtDateTime, fmtMonth, fmtMoney, errMessage } from "./common.jsx";
 
 const STATUS = { planned: "مخططة", open: "مفتوحة", closed: "مغلقة" };
 
@@ -59,7 +59,7 @@ export default function OverviewPage() {
 
       <div className="dash-cards" style={{ marginBlockStart: 24 }}>
         <Link to="/app/financials" className="dash-card dash-card-btn">
-          <div className="k"><Wallet size={14} /> مدفوعات {payments.month}</div>
+          <div className="k"><Wallet size={14} /> مدفوعات {fmtMonth(payments.month)}</div>
           <div className="v">{fmtMoney(payments.collected_total)}</div>
           <div className="stat-sub">من {fmtMoney(payments.expected_total)} — المتبقي {fmtMoney(payments.outstanding_total)}</div>
           <div className="progress" aria-label={`${pct}% دفعوا`}><i style={{ width: `${pct}%` }} /></div>

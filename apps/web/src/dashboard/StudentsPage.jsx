@@ -99,7 +99,7 @@ function StudentFormModal({ grades, enrollment, onClose, onSaved }) {
         <Field label="اسم ولي الأمر (اختياري)" error={fe.parent_name}>
           <TextInput value={parentName} onChange={(e) => setParentName(e.target.value)} maxLength={150} />
         </Field>
-        <Field label={editing ? "هاتف ولي الأمر" : "هاتف ولي الأمر"} required={!editing} error={fe.parent_phone} hint="للتواصل فقط — لا ينشئ حسابًا لولي الأمر.">
+        <Field label={editing ? "هاتف ولي الأمر" : "هاتف ولي الأمر"} required={!editing} error={fe.parent_phone} hint="يدخل به ولي الأمر لمتابعة الطالب (برمز تحقق) بعد أن يفعّل الطالب حسابه — دون إنشاء حساب لولي الأمر.">
           <PhoneInput value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} error={fe.parent_phone} />
         </Field>
         <label className="check-item form-wide">

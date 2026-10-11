@@ -21,7 +21,7 @@ def notify_enrollment(enrollment, type_, title, body="", session=None):
     )
 
 
-def notify_many(enrollments, type_, title, body=""):
+def notify_many(enrollments, type_, title, body="", broadcast=None, content_item=None):
     """Fan out ONE event to many students (video / broadcast). Active
     enrollments only, de-duplicated by enrollment id."""
     seen, rows = set(), []
@@ -31,7 +31,7 @@ def notify_many(enrollments, type_, title, body=""):
         seen.add(e.id)
         rows.append(Notification(
             environment_id=e.environment_id, recipient_id=e.student_id, enrollment=e,
-            type=type_, title=title[:150], body=body[:500],
+            type=type_, title=title[:150], body=body[:500], broadcast=broadcast, content_item=content_item,
         ))
     return Notification.objects.bulk_create(rows)
 

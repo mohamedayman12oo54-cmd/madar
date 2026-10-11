@@ -89,6 +89,8 @@ class LocalStorageProvider(VideoProvider):
         return {"kind": "madar", "item_id": item.id}
 
     def delete(self, item):
+        from .transcode import delete_renditions
+        delete_renditions(item)
         if item.video_file:
             item.video_file.delete(save=False)
 

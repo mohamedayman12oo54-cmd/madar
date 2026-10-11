@@ -10,17 +10,22 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import generics, serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from django.http import Http404
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from academics.models import Enrollment
+from accounts.models import User
 from accounts.permissions import IsStudent, IsTeacher
 from accounts.throttles import UserRateThrottle
 from environments.tenancy import IsEnvironmentMember
 
 from .models import ContentItem, VideoProgress
-from .streaming import issue_ticket, read_ticket, stream_file
+import re
+
+from .streaming import issue_ticket, resolve_ticket_full, stream_file
+from .transcode import delete_renditions, schedule_renditions
 from .uploads import safe_display_name, validate_video_upload
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
@@ -82,6 +87,8 @@ class VideoUploadView(APIView):
             item.save()
         if old and old != item.video_file.name:
             item.video_file.storage.delete(old)
+        delete_renditions(item)               # copies of the OLD video must not outlive it
+        schedule_renditions(item.id)
         return Response({
             "id": item.id, "source": item.source,
             "original_filename": item.original_filename,
@@ -91,6 +98,7 @@ class VideoUploadView(APIView):
     def delete(self, request, pk):
         """Remove the uploaded blob; the item itself survives as a draft."""
         item = _owned_item(request, pk)
+        delete_renditions(item)
         if item.video_file:
             item.video_file.delete(save=False)
         item.video_file = None
@@ -100,6 +108,9 @@ class VideoUploadView(APIView):
         item.content_type = ""
         item.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+_QUALITY_RE = re.compile(r"^(\d{3,4})p?$")
 
 
 class PlaybackTicketView(APIView):
@@ -122,26 +133,57 @@ class PlaybackTicketView(APIView):
         elif request.user.role != "teacher":
             raise generics.Http404
 
+        # Optional `quality` ("720p" / 720): must name a rendition that really
+        # exists for THIS item, otherwise 400 — never a silent fallback.
+        height = None
+        raw = request.data.get("quality") if hasattr(request.data, "get") else None
+        if raw not in (None, "", "auto"):
+            m = _QUALITY_RE.match(str(raw))
+            if not m or not item.renditions.filter(height=int(m.group(1))).exists():
+                raise serializers.ValidationError({"quality": "جودة غير متاحة لهذا الفيديو."})
+            height = int(m.group(1))
+
         return Response({
-            "ticket": issue_ticket(item.id, request.user.id),
+            "ticket": issue_ticket(item.id, request.user.id, height),
             "expires_in": getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300),
+            "qualities": [{"label": r.label, "height": r.height} for r in item.renditions.all()],
         })
 
 
 class VideoStreamView(APIView):
-    """Stream the bytes for a valid ticket — after re-checking authorisation."""
-    permission_classes = [IsAuthenticated, IsEnvironmentMember]
+    """Stream the bytes for a valid ticket — after re-checking authorisation.
+
+    The signed ticket IS the credential here: a `<video>` element cannot send
+    an Authorization header, and making the player download the whole file
+    through fetch() just to add one defeats seeking, instant start and speed
+    control. The ticket is unforgeable, expires in minutes, names the viewer,
+    and every request still re-checks that viewer's live authorisation — so a
+    copied URL stops working the moment access is revoked or it expires.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
-        item_id = read_ticket(request.query_params.get("t"), request.user.id)
-        item = generics.get_object_or_404(
-            ContentItem.objects.filter(environment=request.environment), pk=item_id)
-        # Re-check, so revoking access takes effect before the ticket expires.
-        if request.user.role == "student":
-            if not _student_may_watch(item, _my_enrollment(request)):
-                raise generics.Http404
-        elif request.user.role != "teacher":
-            raise generics.Http404
+        item_id, viewer_id, height = resolve_ticket_full(request.query_params.get("t"))
+        item = generics.get_object_or_404(ContentItem.objects.all(), pk=item_id)
+        viewer = generics.get_object_or_404(User.objects.filter(is_active=True), pk=viewer_id)
+
+        if viewer.role == "student":
+            enrollment = Enrollment.objects.filter(
+                environment=item.environment, student=viewer, is_active=True).first()
+            if enrollment is None or not _student_may_watch(item, enrollment):
+                raise Http404
+        elif viewer.role == "teacher":
+            # Only the teacher who owns the environment may preview it.
+            if not item.environment.memberships.filter(user=viewer, role="owner").exists():
+                raise Http404
+        else:
+            raise Http404
+        if height:
+            rendition = item.renditions.filter(height=height).first()
+            if rendition is None:
+                raise Http404
+            return stream_file(item, request, field=rendition.video_file, content_type="video/mp4")
         return stream_file(item, request)
 
 

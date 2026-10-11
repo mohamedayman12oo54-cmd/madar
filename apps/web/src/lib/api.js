@@ -126,7 +126,7 @@ export function refreshAccessToken() {
  *   `tenant`: attach X-Madar-Environment (the currently active environment,
  *   if one is set) — for calls to tenant-scoped endpoints. Implies `auth`.
  */
-export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false, raw = false } = {}) {
+export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false, raw = false, authorization = null } = {}) {
   const doFetch = async () => {
     // `raw` sends a FormData body (file upload): the browser must set its own
     // multipart Content-Type WITH the boundary, so we must not set one.
@@ -135,6 +135,9 @@ export async function apiFetch(path, { method = "GET", body, auth = false, tenan
       const tokens = getTokens();
       if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;
     }
+    // A caller-supplied scheme (the guardian's `Parent <token>`) replaces the
+    // user JWT entirely and is never refreshed: it is not a user session.
+    if (authorization) headers.Authorization = authorization;
     if (tenant) {
       const envId = getActiveEnvironmentId();
       if (envId) headers["X-Madar-Environment"] = String(envId);
@@ -148,7 +151,7 @@ export async function apiFetch(path, { method = "GET", body, auth = false, tenan
 
   let res = await doFetch();
 
-  if (res.status === 401 && (auth || tenant)) {
+  if (res.status === 401 && (auth || tenant) && !authorization) {
     const newAccess = await refreshAccessToken();
     if (newAccess) res = await doFetch();
   }

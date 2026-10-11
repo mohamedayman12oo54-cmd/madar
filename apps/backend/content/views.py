@@ -64,7 +64,8 @@ class ContentPublishView(APIView):
             item.published_at = timezone.now()
             item.save(update_fields=["published_at"])
             recipients = notify_many(
-                list(item.audience()), Notification.Type.NEW_VIDEO, "فيديو جديد", f"تمت إضافة: {item.title}"[:500]
+                list(item.audience()), Notification.Type.NEW_VIDEO, "فيديو جديد", f"تمت إضافة: {item.title}"[:500],
+                content_item=item,
             )
         item = ContentItem.objects.prefetch_related(*_PREFETCH).get(pk=item.pk)
         return Response({**ContentItemSerializer(item).data, "notified": len(recipients)})

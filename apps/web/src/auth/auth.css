@@ -181,37 +181,53 @@
 .modal-md{max-width:clamp(440px,62vw,680px)}
 .modal-lg{max-width:clamp(440px,78vw,900px)}
 
-/* --- header: stays visible while the body scrolls --- */
+/* --- header: stays visible while the body scrolls ---
+   Logical padding on purpose: the close button sits on the inline-END edge,
+   which is the LEFT in RTL. (Physical `padding: … 54px … 26px` had the room
+   reserved on the wrong side, so long titles ran under the button.) */
 .modal-head{
   flex:0 0 auto;position:relative;
-  padding:22px 54px 14px 26px;
+  padding-block:20px 14px;padding-inline:26px 62px;
   border-block-end:1px solid var(--line);background:var(--panel)
 }
-.modal .mt{font-size:1.16rem;font-weight:700;color:var(--navy);line-height:1.5}
-.modal .mx{color:var(--muted);margin-block-start:6px;line-height:1.6;font-size:.88rem}
+.modal .mt{font-size:1.14rem;font-weight:700;color:var(--navy);line-height:1.5;overflow-wrap:anywhere}
+.modal .mx{color:var(--muted);margin-block-start:4px;line-height:1.7;font-size:.88rem;overflow-wrap:anywhere}
 .modal-x{
   position:absolute;inset-block-start:16px;inset-inline-end:16px;
-  width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
-  border:1px solid var(--line-2);background:transparent;color:var(--navy);cursor:pointer
+  width:36px;height:36px;border-radius:12px;display:grid;place-items:center;
+  border:1px solid var(--line-2);background:var(--panel);color:var(--navy);cursor:pointer;
+  transition:background .15s,border-color .15s
 }
-.modal-x:hover{background:var(--fill)}
+.modal-x:hover{background:var(--fill);border-color:var(--navy)}
+.modal-grab{display:none}
 
-/* --- body: the single scroll container --- */
+/* --- body: the single scroll container ---
+   Soft edge shadows appear only when there is more to scroll to. */
 .modal .ma{
   flex:1 1 auto;min-height:0;
   overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
-  padding:20px 26px;display:grid;gap:12px
+  padding:20px 26px;display:grid;gap:14px;align-content:start;
+  background:
+    linear-gradient(var(--panel) 30%,rgba(255,255,255,0)) top/100% 24px no-repeat local,
+    linear-gradient(rgba(255,255,255,0),var(--panel) 70%) bottom/100% 24px no-repeat local,
+    radial-gradient(farthest-side at 50% 0,rgba(20,24,38,.14),rgba(20,24,38,0)) top/100% 8px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%,rgba(20,24,38,.14),rgba(20,24,38,0)) bottom/100% 8px no-repeat scroll,
+    var(--panel)
 }
 .modal .ma > *{min-width:0}
+/* a confirmation has a title + text and no body: don't leave an empty gap */
+.modal .ma:empty{display:none}
 
-/* --- footer: action buttons always reachable --- */
+/* --- footer: action buttons always reachable ---
+   row-reverse in RTL puts the PRIMARY action on the right (the reading start)
+   with the cancel button next to it, which is where Arabic UIs expect it. */
 .modal-foot{
-  flex:0 0 auto;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;
+  flex:0 0 auto;display:flex;flex-direction:row-reverse;gap:10px;justify-content:flex-end;flex-wrap:wrap;
   padding:14px 26px calc(14px + env(safe-area-inset-bottom));
-  border-block-start:1px solid var(--line);background:var(--panel)
+  border-block-start:1px solid var(--line);background:var(--surface)
 }
-.modal-foot > *{flex:0 1 auto}
+.modal-foot > *{flex:0 1 auto;min-width:96px;justify-content:center}
 
 /* Multi-column form inside wide dialogs: fewer rows -> far shorter modal,
    which is what stops big forms running off the screen in the first place. */
@@ -220,20 +236,36 @@
 }
 .modal-md .dash-form > .form-wide,.modal-lg .dash-form > .form-wide{grid-column:1/-1}
 
+/* "What does this page do?" window */
+.info-body{display:grid;gap:6px}
+.info-body h4{display:flex;align-items:center;gap:8px;font-size:.92rem;font-weight:700;color:var(--navy);margin:10px 0 2px}
+.info-body h4::before{content:"";width:4px;height:16px;border-radius:4px;background:var(--navy);flex:none}
+.info-body ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.info-body li{position:relative;padding:10px 14px;padding-inline-start:36px;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface);font-size:.9rem;line-height:1.75;color:var(--ink)}
+.info-body li::before{content:"";position:absolute;inset-inline-start:14px;inset-block-start:1.05em;width:8px;height:8px;border-radius:50%;background:var(--navy);opacity:.55}
+
+/* Phones: every dialog is a bottom sheet — a small confirm hugs the bottom,
+   a long form takes up to 94% of the height. Never a full-screen takeover
+   for a two-line question. */
 @media(max-width:640px){
-  .modal-back{padding:0;align-items:stretch}
-  .modal{max-width:none;border-radius:0;max-height:100%}
-  .modal-head{padding:18px 50px 12px 18px}
+  .modal-back{padding:0;align-items:flex-end}
+  .modal{max-width:none;border-radius:24px 24px 0 0;max-height:94dvh;animation:modal-up .3s var(--e-out)}
+  .modal-grab{display:block;width:42px;height:4px;border-radius:4px;background:var(--line-2);margin:10px auto 0;flex:none}
+  .modal-head{padding-block:12px 12px;padding-inline:18px 58px}
+  .modal-x{inset-block-start:12px;inset-inline-end:12px}
   .modal .ma{padding:16px 18px}
-  .modal-foot{padding:12px 18px calc(12px + env(safe-area-inset-bottom))}
+  .modal-foot{padding:12px 18px calc(12px + env(safe-area-inset-bottom));flex-wrap:nowrap}
+  .modal-foot > *{flex:1 1 0;min-width:0}
   .modal-md .dash-form,.modal-lg .dash-form{grid-template-columns:1fr}
-  .modal-foot > *{flex:1 1 100%}
 }
+@keyframes modal-up{from{transform:translateY(36px);opacity:.7}to{transform:none;opacity:1}}
 /* Very short windows (laptop + open devtools): keep the body usable. */
 @media(max-height:560px){
-  .modal-head{padding-block:14px 10px}
+  .modal-head{padding-block:12px 10px}
   .modal .ma{padding-block:14px}
 }
+@media(prefers-reduced-motion:reduce){.modal{animation:none!important}}
 
 /* ---------- loaders / success ---------- */
 .orbit-loader{width:18px;height:18px;border-radius:50%;border:2px solid rgba(246,243,237,.4);border-top-color:var(--cream);animation:aspin .8s linear infinite}
@@ -275,3 +307,74 @@
 .phone-row{display:flex;gap:8px;align-items:stretch}
 .phone-row .phone-sel{flex:0 0 46%;max-width:190px;padding-inline:10px;text-overflow:ellipsis}
 .phone-row .phone-num{flex:1;min-width:0;text-align:left;letter-spacing:.04em}
+
+/* ===== FORM SYSTEM =====================================================
+   One set of tokens for every input, select, textarea and label in the app,
+   so pages stop drifting apart. Changing a value here changes it everywhere
+   instead of page-by-page. */
+:root{
+  --ctl-h: 46px;          /* every single-line control is exactly this tall */
+  --ctl-radius: 13px;
+  --ctl-pad-x: 14px;
+  --ctl-gap: 14px;        /* vertical rhythm between fields */
+  --ctl-border: 1px;
+}
+
+.inp,
+input[type="text"].inp, input[type="tel"].inp, input[type="email"].inp,
+input[type="password"].inp, input[type="number"].inp, input[type="search"].inp,
+input[type="date"].inp, input[type="time"].inp, input[type="datetime-local"].inp,
+select.inp, textarea.inp{
+  width:100%;min-width:0;box-sizing:border-box;
+  min-height:var(--ctl-h);
+  padding:0 var(--ctl-pad-x);
+  border:var(--ctl-border) solid var(--line-2);
+  border-radius:var(--ctl-radius);
+  background:var(--panel);color:var(--navy);
+  font:inherit;font-size:.93rem;line-height:1.5;
+  transition:border-color .15s ease, box-shadow .15s ease;
+  appearance:none;-webkit-appearance:none;
+}
+/* Multi-line controls need real vertical padding and room to breathe. */
+textarea.inp{
+  padding-block:12px;min-height:124px;resize:vertical;line-height:1.8;
+}
+select.inp{
+  padding-inline-end:38px;cursor:pointer;
+  /* chevron drawn inline so no icon asset is needed and RTL flips correctly */
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23313851' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-size:16px;
+  background-position:left var(--ctl-pad-x) center;
+}
+html[dir="rtl"] select.inp{background-position:left var(--ctl-pad-x) center}
+
+.inp:hover:not(:disabled){border-color:color-mix(in srgb,var(--navy) 32%,var(--line-2))}
+.inp:focus,.inp:focus-visible{
+  outline:none;border-color:var(--navy);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 14%,transparent);
+}
+.inp:disabled,.inp[readonly]{background:var(--fill);color:var(--soft);cursor:not-allowed}
+.inp::placeholder{color:color-mix(in srgb,var(--soft) 80%,transparent)}
+.inp[aria-invalid="true"],.field.has-error .inp{
+  border-color:var(--danger,#b3261e);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--danger,#b3261e) 12%,transparent);
+}
+
+/* Labels, hints and messages line up the same way on every form. */
+.field{display:grid;gap:7px;min-width:0}
+.field > label,.field-label{font-size:.85rem;font-weight:600;color:var(--navy);line-height:1.5}
+.field-msg{font-size:.78rem;color:var(--soft);margin:0;line-height:1.6}
+.dash-form{display:grid;gap:var(--ctl-gap);align-items:start}
+
+/* Date/time pickers: keep the native indicator inside the control box
+   instead of hanging off the edge (it was sitting outside in RTL). */
+.inp::-webkit-calendar-picker-indicator{
+  margin-inline-start:0;cursor:pointer;opacity:.55;
+}
+.inp::-webkit-calendar-picker-indicator:hover{opacity:1}
+
+@media(max-width:480px){
+  :root{--ctl-h:44px;--ctl-pad-x:12px}
+  /* iOS zooms the page when a focused control is under 16px. */
+  .inp,select.inp,textarea.inp{font-size:16px}
+}

@@ -8,7 +8,7 @@ import { ApiError } from "../lib/api.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
 import { CheckList, Confirm, Empty, PageHeader, toggleId, useDebounced } from "./common.jsx";
-import { UploadCloud, FileVideo } from "lucide-react";
+import { UploadCloud, FileVideo, AlertCircle } from "lucide-react";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 
@@ -24,6 +24,24 @@ function VideoModal({ item, onClose }) {
 }
 
 function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
+  // The file needs something to attach to, but making the teacher save first
+  // and come back is a pointless round trip. On the first file pick we create
+  // the content as a draft with whatever title has been typed, then keep
+  // editing it — so uploading and filling the form happen together.
+  const [draft, setDraft] = useState(item || null);
+
+  const ensureItem = async () => {
+    if (draft) return draft;
+    const created = await contentApi.create({
+      title: (title || "").trim() || "فيديو بلا عنوان",
+      description, quiz_source: quizSource,
+      video_provider: "none", video_ref: "",
+      grade_ids: [], group_ids: [], enrollment_ids: [],
+    });
+    setDraft(created);
+    return created;
+  };
+
   const onUploaded = onSaved;
   const formId = useId();
   const editing = !!item;
@@ -62,7 +80,7 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
       body.video_provider = provider; body.video_ref = id;
     }
     setFe({}); setSaving(true);
-    try { editing ? await contentApi.update(item.id, body) : await contentApi.create(body); onSaved(); }
+    try { draft ? await contentApi.update(draft.id, body) : await contentApi.create(body); onSaved(); }
     catch (e2) { if (e2 instanceof ApiError && e2.fields) setFe(e2.fields); else setErr(e2 instanceof ApiError ? e2.message : "تعذّر الحفظ."); }
     finally { setSaving(false); }
   };
@@ -76,25 +94,34 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
       </>}>
       <form id={formId} onSubmit={submit} className="dash-form" noValidate>
         {err && <div className="form-wide"><Banner tone="err">{err}</Banner></div>}
-        <Field label="العنوان" required error={fe.title}><TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus /></Field>
-        <Field className="form-wide" label="الوصف (اختياري)"><textarea className="inp" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-        <Field className="form-wide" label="ملخص / نص الدرس لتوليد الاختبارات (اختياري)" hint="يُستخدم فقط لتوليد اختبارات للطلاب بالذكاء الاصطناعي، ولا يظهر لهم. الفيديو نفسه لا يُقرأ، فأضف ملخص الدرس هنا (أو في الوصف) ليستطيع الطالب طلب اختبار.">
+        {/* 1 — what the lesson is */}
+        <div className="form-wide form-section">
+          <h4 className="form-section-title">بيانات المحتوى</h4>
+        </div>
+        <Field className="form-wide" label="العنوان" required error={fe.title}>
+          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus
+            placeholder="مثال: شرح الدرس الثالث — المتتابعات" /></Field>
+        <Field className="form-wide" label="الوصف (اختياري)" hint="سطر أو سطران يظهران للطالب تحت العنوان.">
+          <textarea className="inp" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+
+        {/* 2 — the file itself */}
+        <div className="form-wide form-section">
+          <h4 className="form-section-title">الفيديو</h4>
+        </div>
+        <div className="form-wide">
+          <VideoUploadField item={draft} ensureItem={ensureItem} onUploaded={onUploaded} />
+        </div>
+
+        {/* 3 — optional AI material */}
+        <Field className="form-wide" label="ملخص الدرس لتوليد الاختبارات (اختياري)"
+          hint="يُستخدم فقط لتوليد اختبارات بالذكاء الاصطناعي ولا يظهر للطالب. الفيديو نفسه لا يُقرأ.">
           <textarea className="inp" rows={4} maxLength={4000} value={quizSource} onChange={(e) => setQuizSource(e.target.value)} /></Field>
-        <Field label="الفيديو" hint="الفيديو يُرفع إلى مدار ويُشغَّل داخل المنصة. لا تُستخدم روابط خارجية.">
-          <select className="inp" value={provider} onChange={(e) => setProvider(e.target.value)}>
-            <option value="upload">رفع ملف فيديو</option>
-            <option value="none">بدون فيديو</option>
-          </select></Field>
-        {provider === "upload" && (
-          <Field className="form-wide" label="ملف الفيديو" error={fe.video}
-            hint={editing ? "اختر ملفًا لاستبدال الفيديو الحالي." : "احفظ المحتوى أولًا ثم ارفع الملف. الصيغ: MP4, M4V, WEBM, MOV."}>
-            {editing
-              ? <VideoUploadField item={item} onUploaded={onUploaded} />
-              : <p className="field-msg">سيظهر زر الرفع بعد حفظ المحتوى.</p>}
-          </Field>
-        )}
-        {provider !== "none" && provider !== "upload" && <Field label="رابط الفيديو" error={fe.video_ref} hint={editing ? "اتركه فارغًا للإبقاء على الفيديو الحالي." : "الصق الرابط كما هو، وسيحفظ مدار المعرّف فقط. الفيديو نفسه يبقى على المنصة."}>
-          <TextInput ltr value={ref} onChange={(e) => setRef(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" /></Field>}
+
+        {/* 4 — who receives it */}
+        <div className="form-wide form-section">
+          <h4 className="form-section-title">من يشاهد الفيديو</h4>
+          <p className="field-msg">اختر الصف ثم المجموعة. الفيديو بلا مستهدفين يبقى مسودة لا يراها أحد.</p>
+        </div>
         <Field className="form-wide" label="الصفوف المستهدفة" error={fe.grade_ids}><CheckList items={grades} selected={gradeIds} onToggle={(id) => setGradeIds((l) => toggleId(l, id))} /></Field>
         <Field className="form-wide" label="المجموعات المستهدفة" error={fe.group_ids}><CheckList items={groups} selected={groupIds} onToggle={(id) => setGroupIds((l) => toggleId(l, id))} /></Field>
         <Field className="form-wide" label="طلاب بعينهم (اختياري)" error={fe.enrollment_ids}>
@@ -147,9 +174,25 @@ export default function ContentPage() {
                 {total(it.targets) === 0 ? "بلا مستهدفين" : [
                   ...it.targets.grades.map((g) => `صف: ${g.name}`), ...it.targets.groups.map((g) => `مجموعة: ${g.name}`),
                   it.targets.students.length ? `${it.targets.students.length} طالب` : null].filter(Boolean).join(" • ")}</div></div>
+            {!it.published && (
+              /* A draft is invisible to students. Say exactly what is still
+                 missing — a small "مسودة" chip was not enough, and teachers
+                 were uploading then wondering why nothing reached anyone. */
+              <div className="draft-hint">
+                <AlertCircle size={14} />
+                <span>{!hasVideo(it)
+                  ? "لم يُرفع ملف فيديو بعد — افتح «تعديل» وارفع الملف."
+                  : total(it.targets) === 0
+                    ? "حدّد الصف أو المجموعة من «تعديل» ثم اضغط «نشر»."
+                    : "جاهز للنشر — اضغط «نشر» ليظهر للطلاب."}</span>
+              </div>
+            )}
             <div className="row-actions">
               {it.video && <button className="mini-btn" onClick={() => setView(it)}><Play size={13} /> معاينة</button>}
-              {!it.published && <button className="mini-btn" onClick={() => setPub(it)}><Send size={13} /> نشر</button>}
+              {!it.published && (
+                <button className={"mini-btn" + (hasVideo(it) && total(it.targets) > 0 ? " is-primary" : "")}
+                  onClick={() => setPub(it)}><Send size={13} /> نشر</button>
+              )}
               <button className="mini-btn" onClick={() => setForm(it)}><Pencil size={13} /> تعديل</button>
               <button className="mini-btn danger" onClick={() => setDel(it)}><Trash2 size={13} /></button>
             </div>
@@ -166,36 +209,49 @@ export default function ContentPage() {
 }
 
 const MB = 1024 * 1024;
+
+/** An item is playable only once a file (or legacy external reference) exists. */
+const hasVideo = (it) => it.source === "upload" || Boolean(it.video?.embed_url);
+
 const ACCEPT = "video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov";
 
 /** Uploads an actual video file to Madar, with real progress.
  *  Client-side checks are a courtesy only — the server re-validates the
  *  extension, the declared type AND the file's leading bytes. */
-function VideoUploadField({ item, onUploaded }) {
+function VideoUploadField({ item, ensureItem, onUploaded }) {
   const [pct, setPct] = useState(null);
+  const [dragging, setDragging] = useState(false);
   const [err, setErr] = useState(null);
   const [info, setInfo] = useState(
     item?.source === "upload"
       ? { original_filename: item.original_filename, file_size: item.file_size }
       : null);
 
-  const pick = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";               // allow re-picking the same file
-    if (!file) return;
+  const upload = async (file) => {
+    if (!file || pct !== null) return;
     setErr(null); setPct(0);
     try {
-      setInfo(await contentApi.uploadVideo(item.id, file, setPct));
+      // Creates the draft on the fly the first time, so the teacher never has
+      // to save-and-reopen just to attach a file.
+      const target = item || (ensureItem ? await ensureItem() : null);
+      if (!target) throw new Error("تعذّر تجهيز المحتوى للرفع.");
+      setInfo(await contentApi.uploadVideo(target.id, file, setPct));
       onUploaded?.();
     } catch (e2) {
-      setErr(e2?.data?.video?.[0] || e2?.message || "تعذّر رفع الملف.");
+      setErr(e2?.data?.video?.[0] || e2?.data?.detail || e2?.message || "تعذّر رفع الملف.");
     } finally {
       setPct(null);
     }
   };
 
+  const pick = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";               // allow re-picking the same file
+    upload(file);
+  };
+
   const drop = async () => {
-    if (!window.confirm("حذف ملف الفيديو من هذا المحتوى؟")) return;
+    if (!item || !window.confirm("حذف ملف الفيديو من هذا المحتوى؟")) return;
     try { await contentApi.removeVideo(item.id); setInfo(null); onUploaded?.(); }
     catch (e2) { setErr(e2?.message || "تعذّر الحذف."); }
   };
@@ -210,9 +266,19 @@ function VideoUploadField({ item, onUploaded }) {
           <button type="button" className="mini-btn" onClick={drop}>حذف</button>
         </div>
       )}
-      <label className="upload-drop">
-        <UploadCloud size={20} />
-        <span>{info ? "استبدال الملف" : "اختر ملف فيديو"}</span>
+      <label
+        className={"upload-drop" + (dragging ? " is-dragging" : "")}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const file = e.dataTransfer?.files?.[0];
+          if (file) upload(file);
+        }}>
+        <UploadCloud size={22} />
+        <span><strong>اسحب الفيديو هنا</strong> أو اضغط للاختيار</span>
+        <span className="stat-sub">MP4 · M4V · WEBM · MOV</span>
         <input type="file" accept={ACCEPT} onChange={pick} hidden disabled={pct !== null} />
       </label>
       {pct !== null && (

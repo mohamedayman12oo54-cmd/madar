@@ -123,6 +123,91 @@ bitrate, CDN delivery, provider webhooks, DRM, and storage lifecycle tiering.
 A capability that requires an account raises `ProviderUnavailable` instead of
 pretending to work.
 
+## Password recovery / OTP — 22 tests
+
+Audited against the full recovery checklist. Already correct and now pinned by
+tests: hashed codes (never plaintext), 5-attempt cap claimed by a single
+conditional UPDATE (so concurrent guesses cannot each get a free try), expiry
+checked in code rather than trusted to storage TTL, purpose pinning, single-use
+consumption via conditional delete (no replay), generic responses that do not
+enumerate accounts, separate throttles on request and verify, and full session
+revocation on reset (session_version bump + refresh-token blacklist).
+
+Two real gaps found and fixed:
+
+* **Codes came from `random.randint`** — a Mersenne Twister, reconstructible
+  from observed output, so an attacker collecting a few codes could predict the
+  next. Now `secrets.randbelow(1_000_000)`: OS CSPRNG, uniform, no modulo bias,
+  formatted and compared as a STRING so a leading zero survives.
+* **Requesting a new code left the old one live.** Each request created a fresh
+  pending row, so pressing "send again" produced two simultaneously valid
+  codes and a leaked older one still worked. `supersede_pending()` now
+  invalidates the previous unverified flow for the same target AND purpose
+  (scoped, so a reset never cancels an unrelated claim; and a flow whose code
+  is already verified is not wiped mid-way).
+
+Both fixes were verified by reintroducing the fault and watching the tests fail.
+
+## Changed guarantee — teacher notes are now student-visible
+
+Previously the documentation and this audit stated that teacher notes are
+teacher-only and never reach the student. **The product owner changed that
+decision**, so notes now appear inside the student's own evaluation.
+
+What changed: `studentarea` EvaluationView returns the notes for THIS
+enrolment, and the teacher-facing UI was relabelled from "ملاحظات خاصة" ("…لا
+يراها الطالب أبدًا") to "ملاحظات المعلّم" with "يراها الطالب ضمن تقييمه", so a
+teacher is never writing candidly under a promise that no longer holds.
+
+What did NOT change, and is still asserted by tests: notes are scoped to one
+enrolment (a student never sees a peer's), they appear only in the evaluation
+section, draft ratings are still withheld, and the guardian portal still does
+not include them.
+
+The System/Backend documentation must be updated to match; until then the code
+and the docs disagree on this point.
+
+## Broadcast targeting — real bug found and fixed
+
+Selecting a grade AND a group sent the message to everyone in the grade **OR**
+the group (`Q(grade) | Q(group)`), so a message aimed at one group reached the
+whole year. Targeting is now a narrowing filter: grade+group = that group,
+grade alone = the grade, group alone = that group. Verified by reintroducing
+the `|` and watching the tests fail.
+
+A broadcast is now also recorded ONCE (`Broadcast`), with the per-student rows
+linked to it: the teacher's log shows one entry per message with its audience
+and recipient list, and the student can open the full message. Cross-tenant
+reads of another teacher's broadcasts are refused (404), asserted by test.
+
+## CORS preflight broke resumable upload (fixed)
+
+The chunked PATCH carries a custom `Upload-Offset` header, which makes the
+browser send a preflight. `upload-offset` was not in `CORS_ALLOW_HEADERS`, so
+the browser blocked the request **before it reached Django** — nothing in the
+server log, and the user saw only a bare "unexpected error". `upload-offset`,
+`upload-length` and `tus-resumable` are now allowed, and the offset headers are
+added to `CORS_EXPOSE_HEADERS` so the client can read the server's
+authoritative offset in order to resume. Pinned by tests.
+
+## Playback URLs are now bearer credentials (deliberate, documented)
+
+To stream natively (instant start, seeking, speed control) the `<video>` src
+must authenticate itself — an element cannot send an Authorization header. The
+stream endpoint therefore accepts the signed ticket ALONE.
+
+What this costs: anyone holding a LIVE ticket URL can stream it. What still
+protects the content: the ticket is unforgeable (signed), names exactly one
+item, carries the viewer it was issued to, **expires in 120 seconds**, and the
+server re-checks that viewer's live authorisation (published, targeted, active
+enrolment, environment owner) on EVERY request — so revoking access or
+unpublishing kills an unexpired ticket immediately.
+
+The previous design re-checked the ticket against the requesting session, which
+was stricter, but it forced the player to download the entire file into a blob
+before playing anything. That is the trade-off, made explicitly rather than by
+accident, and asserted by test.
+
 ## Honest scope note
 
 Features that do not exist yet were not audited because there is nothing to

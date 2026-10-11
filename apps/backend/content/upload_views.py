@@ -34,6 +34,7 @@ from environments.tenancy import IsEnvironmentMember
 
 from .models import ContentItem, UploadSession
 from .providers import get_provider
+from .transcode import delete_renditions, schedule_renditions
 from .uploads import (ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, safe_display_name,
                       storage_path, validate_video_upload)
 from .video_views import VideoUploadRateThrottle
@@ -241,6 +242,8 @@ class UploadSessionView(APIView):
         UploadSession.objects.filter(pk=session.pk).update(status=UploadSession.Status.COMPLETED)
         if old and old != session.storage_path:
             item.video_file.storage.delete(old)
+        delete_renditions(item)               # copies of the OLD video must not outlive it
+        schedule_renditions(item.id)
 
         session.refresh_from_db()
         return self._headers(Response({
