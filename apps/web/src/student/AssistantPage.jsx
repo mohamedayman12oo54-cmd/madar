@@ -22,6 +22,7 @@ import { AI_TERMINAL } from "../lib/aiApi.js";
 import { pollUntilDone } from "../lib/poll.js";
 import { ApiError } from "../lib/api.js";
 import { PageHeader, Empty } from "../dashboard/common.jsx";
+import { fmtDateTime } from "../lib/dates.js";
 
 const STATUS_LABEL = {
   pending: "في الانتظار…",
@@ -32,7 +33,7 @@ const STATUS_LABEL = {
 const MAX_PROMPT = 2000;
 const SUGGESTIONS = ["اشرح لي مفهومًا لم أفهمه في الدرس", "ما الفرق بين مصطلحين تعلمتهما؟", "لخّص لي موضوعًا بإيجاز"];
 
-const fmt = (iso) => new Date(iso).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
+const fmt = fmtDateTime;
 const newKey = () => globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 /** The curated material this specific answer was built from. */
