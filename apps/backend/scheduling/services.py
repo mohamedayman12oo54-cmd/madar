@@ -5,11 +5,12 @@ import datetime as dt
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from notifications.services import notify_absent, notify_not_studied
 
-from .models import AttendanceRecord, RecitationRecord, Schedule, SessionInstance
+from .models import AttendanceRecord, GuestVisit, RecitationRecord, Schedule, SessionInstance
 
 MAX_GENERATE_WEEKS = 8
 
@@ -93,3 +94,128 @@ def generate_planned_sessions(env, weeks, group=None, today=None):
                     continue
                 created.append(SessionInstance.objects.create(environment=env, group=schedule.group, scheduled_at=moment))
     return created
+
+
+# ----------------------------------------------------------- guest visits ----
+GUEST_WINDOW = dt.timedelta(days=14)  # how far ahead an un-targeted visit may be carried
+
+
+def is_member(session, enrollment) -> bool:
+    return enrollment.groups.filter(pk=session.group_id).exists()
+
+
+def default_home_session(host, enrollment):
+    """The student's own next session (planned or open) after the visit."""
+    return (SessionInstance.objects
+            .filter(environment_id=host.environment_id, group__in=enrollment.groups.all(),
+                    status__in=[SessionInstance.Status.PLANNED, SessionInstance.Status.OPEN],
+                    scheduled_at__gt=host.scheduled_at)
+            .exclude(pk=host.pk).order_by("scheduled_at").first())
+
+
+def _validate_home(host, enrollment, home):
+    if home is None:
+        return
+    if home.environment_id != host.environment_id or not is_member(home, enrollment):
+        raise ValidationError("هذه ليست جلسة من مجموعات الطالب.")
+    if home.pk == host.pk:
+        raise ValidationError("اختر جلسة مجموعته هو، وليس جلسة الضيافة.")
+    if home.status == SessionInstance.Status.CLOSED:
+        raise ValidationError("جلسة مجموعته مغلقة؛ أعد فتحها وسجّل له هناك مباشرة.")
+
+
+def add_guest(host, enrollment, home_session=None):
+    """Register `enrollment` as a guest of `host` (an OPEN session)."""
+    if host.status != SessionInstance.Status.OPEN:
+        raise ValidationError("الجلسة غير مفتوحة. افتحها قبل إضافة ضيف.")
+    if enrollment.environment_id != host.environment_id:
+        raise ValidationError("الطالب لا ينتمي لهذه البيئة.")
+    if not enrollment.is_active:
+        raise ValidationError("الطالب غير نشط.")
+    if is_member(host, enrollment):
+        raise ValidationError("الطالب من مجموعة هذه الجلسة أصلًا.")
+    _validate_home(host, enrollment, home_session)
+    visit, _ = GuestVisit.objects.get_or_create(
+        session=host, enrollment=enrollment,
+        defaults={"environment_id": host.environment_id,
+                  "home_session": home_session or default_home_session(host, enrollment)})
+    if home_session is not None and visit.home_session_id != home_session.pk:
+        set_home_session(visit, home_session)
+    return visit
+
+
+def _editable(visit):
+    if visit.session.status != SessionInstance.Status.OPEN:
+        raise ValidationError("الجلسة غير مفتوحة. افتحها (أو أعد فتحها للتصحيح) قبل تسجيل أي بيانات.")
+    home = visit.home_session
+    if visit.applied_at and (home is None or home.status == SessionInstance.Status.CLOSED):
+        raise ValidationError("تم ترحيل هذا الحضور إلى جلسة مجموعته وأُغلقت؛ عدّله من هناك.")
+
+
+def set_home_session(visit, home):
+    _editable(visit)
+    _validate_home(visit.session, visit.enrollment, home)
+    visit.home_session = home
+    visit.applied_at = None
+    visit.save(update_fields=["home_session", "applied_at"])
+    _sync_if_home_open(visit)
+    return visit
+
+
+def mark_guest(host, enrollment, kind, status, home_session=None):
+    """kind: 'attendance' | 'recitation'. Creates the visit on first mark."""
+    model = AttendanceRecord if kind == "attendance" else RecitationRecord
+    if status not in model.Status.values:
+        raise ValidationError("الحالة غير صحيحة.")
+    visit = add_guest(host, enrollment, home_session)
+    _editable(visit)
+    setattr(visit, kind, status)
+    visit.save(update_fields=[kind])
+    _sync_if_home_open(visit)
+    return visit
+
+
+def remove_guest(visit):
+    _editable(visit)
+    if visit.applied_at:
+        raise ValidationError("تم ترحيل هذا الحضور بالفعل إلى جلسة مجموعته؛ لا يمكن إلغاؤه من هنا.")
+    visit.delete()
+
+
+def _carry(visit, home, overwrite):
+    """Write the visit's marks into `home` through the SAME services the
+    manual screens use, so absence / not-studied notifications behave alike."""
+    for kind, fn, model in (("attendance", mark_attendance, AttendanceRecord),
+                            ("recitation", mark_recitation, RecitationRecord)):
+        status = getattr(visit, kind)
+        if not status:
+            continue
+        if not overwrite and model.objects.filter(session=home, enrollment=visit.enrollment).exists():
+            continue  # never override what the teacher already marked there
+        fn(home, visit.enrollment, status)
+    visit.home_session = home
+    visit.applied_at = timezone.now()
+    visit.save(update_fields=["home_session", "applied_at"])
+
+
+def _sync_if_home_open(visit):
+    home = visit.home_session
+    if home is not None and home.status == SessionInstance.Status.OPEN:
+        _carry(visit, home, overwrite=True)
+
+
+def apply_guest_visits(session):
+    """Called when `session` opens: carry in every pending visit by one of its
+    members - either aimed at this very session, or un-aimed and recent."""
+    visits = (GuestVisit.objects
+              .filter(environment_id=session.environment_id, applied_at__isnull=True,
+                      enrollment__is_active=True, enrollment__groups=session.group_id)
+              .exclude(session=session)
+              .filter(Q(home_session=session) | Q(
+                  home_session__isnull=True,
+                  session__scheduled_at__lte=session.scheduled_at,
+                  session__scheduled_at__gte=session.scheduled_at - GUEST_WINDOW))
+              .exclude(attendance="", recitation="")
+              .select_related("enrollment", "session").order_by("session__scheduled_at", "id").distinct())
+    for visit in visits:
+        _carry(visit, session, overwrite=False)
