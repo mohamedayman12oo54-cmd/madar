@@ -96,3 +96,20 @@ test("schedule summary lists meeting days Saturday-first, de-duplicated", () => 
   );
   assert.equal(scheduleSummary([]), "");
 });
+
+test("fmtDateTime / fmtDate / fmtTime share one format and never print 'Invalid Date'", async () => {
+  const { fmtDate, fmtTime, fmtDateTime, fmtMonth, fmtClock } = await import("./dates.js");
+  const d = new Date(2026, 9, 12, 16, 5);
+  assert.equal(fmtDateTime(d), `${fmtDate(d)} • ${fmtTime(d)}`);
+  assert.match(fmtDate(d), /أكتوبر/);
+  for (const bad of [null, undefined, "", "not a date"]) {
+    assert.equal(fmtDateTime(bad), "—");
+    assert.equal(fmtDate(bad), "—");
+    assert.equal(fmtTime(bad), "—");
+  }
+  assert.match(fmtMonth("2026-10"), /أكتوبر/);
+  assert.equal(fmtMonth(""), "—");
+  assert.equal(fmtMonth("garbled"), "garbled");
+  assert.equal(fmtClock("16:05:00"), fmtTime(new Date(2000, 0, 1, 16, 5)));
+  assert.equal(fmtClock(null), "—");
+});
