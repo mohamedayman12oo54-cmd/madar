@@ -30,10 +30,10 @@ from accounts.throttles import AISubmitRateThrottle
 from ai.models import AIOperation
 from ai.views import AIOperationDetailView, AIOperationListSubmitView
 from config.months import current_month, month_bounds
-from content.models import ContentItem
+from content.models import ContentItem, VideoProgress
 from content.video import describe_video
 from environments.tenancy import IsEnvironmentMember
-from evaluation.models import MonthlyRating, StudentState
+from evaluation.models import MonthlyRating, PrivateNote, StudentState
 from financials.models import MonthlyPayment
 from notifications.models import Notification
 from scheduling.models import AttendanceRecord, RecitationRecord
@@ -57,12 +57,9 @@ class StudentView(APIView):
 
 
 def _visible_content(enrollment):
-    """Published items targeted at this student by grade, group or name."""
-    return (
-        ContentItem.objects.filter(environment_id=enrollment.environment_id, published_at__isnull=False)
-        .filter(Q(target_grades=enrollment.grade_id) | Q(target_groups__in=enrollment.groups.all()) | Q(target_enrollments=enrollment))
-        .distinct()
-    )
+    """Published items targeted at this student (grade AND group narrowing, or
+    picked by name). One rule, shared with the teacher-side audience."""
+    return ContentItem.visible_to(enrollment)
 
 
 def _video_row(item):
@@ -97,7 +94,11 @@ class OverviewView(StudentView):
         rating = MonthlyRating.objects.filter(enrollment=e, month=month, published_at__isnull=False).first()
         return Response({
             "environment": {"name": env.name},
-            "student": {"name": e.display_name},
+            # The student's own badge code, so they can show it to the teacher
+            # from their phone instead of carrying a printed card. It is the
+            # SAME value the teacher scans, so rotating it on the teacher side
+            # is reflected here on the next load — no separate copy to drift.
+            "student": {"name": e.display_name, "badge_code": e.qr_token},
             "grade": e.grade.name,
             "groups": [g.name for g in e.groups.all()],
             "this_month": {
@@ -143,17 +144,44 @@ class PaymentsView(StudentView):
     def get(self, request):
         e = my_enrollment(request)
         first = e.created_at.date().replace(day=1)
-        recorded = dict(MonthlyPayment.objects.filter(enrollment=e).values_list("month", "status"))
+        recorded = {p.month: p for p in MonthlyPayment.objects.filter(enrollment=e)}
+        groups = [g.name for g in e.groups.all()]
         rows, cur = [], current_month()
         while cur >= first and len(rows) < 12:
-            rows.append({"month": _month_str(cur), "status": recorded.get(cur, "unpaid")})
+            paid = recorded.get(cur)
+            row = {"month": _month_str(cur), "status": paid.status if paid else "unpaid"}
+            if paid and paid.status == MonthlyPayment.Status.PAID:
+                # A receipt the student keeps: who paid, for what, how much and
+                # exactly when — so a disputed month can be settled from the
+                # record instead of memory.
+                row["receipt"] = {
+                    "student_name": e.display_name,
+                    "grade": e.grade.name,
+                    "groups": groups,
+                    "teacher_environment": e.environment.name,
+                    "month": _month_str(cur),
+                    "amount": str(paid.amount),
+                    "paid_at": paid.paid_at,
+                    "reference": f"MDR-{e.id}-{cur.strftime('%Y%m')}",
+                    "note": paid.note,
+                }
+            rows.append(row)
             cur = (cur - dt.timedelta(days=1)).replace(day=1)
         return Response({"results": rows})
 
 
 class EvaluationView(StudentView):
-    """Finalized monthly State + PUBLISHED monthly Rating. A draft rating is
-    the teacher's work in progress and is never shown."""
+    """Finalized monthly State + PUBLISHED monthly Rating + the teacher's
+    written notes for this student.
+
+    Product decision: the notes the teacher writes about a student are shown
+    to that student, so the monthly evaluation is explained rather than being
+    a bare label. A DRAFT rating is still withheld — that is the teacher's
+    work in progress, not a decision yet.
+
+    Scope: only this enrolment's own notes are ever read (`my_enrollment`), so
+    nothing here can surface another student's record.
+    """
 
     def get(self, request):
         e = my_enrollment(request)
@@ -162,8 +190,15 @@ class EvaluationView(StudentView):
             by_month.setdefault(s.month, {})["state"] = s.state
         for r in MonthlyRating.objects.filter(enrollment=e, published_at__isnull=False):
             by_month.setdefault(r.month, {})["rating"] = r.value
-        rows = [{"month": _month_str(m), "state": v.get("state"), "rating": v.get("rating")} for m, v in sorted(by_month.items(), reverse=True)]
-        return Response({"results": rows})
+        rows = [{"month": _month_str(m), "state": v.get("state"), "rating": v.get("rating")}
+                for m, v in sorted(by_month.items(), reverse=True)]
+        notes = [{
+            "id": n.id,
+            "body": n.body,
+            "created_at": n.created_at,
+            "updated_at": n.updated_at,
+        } for n in PrivateNote.objects.filter(enrollment=e).order_by("-created_at")[:MAX_ROWS]]
+        return Response({"results": rows, "notes": notes})
 
 
 class VideoListView(StudentView):
@@ -173,14 +208,38 @@ class VideoListView(StudentView):
         return Response({"results": [_video_row(v) for v in items]})
 
 
+class VideoDetailView(StudentView):
+    """One video the student may watch (the page behind the card's «زيارة»).
+    Anything not targeted at them is a plain 404 - no existence oracle."""
+
+    def get(self, request, pk):
+        e = my_enrollment(request)
+        item = generics.get_object_or_404(_visible_content(e), pk=pk)
+        row = _video_row(item)
+        prog = VideoProgress.objects.filter(item=item, enrollment=e).first()
+        row["progress"] = {"position_seconds": prog.position_seconds, "percent": prog.percent,
+                           "completed": prog.completed} if prog else None
+        return Response(row)
+
+
 class NotificationListView(StudentView):
     def get(self, request):
         qs = Notification.objects.filter(environment=request.environment, recipient=request.user)
         if request.query_params.get("unread") in ("1", "true"):
             qs = qs.filter(read_at__isnull=True)
+        qs = qs.select_related("broadcast").prefetch_related("broadcast__grades", "broadcast__groups")
         return Response({"results": [
             {"id": n.id, "type": n.type, "type_label": n.get_type_display(), "title": n.title, "body": n.body,
-             "created_at": n.created_at, "read": n.read_at is not None}
+             "created_at": n.created_at, "read": n.read_at is not None,
+             # For a teacher message: who it was addressed to, so the student
+             # can open the full context instead of a truncated line.
+             "details": ({
+                 "title": n.broadcast.title,
+                 "body": n.broadcast.body,
+                 "grades": [g.name for g in n.broadcast.grades.all()],
+                 "groups": [g.name for g in n.broadcast.groups.all()],
+                 "sent_at": n.broadcast.created_at,
+             } if n.broadcast_id else None)}
             for n in qs.order_by("-created_at", "-id")[:MAX_ROWS]
         ]})
 
