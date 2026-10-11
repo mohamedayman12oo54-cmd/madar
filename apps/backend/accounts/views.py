@@ -268,6 +268,7 @@ PURPOSE_MAP = {
     "teacher-reset": PendingAuth.Purpose.TEACHER_RESET,
     "student-claim": PendingAuth.Purpose.STUDENT_CLAIM,
     "student-reset": PendingAuth.Purpose.STUDENT_RESET,
+    "parent-access": PendingAuth.Purpose.PARENT_ACCESS,
 }
 
 
