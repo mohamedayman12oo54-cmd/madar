@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import exceptions, serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import PendingAuth, normalize_phone  # noqa: F401  (re-exported for tests)
+from .models import PendingAuth, normalize_phone, supersede_pending  # noqa: F401  (re-exported for tests)
 from .phones import PhoneError, canonical_phone, try_canonical_phone
 from .validators import password_meets_rules
 
@@ -154,6 +154,7 @@ class TeacherSignupStartSerializer(NewPasswordMixin, serializers.Serializer):
         return digits
 
     def create(self, validated):
+        supersede_pending(PendingAuth.Purpose.TEACHER_SIGNUP, validated["phone"])
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.TEACHER_SIGNUP,
             payload={
@@ -205,6 +206,7 @@ class TeacherForgotRequestSerializer(serializers.Serializer):
         # Always create a real, working OTP flow (even with no matching
         # user) so the response never reveals whether the identifier is
         # registered — the reset step below is what actually gates access.
+        supersede_pending(PendingAuth.Purpose.TEACHER_RESET, ident)
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.TEACHER_RESET,
             payload={"user_id": user.id if user else None},
@@ -262,6 +264,7 @@ class StudentClaimRequestSerializer(serializers.Serializer):
         # with every teacher": the response must not reveal which it was.
         if not user or not student_can_access(user):
             raise serializers.ValidationError({"detail": CLAIM_NOT_FOUND, "code": "not_found"})
+        supersede_pending(PendingAuth.Purpose.STUDENT_CLAIM, validated["phone"])
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.STUDENT_CLAIM,
             payload={"user_id": user.id},
@@ -300,6 +303,7 @@ class StudentForgotRequestSerializer(serializers.Serializer):
         # Same anti-enumeration shape as the teacher flow: always return a
         # real, working OTP round-trip even when no matching active
         # student exists — the reset step is what actually gates access.
+        supersede_pending(PendingAuth.Purpose.STUDENT_RESET, validated["phone"])
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.STUDENT_RESET,
             payload={"user_id": user.id if user else None},
