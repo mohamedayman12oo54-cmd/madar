@@ -19,7 +19,7 @@ Domain rules (docs: domain-model, invariants INV-4/INV-8, lifecycles, functional
 """
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from academics.models import Enrollment, Group
@@ -72,9 +72,15 @@ class SessionInstance(TenantOwnedModel):
     def open(self):
         if self.status != self.Status.PLANNED:
             raise ValidationError("لا يمكن فتح الجلسة إلا وهي في حالة (مخطط لها).")
-        self.status = self.Status.OPEN
-        self.opened_at = timezone.now()
-        self.save(update_fields=["status", "opened_at"])
+        from .services import apply_guest_visits
+
+        with transaction.atomic():
+            self.status = self.Status.OPEN
+            self.opened_at = timezone.now()
+            self.save(update_fields=["status", "opened_at"])
+            # Students who visited ANOTHER group's session instead of this one
+            # are recorded here automatically (see GuestVisit).
+            apply_guest_visits(self)
 
     def close(self):
         if self.status != self.Status.OPEN:
@@ -149,3 +155,44 @@ class RecitationRecord(_SessionRecord):
         constraints = [
             models.UniqueConstraint(fields=["session", "enrollment"], name="unique_recitation_per_session_enrollment"),
         ]
+
+
+class GuestVisit(TenantOwnedModel):
+    """A student of ANOTHER group attended this session as a guest.
+
+    Why a separate record instead of an AttendanceRecord on the host session:
+      * INV-8 stays intact - attendance/recitation rows exist only for members
+        of the session's own group, so no report or total is polluted;
+      * nothing is counted twice - the student's real attendance lives in HIS
+        group's session, where it is written automatically when that session
+        opens (`apply_guest_visits`), exactly as if it had been taken there;
+      * until then the visit is just a note on the host session.
+
+    `home_session` is the student's own session this visit stands in for. Left
+    empty, it resolves to the first session of any of his groups that opens
+    after the visit (within two weeks). Payment is monthly and not tied to a
+    session, so it is recorded through the normal payment screens.
+    """
+
+    session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="guest_visits")
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="guest_visits")
+    home_session = models.ForeignKey(
+        SessionInstance, on_delete=models.SET_NULL, null=True, blank=True, related_name="carried_visits")
+    attendance = models.CharField(max_length=10, choices=AttendanceRecord.Status.choices, blank=True)
+    recitation = models.CharField(max_length=12, choices=RecitationRecord.Status.choices, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["session", "enrollment"], name="unique_guest_per_session_enrollment"),
+        ]
+
+    def clean(self):
+        if self.session_id and self.session.environment_id != self.environment_id:
+            raise ValidationError("الزيارة يجب أن تنتمي لنفس بيئة الجلسة.")
+        if self.enrollment_id and self.enrollment.environment_id != self.environment_id:
+            raise ValidationError("الزيارة يجب أن تنتمي لنفس بيئة تسجيل الطالب.")
+        if self.session_id and self.enrollment_id and self.enrollment.groups.filter(pk=self.session.group_id).exists():
+            raise ValidationError("الطالب من مجموعة هذه الجلسة أصلًا، وليس ضيفًا.")
