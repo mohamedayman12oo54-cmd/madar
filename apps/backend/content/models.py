@@ -11,12 +11,14 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 from academics.models import Enrollment, Grade, Group
 from environments.tenancy import TenantOwnedModel
 
-from .uploads import storage_path
+from .uploads import rendition_path, storage_path
 from .video import PROVIDER_CHOICES
 
 
@@ -77,21 +79,87 @@ class ContentItem(TenantOwnedModel):
         pass
 
     def audience(self):
-        """ACTIVE enrollments who may watch this item (grade OR group OR
-        individually targeted), de-duplicated."""
+        """ACTIVE enrollments who may watch this item.
+
+        Grade and group are a NARROWING, not a union (same rule as broadcasts):
+        grade + group = students in that grade AND that group; a grade alone =
+        the whole grade; a group alone = that group. Individually picked
+        students are explicit additions on top. Nobody else ever qualifies.
+        """
         from django.db.models import Q
 
-        return (
-            Enrollment.objects.filter(environment_id=self.environment_id, is_active=True)
-            .filter(Q(grade__in=self.target_grades.all()) | Q(groups__in=self.target_groups.all()) | Q(pk__in=self.target_enrollments.all()))
-            .distinct()
-        )
+        base = Enrollment.objects.filter(environment_id=self.environment_id, is_active=True)
+        grade_ids = list(self.target_grades.values_list("pk", flat=True))
+        group_ids = list(self.target_groups.values_list("pk", flat=True))
+        direct_ids = list(self.target_enrollments.values_list("pk", flat=True))
+
+        cond = Q(pk__in=direct_ids)
+        if grade_ids or group_ids:
+            narrowed = base
+            if grade_ids:
+                narrowed = narrowed.filter(grade_id__in=grade_ids)
+            if group_ids:
+                narrowed = narrowed.filter(groups__id__in=group_ids)
+            cond |= Q(pk__in=narrowed.values("pk"))
+        return base.filter(cond).distinct()
+
+    @classmethod
+    def visible_to(cls, enrollment):
+        """Published items this ONE student may watch - the student-side mirror
+        of `audience()`, so the two can never disagree."""
+        from django.db.models import Exists, OuterRef, Q
+
+        Grades, Groups, Direct = (cls.target_grades.through, cls.target_groups.through,
+                                  cls.target_enrollments.through)
+        has_grades = Exists(Grades.objects.filter(contentitem_id=OuterRef("pk")))
+        has_groups = Exists(Groups.objects.filter(contentitem_id=OuterRef("pk")))
+        grade_hit = Exists(Grades.objects.filter(contentitem_id=OuterRef("pk"), grade_id=enrollment.grade_id))
+        group_hit = Exists(Groups.objects.filter(
+            contentitem_id=OuterRef("pk"), group_id__in=[g.pk for g in enrollment.groups.all()]))
+        direct_hit = Exists(Direct.objects.filter(contentitem_id=OuterRef("pk"), enrollment_id=enrollment.pk))
+        narrowed = (Q(has_grades=True) | Q(has_groups=True)) & (Q(has_grades=False) | Q(grade_hit=True)) \
+            & (Q(has_groups=False) | Q(group_hit=True))
+        return (cls.objects
+                .filter(environment_id=enrollment.environment_id, published_at__isnull=False)
+                .annotate(has_grades=has_grades, has_groups=has_groups,
+                          grade_hit=grade_hit, group_hit=group_hit, direct_hit=direct_hit)
+                .filter(narrowed | Q(direct_hit=True)))
 
     def has_targets(self):
         return self.target_grades.exists() or self.target_groups.exists() or self.target_enrollments.exists()
 
     def __str__(self):
         return self.title
+
+
+class VideoRendition(models.Model):
+    """One server-generated, lower-resolution copy of an uploaded video.
+
+    Created by `content.transcode` (ffmpeg). Stored privately exactly like the
+    original: no public URL, random name, and reachable only through a signed
+    ticket that names the height. Tenancy comes from the parent item, whose
+    environment every access path re-checks.
+    """
+    item = models.ForeignKey(ContentItem, on_delete=models.CASCADE, related_name="renditions")
+    height = models.PositiveSmallIntegerField()
+    video_file = models.FileField(upload_to=rendition_path, max_length=255)
+    file_size = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["item", "height"], name="uniq_rendition_per_item_height")]
+        ordering = ["-height"]
+
+    @property
+    def label(self):
+        return f"{self.height}p"
+
+
+@receiver(post_delete, sender=VideoRendition)
+def _delete_rendition_blob(sender, instance, **kwargs):
+    """Rows vanish by CASCADE when an item is deleted; the blob must go too."""
+    if instance.video_file:
+        instance.video_file.storage.delete(instance.video_file.name)
 
 
 class VideoProgress(TenantOwnedModel):
