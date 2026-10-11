@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from academics.models import Enrollment
-from accounts.models import PendingAuth
+from accounts.models import PendingAuth, supersede_pending
 from accounts.serializers import clean_phone
 from accounts.throttles import OTPRequestRateThrottle, OTPTargetRateThrottle, SensitiveRateThrottle
 from accounts.views import consume_pending, otp_debug_field
@@ -24,11 +24,20 @@ from financials.models import MonthlyPayment
 from notifications.models import Notification
 from scheduling.models import AttendanceRecord, RecitationRecord
 
-from .auth import IsParent, SESSION_TTL_SECONDS, issue_session
+from .auth import IsParent, SESSION_TTL_SECONDS, guardian_visible_q, issue_session
 
 # One message for every failure mode, so the endpoint never reveals whether a
 # number belongs to a guardian, a teacher, or nobody.
-NOT_FOUND = "لا يوجد طالب مرتبط بهذا الرقم."
+NOT_FOUND = "لا يوجد طالب مفعّل مرتبط بهذا الرقم. تأكد من الرقم، أو من تفعيل الطالب لحسابه."
+
+
+def guardian_enrollments(phone):
+    """Every child this number may follow: recorded by a teacher as the
+    guardian phone, enrolment active, AND the child's own account activated.
+    One guardian can have several children (even with different teachers)."""
+    return (Enrollment.objects.filter(parent_phone=phone, is_active=True)
+            .filter(guardian_visible_q())
+            .select_related("grade", "student", "environment").order_by("-id"))
 
 
 class RequestSerializer(serializers.Serializer):
@@ -49,14 +58,15 @@ class GuardianRequestView(APIView):
         ser.is_valid(raise_exception=True)
         phone = ser.validated_data["phone"]
 
-        enrollment = (Enrollment.objects.filter(parent_phone=phone, is_active=True)
-                      .order_by("-id").first())
-        if enrollment is None:
+        enrollments = list(guardian_enrollments(phone))
+        if not enrollments:
             raise serializers.ValidationError({"detail": NOT_FOUND, "code": "not_found"})
 
+        # Only one live guardian code per number.
+        supersede_pending(PendingAuth.Purpose.PARENT_ACCESS, phone)
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.PARENT_ACCESS,
-            payload={"enrollment_id": enrollment.id},
+            payload={"enrollment_ids": [e.id for e in enrollments]},
             target=phone,
         )
         code = pending.set_new_otp()
@@ -91,18 +101,25 @@ class GuardianVerifyView(APIView):
         with transaction.atomic():
             if not consume_pending(pending):
                 raise serializers.ValidationError({"detail": "انتهت صلاحية الطلب.", "code": "expired"})
-            enrollment = Enrollment.objects.filter(
-                pk=pending.payload.get("enrollment_id"), is_active=True,
-                parent_phone=pending.target,
-            ).first()
-        if enrollment is None:
+            # Re-evaluated now (not trusted from the request step): a child may
+            # have been deactivated, or the number corrected, in between.
+            enrollments = list(guardian_enrollments(pending.target).filter(
+                pk__in=pending.payload.get("enrollment_ids") or []))
+        if not enrollments:
             raise serializers.ValidationError({"detail": NOT_FOUND, "code": "not_found"})
 
+        children = [{
+            "token": issue_session(e),
+            "student_name": e.display_name,
+            "grade": e.grade.name,
+            "teacher_environment": e.environment.name,
+        } for e in enrollments]
         return Response({
-            "token": issue_session(enrollment),
+            # `token` & friends = the first child, kept so a single-child
+            # guardian (the common case) needs no extra step.
+            **children[0],
             "expires_in": SESSION_TTL_SECONDS,
-            "student_name": enrollment.display_name,
-            "grade": enrollment.grade.name,
+            "children": children,
         })
 
 
