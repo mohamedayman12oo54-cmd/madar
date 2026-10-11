@@ -377,6 +377,18 @@ CORS_ALLOW_CREDENTIALS = False
 CORS_ALLOW_HEADERS = [
     *default_headers,
     "x-madar-environment",
+    # Resumable video upload. Without these the browser's preflight fails and
+    # the PATCH never reaches Django at all — which surfaces to the user as a
+    # bare "unexpected error" with nothing in the server log.
+    "upload-offset",
+    "upload-length",
+    "tus-resumable",
+]
+
+# The client must be able to READ the server's authoritative offset to resume.
+CORS_EXPOSE_HEADERS = [
+    "upload-offset",
+    "upload-length",
 ]
 
 
@@ -408,7 +420,11 @@ SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 # Request bodies are small JSON documents (Phase 5 file handling will set its
 # own, separate limits). An explicit cap keeps oversized JSON from being
 # buffered in memory.
-DATA_UPLOAD_MAX_MEMORY_SIZE = 1_000_000
+# The resumable uploader PATCHes chunks up to MAX_CHUNK_BYTES (16 MiB), and
+# Django raises RequestDataTooBig when `request.body` exceeds this limit — so
+# it MUST stay above the chunk size or every real upload fails while small
+# test chunks pass.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env_int("DATA_UPLOAD_MAX_MEMORY_SIZE", 20 * 1024 * 1024)
 
 # --- Private media (uploaded videos) ----------------------------------------
 # NOT under STATIC_ROOT and never mapped to a public URL: every byte is served
@@ -417,7 +433,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 1_000_000
 MEDIA_ROOT = os.environ.get("MEDIA_ROOT") or str(BASE_DIR / "private-media")
 MEDIA_URL = None  # deliberately unset: there is no public media URL
 
-VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 512 * 1024 * 1024)      # 512 MB
+VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 4 * 1024 * 1024 * 1024)  # 4 GB — uploads are chunked and resumable
 FILE_UPLOAD_MAX_MEMORY_SIZE = env_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 2 * 1024 * 1024)
 # Uploaded files must never be executable, and the private dir must not be
 # world-readable.
@@ -426,7 +442,12 @@ FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750
 
 # How long a signed playback URL stays valid. Short enough that a copied link
 # dies quickly; long enough to start a video on a slow connection.
-VIDEO_PLAYBACK_TTL_SECONDS = env_int("VIDEO_PLAYBACK_TTL_SECONDS", 300)
+# A playback URL must be self-authenticating (a <video> element cannot send an
+# Authorization header), which makes it a BEARER credential: anyone holding it
+# can stream until it expires. Hence a deliberately short life — long enough to
+# start playing, short enough that a copied link is near-useless. The player
+# re-requests a ticket when it needs one.
+VIDEO_PLAYBACK_TTL_SECONDS = env_int("VIDEO_PLAYBACK_TTL_SECONDS", 120)
 # Which content/providers.py implementation serves video. "local" = Madar
 # stores and streams it itself (one rendition, no transcoding). A hosted
 # provider would be added there, not by changing the domain.
@@ -434,6 +455,12 @@ VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
 # When behind nginx, set this to the internal location to hand streaming off
 # to the web server (X-Accel-Redirect) instead of piping bytes through Django.
 VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
+# Quality ladder (360p/480p/720p/1080p) generated with ffmpeg after an upload.
+# Needs `ffmpeg` + `ffprobe` on the server; if they are missing nothing breaks,
+# students just see "تلقائي" (the original). Off while running the test suite.
+VIDEO_TRANSCODE = env_bool("VIDEO_TRANSCODE", True) and "test" not in sys.argv
+VIDEO_TRANSCODE_SYNC = False          # True = encode inside the request (tests only)
+VIDEO_TRANSCODE_TIMEOUT = env_int("VIDEO_TRANSCODE_TIMEOUT", 3600)  # per rendition, seconds
 
 
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
