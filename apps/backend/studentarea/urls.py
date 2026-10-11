@@ -9,6 +9,7 @@ urlpatterns = [
     path("payments/", v.PaymentsView.as_view()),
     path("evaluation/", v.EvaluationView.as_view()),
     path("videos/", v.VideoListView.as_view()),
+    path("videos/<int:pk>/", v.VideoDetailView.as_view()),
     path("notifications/", v.NotificationListView.as_view()),
     path("notifications/read-all/", v.NotificationReadAllView.as_view()),
     path("notifications/<int:pk>/read/", v.NotificationReadView.as_view()),
