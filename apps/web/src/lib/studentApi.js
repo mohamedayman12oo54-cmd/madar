@@ -13,7 +13,8 @@ export const studentApi = {
   payments: () => api.get("/student/payments/", T),
   evaluation: () => api.get("/student/evaluation/", T),
   videos: () => api.get("/student/videos/", T),
-  playbackTicket: (id) => api.post(`/content/${id}/playback-ticket/`, {}, T),
+  video: (id) => api.get(`/student/videos/${id}/`, T),
+  playbackTicket: (id, quality) => api.post(`/content/${id}/playback-ticket/`, quality ? { quality } : {}, T),
   videoProgress: (id, position_seconds, duration_seconds) =>
     api.put(`/content/${id}/progress/`, { position_seconds, duration_seconds }, T),
   notifications: {
