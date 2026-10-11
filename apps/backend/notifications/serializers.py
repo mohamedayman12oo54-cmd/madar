@@ -9,11 +9,42 @@ class NotificationSerializer(serializers.ModelSerializer):
     student = serializers.SerializerMethodField()
     type_label = serializers.CharField(source="get_type_display", read_only=True)
 
+    broadcast = serializers.SerializerMethodField()
+
+    def get_broadcast(self, obj):
+        """Present on a collapsed broadcast row: who the ONE message went to,
+        so the log line reads "to Grade 1 / G1 - 12 students" instead of
+        naming a single arbitrary recipient."""
+        b = obj.broadcast
+        if b is None:
+            return None
+        return {
+            "id": b.id,
+            "recipient_count": b.recipient_count,
+            "grades": [g.name for g in b.grades.all()],
+            "groups": [g.name for g in b.groups.all()],
+        }
+
+    content_item = serializers.SerializerMethodField()
+
+    def get_content_item(self, obj):
+        """Present on a collapsed video row: ONE line saying which video went
+        to which grade / group - nothing else (no student, no count)."""
+        c = obj.content_item
+        if c is None:
+            return None
+        return {
+            "id": c.id,
+            "title": c.title,
+            "grades": [g.name for g in c.target_grades.all()],
+            "groups": [g.name for g in c.target_groups.all()],
+        }
+
     class Meta:
         model = Notification
         fields = [
             "id", "type", "type_label", "title", "body", "student", "session",
-            "delivery_status", "delivery_error", "delivered_at", "created_at",
+            "broadcast", "content_item", "delivery_status", "delivery_error", "delivered_at", "created_at",
         ]
 
     def get_student(self, obj):
