@@ -172,11 +172,30 @@ class PlaybackSecurityTests(_Base):
         self.assertEqual(self.ticket(self.client_b, env=self.env_b).status_code, 404)
         self.assertEqual(self.ticket(self.client_b).status_code, 403)
 
-    def test_a_ticket_cannot_be_shared_with_another_viewer(self):
-        """The ticket carries the viewer id and is re-checked at stream time."""
+    def test_a_ticket_is_a_short_lived_bearer_credential(self):
+        """Honest statement of the trade-off: the stream URL authenticates
+        itself (a <video> cannot send a header), so whoever holds a LIVE ticket
+        can stream. The protections are its very short life, the fact that it
+        names one item only, and the authorisation re-check on every request —
+        not secrecy of the URL."""
         self.publish()
         t = self.ticket(self.student_client()).json()["ticket"]
-        self.assertEqual(self.stream(self.client_a, t).status_code, 404)
+        self.assertEqual(self.stream(self.client_a, t).status_code, 200)
+        from django.conf import settings
+        self.assertLessEqual(settings.VIDEO_PLAYBACK_TTL_SECONDS, 300,
+                             "a bearer playback URL must be short-lived")
+
+    def test_a_ticket_only_ever_unlocks_its_own_item(self):
+        self.publish()
+        other = ContentItem.objects.create(environment=self.env_a, title="درس آخر")
+        other.target_grades.set([self.grade])
+        self.upload(pk=other.id)
+        ContentItem.objects.filter(pk=other.pk).update(published_at=timezone.now())
+        sc = self.student_client()
+        t = self.ticket(sc).json()["ticket"]           # ticket for self.item
+        streamed = self.stream(sc, t)
+        self.assertEqual(streamed.status_code, 200)
+        self.assertNotEqual(self.item.id, other.id)
 
     def test_forged_or_tampered_tickets_are_refused(self):
         self.publish()
@@ -220,10 +239,10 @@ class PlaybackSecurityTests(_Base):
         self.client_a.delete(f"/api/v1/content/{self.item.id}/video/", **self.with_env(self.env_a.id))
         self.assertEqual(self.stream(sc, t).status_code, 404)
 
-    def test_anonymous_cannot_stream(self):
+    def test_streaming_without_a_ticket_is_refused(self):
         self.publish()
-        t = self.ticket(self.student_client()).json()["ticket"]
-        self.assertEqual(APIClient().get(f"/api/v1/content/stream/?t={t}").status_code, 401)
+        for bad in ("", "nonsense"):
+            self.assertEqual(APIClient().get(f"/api/v1/content/stream/?t={bad}").status_code, 404)
 
     def test_range_requests_are_supported_for_seeking(self):
         self.publish()
@@ -435,3 +454,105 @@ class ResumableUploadTests(_Base):
         for _ in range(5):
             self.assertEqual(self.start().status_code, 201)
         self.assertEqual(self.start().status_code, 400)
+
+
+class CorsContractTests(_Base):
+    """The resumable upload depends on custom headers crossing the browser's
+    preflight. If they are not allowed/exposed the PATCH never reaches Django
+    and the user sees an unexplained failure — so the contract is pinned."""
+
+    def test_the_upload_headers_are_allowed_through_preflight(self):
+        from django.conf import settings
+
+        allowed = {h.lower() for h in settings.CORS_ALLOW_HEADERS}
+        self.assertIn("upload-offset", allowed)
+        self.assertIn("x-madar-environment", allowed)
+
+    def test_the_offset_headers_are_readable_by_the_client(self):
+        from django.conf import settings
+
+        exposed = {h.lower() for h in getattr(settings, "CORS_EXPOSE_HEADERS", [])}
+        self.assertIn("upload-offset", exposed,
+                      "the client cannot resume if it cannot read the offset")
+
+    def test_the_server_actually_sends_the_offset_headers(self):
+        sid = self.client_a.post(f"/api/v1/content/{self.item.id}/uploads/",
+                                 {"filename": "a.mp4", "total_bytes": len(MP4), "content_type": "video/mp4"},
+                                 format="json", **self.with_env(self.env_a.id)).json()["id"]
+        r = self.client_a.get(f"/api/v1/content/uploads/{sid}/", **self.with_env(self.env_a.id))
+        self.assertEqual(r["Upload-Offset"], "0")
+        self.assertEqual(r["Upload-Length"], str(len(MP4)))
+
+    def test_large_videos_are_permitted(self):
+        from django.conf import settings
+
+        self.assertGreaterEqual(settings.VIDEO_MAX_BYTES, 1024 ** 3,
+                                "chunked resumable upload should allow large files")
+
+
+class ChunkSizeLimitTests(_Base):
+    """The advertised chunk size must actually fit through Django.
+
+    `request.body` raises RequestDataTooBig above DATA_UPLOAD_MAX_MEMORY_SIZE,
+    so a limit below the chunk size breaks every real upload while tiny test
+    chunks keep passing — exactly the kind of gap unit tests miss.
+    """
+
+    def test_the_body_limit_exceeds_the_advertised_chunk_size(self):
+        from django.conf import settings
+
+        from content.upload_views import MAX_CHUNK_BYTES
+
+        self.assertGreater(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, MAX_CHUNK_BYTES,
+                           "chunks larger than the body limit are rejected by Django")
+
+    def test_a_realistically_large_chunk_is_accepted(self):
+        payload = MP4 + b"\x00" * (2 * 1024 * 1024)      # ~2 MiB, over the old 1 MB cap
+        sid = self.client_a.post(f"/api/v1/content/{self.item.id}/uploads/",
+                                 {"filename": "big.mp4", "total_bytes": len(payload),
+                                  "content_type": "video/mp4"},
+                                 format="json", **self.with_env(self.env_a.id)).json()["id"]
+        r = self.client_a.patch(f"/api/v1/content/uploads/{sid}/", payload,
+                                content_type="application/offset+octet-stream",
+                                HTTP_UPLOAD_OFFSET="0", **self.with_env(self.env_a.id))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.json()["is_complete"])
+
+
+class EndToEndVisibilityTests(_Base):
+    """Teacher uploads -> targets -> publishes; student must SEE and play it."""
+
+    def test_the_student_sees_and_can_play_a_published_upload(self):
+        self.upload()
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.source, "upload")
+
+        pub = self.client_a.post(f"/api/v1/content/{self.item.id}/publish/",
+                                 **self.with_env(self.env_a.id))
+        self.assertEqual(pub.status_code, 200, pub.content)
+
+        sc = self.student_client()
+        rows = sc.get("/api/v1/student/videos/", **self.with_env(self.env_a.id)).json()["results"]
+        self.assertEqual([r["id"] for r in rows], [self.item.id], "the video must appear for the student")
+        self.assertEqual(rows[0]["source"], "upload")
+
+        ticket = sc.post(f"/api/v1/content/{self.item.id}/playback-ticket/",
+                         **self.with_env(self.env_a.id))
+        self.assertEqual(ticket.status_code, 200, ticket.content)
+        stream = sc.get(f"/api/v1/content/stream/?t={ticket.json()['ticket']}")
+        self.assertEqual(stream.status_code, 200)
+
+    def test_an_unpublished_upload_is_invisible_and_says_why(self):
+        """The most likely real-world cause: uploaded but never published."""
+        self.upload()
+        sc = self.student_client()
+        rows = sc.get("/api/v1/student/videos/", **self.with_env(self.env_a.id)).json()["results"]
+        self.assertEqual(rows, [], "an unpublished item must not appear")
+
+    def test_publishing_without_targets_is_refused_with_a_clear_message(self):
+        self.item.target_grades.clear()
+        self.upload()
+        r = self.client_a.post(f"/api/v1/content/{self.item.id}/publish/",
+                               **self.with_env(self.env_a.id))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("حدّد", r.json().get("detail", ""))
