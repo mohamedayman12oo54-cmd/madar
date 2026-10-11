@@ -60,3 +60,10 @@ test("national box keeps only digits, drops the trunk zero and Arabic digits are
   assert.equal(cleanNational("010abc01234567"), "1001234567");
   assert.equal(formatPhone("201001234567"), "+20 1001234567");
 });
+
+test("dialLabel keeps '+20' intact inside Arabic text (LTR isolate around the code)", async () => {
+  const { dialLabel, COUNTRY_BY_ISO } = await import("./phone.js");
+  const label = dialLabel(COUNTRY_BY_ISO.EG);
+  assert.equal(label, "مصر (\u2066+20\u2069)");
+  assert.equal(label.replace(/[\u2066\u2069]/g, ""), "مصر (+20)"); // what a user reads / copies
+});
