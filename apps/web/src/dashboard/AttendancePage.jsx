@@ -5,6 +5,7 @@ import { Btn, Banner } from "../auth/ui.jsx";
 import { schedulingApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
 import { Empty, PageHeader, fmtDateTime } from "./common.jsx";
+import GuestSection from "./GuestSection.jsx";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 const LABEL = { present: "حاضر", absent: "غائب", studied: "ذاكر", not_studied: "لم يذاكر" };
@@ -66,6 +67,12 @@ export default function AttendancePage() {
     setIndex((i) => Math.min(i + 1, students.length)); // advance at once — never wait on the network
   };
   const skip = () => setIndex((i) => Math.min(i + 1, students.length)); // records nothing
+
+  // Guests change on the server (carried marks, targets): refresh only that block, keep the student's place.
+  const refreshGuests = useCallback(async () => {
+    try { const fresh = await schedulingApi.sessions.roster(sessionId); setRoster((r) => (r ? { ...r, guests: fresh.guests } : r)); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "تعذّر تحديث الضيوف."); }
+  }, [sessionId]);
 
   const retry = (s, kind) => save(s.enrollment_id, failed[`${kind}:${s.enrollment_id}`], kind);
 
@@ -150,12 +157,14 @@ export default function AttendancePage() {
               <div key={s.enrollment_id} className="list-row">
                 <button className="dash-linkish" onClick={() => setIndex(i)}>{s.name}</button>
                 <div className="row-actions">
+                  {s.carried_from && <span className="stat-sub">مُرحَّل من زيارة {s.carried_from.group} — {fmtDateTime(s.carried_from.scheduled_at)}</span>}
                   {["attendance", "recitation"].map((kind) => s[kind] && <span key={kind} className={"chip-s " + TONE[s[kind]]}>{LABEL[s[kind]]}</span>)}
                   {["attendance", "recitation"].map((kind) => failed[`${kind}:${s.enrollment_id}`] && (
                     <button key={kind} className="mini-btn danger" onClick={() => retry(s, kind)}>لم يُحفظ — إعادة المحاولة</button>))}
                 </div>
               </div>))}
           </div>
+          <GuestSection sessionId={sessionId} isOpen={isOpen} guests={roster.guests || []} onChanged={refreshGuests} />
         </>
       )}
     </>
