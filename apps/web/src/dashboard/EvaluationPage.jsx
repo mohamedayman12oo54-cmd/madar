@@ -34,7 +34,7 @@ function NotesModal({ row, onClose }) {
     catch (e2) { setErr(e2 instanceof ApiError ? (e2.fields ? Object.values(e2.fields).flat().join(" ") : e2.message) : "تعذّر الحفظ."); }
   };
   return (
-    <Modal size="md" title={`ملاحظات خاصة — ${row.name}`} text="هذه الملاحظات لك وحدك ولا يراها الطالب أبدًا." onClose={onClose}>
+    <Modal size="md" title={`ملاحظات المعلّم — ${row.name}`} text="يراها الطالب ضمن تقييمه. اكتبها كتوجيه موجَّه له." onClose={onClose}>
       {notes === null ? <p className="field-msg">جاري التحميل...</p> : (
         <div className="list-rows" style={{ marginBlockEnd: 12 }}>{notes.length === 0 && <p className="field-msg">لا توجد ملاحظات.</p>}
           {notes.map((n) => (<div key={n.id} className="list-row"><div><div>{n.body}</div><div className="stat-sub">{fmtDateTime(n.created_at)}</div></div>
@@ -125,7 +125,7 @@ export default function EvaluationPage() {
               <div key={r.enrollment_id} className="dash-card">
                 <div className="dash-section-head" style={{ marginBlockEnd: 8 }}>
                   <h2 style={{ fontSize: "1rem" }}>{r.name} <span className="stat-sub">{r.grade}</span></h2>
-                  <button className="mini-btn" onClick={() => setNotes(r)}><NotebookPen size={13} /> ملاحظات خاصة</button>
+                  <button className="mini-btn" onClick={() => setNotes(r)}><NotebookPen size={13} /> ملاحظات</button>
                 </div>
                 <div className="stat-sub">هذا الشهر: حضر {ev.present} • غاب {ev.absent} • ذاكر {ev.studied} • لم يذاكر {ev.not_studied}</div>
                 <div className="dash-filters" style={{ marginBlock: "12px 0" }}>
