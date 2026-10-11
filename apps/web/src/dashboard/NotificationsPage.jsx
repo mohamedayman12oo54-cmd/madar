@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Send } from "lucide-react";
-import { Field, TextInput, Btn, Banner } from "../auth/ui.jsx";
+import { Field, TextInput, Btn, Banner, Modal } from "../auth/ui.jsx";
 import { notificationsApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
 import { useGrades } from "./useGrades.js";
@@ -8,6 +8,10 @@ import { useGroups } from "./useGroups.js";
 import { CheckList, Empty, PageHeader, fmtDateTime, toggleId } from "./common.jsx";
 
 const DELIVERY = { pending: ["قيد الإرسال", "warn"], sent: ["تم", "good"], failed: ["فشل", "bad"] };
+const videoAudience = (c) => [
+  ...(c.grades || []).map((g) => `الصف ${g}`),
+  ...(c.groups || []).map((g) => `المجموعة ${g}`),
+].join(" • ") || "—";
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 
 function Compose({ onSent }) {
@@ -70,10 +74,11 @@ export default function NotificationsPage() {
     <>
       <PageHeader infoKey="notifications" title="الإشعارات">
         <div className="seg"><button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}>السجل</button>
+          <button className={tab === "sent" ? "active" : ""} onClick={() => setTab("sent")}>الرسائل المرسلة</button>
           <button className={tab === "send" ? "active" : ""} onClick={() => setTab("send")}>رسالة جماعية</button></div>
       </PageHeader>
       {notice && <Banner tone={notice.tone}>{notice.text}</Banner>}
-      {tab === "send" ? <Compose onSent={(n) => { setTab("log"); setNotice({ tone: "info", text: `أُرسلت الرسالة إلى ${n} طالب.` }); load(); }} /> : (
+      {tab === "sent" ? <SentMessages /> : tab === "send" ? <Compose onSent={(n) => { setTab("log"); setNotice({ tone: "info", text: `أُرسلت الرسالة إلى ${n} طالب.` }); load(); }} /> : (
         <>
           {summary && <div className="dash-cards">
             <div className="dash-card"><div className="k">قيد الإرسال</div><div className="v">{summary.pending}</div></div>
@@ -92,10 +97,67 @@ export default function NotificationsPage() {
           {status === "ready" && listOf(data).length === 0 && <Empty title="لا توجد إشعارات" text="ستظهر هنا إشعارات الغياب وعدم المذاكرة والفيديوهات والتقييمات والرسائل الجماعية." />}
           <div className="list-rows">{listOf(data).map((n) => (
             <div key={n.id} className="list-row">
-              <div><strong>{n.type_label}</strong> — {n.student.name || "—"}<div className="stat-sub">{n.title}{n.body ? ` — ${n.body}` : ""} • {fmtDateTime(n.created_at)}</div></div>
+              {n.content_item ? (
+                <div><strong>{n.type_label}</strong> — تم إرسال الفيديو «{n.content_item.title}» إلى {videoAudience(n.content_item)}
+                  <div className="stat-sub">{fmtDateTime(n.created_at)}</div></div>
+              ) : (
+                <div><strong>{n.type_label}</strong> — {n.student.name || "—"}<div className="stat-sub">{n.title}{n.body ? ` — ${n.body}` : ""} • {fmtDateTime(n.created_at)}</div></div>
+              )}
               <span className={"chip-s " + DELIVERY[n.delivery_status][1]}>{DELIVERY[n.delivery_status][0]}</span></div>))}</div>
           {(data.previous || data.next) && <div className="dash-pager"><button disabled={!data.previous} onClick={() => setPage((p) => p - 1)}>السابق</button><span>صفحة {page}</span><button disabled={!data.next} onClick={() => setPage((p) => p + 1)}>التالي</button></div>}
         </>)}
+    </>
+  );
+}
+
+/** Sent broadcasts: ONE row per message (not one per recipient), each
+ *  opening the full text and the exact list of who received it. */
+function SentMessages() {
+  const [rows, setRows] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  useEffect(() => { notificationsApi.broadcasts().then((d) => setRows(d.results || [])).catch(() => setRows([])); }, []);
+  useEffect(() => {
+    if (!open) { setDetail(null); return; }
+    notificationsApi.broadcastDetail(open.id).then(setDetail).catch(() => setDetail(null));
+  }, [open]);
+
+  const audience = (b) => [...(b.grades || []), ...(b.groups || [])].join("، ") || "—";
+
+  if (rows === null) return <p className="field-msg">جارٍ التحميل…</p>;
+  if (!rows.length) return <Empty title="لا توجد رسائل مرسلة" text="الرسائل الجماعية التي ترسلها تظهر هنا." />;
+
+  return (
+    <>
+      <div className="list-rows">
+        {rows.map((b) => (
+          <div key={b.id} className="list-row msg-row">
+            <div className="msg-main">
+              <strong>{b.title}</strong>
+              <div className="stat-sub">{audience(b)} · {b.recipient_count} طالب · {fmtDateTime(b.created_at)}</div>
+            </div>
+            <button className="mini-btn" onClick={() => setOpen(b)}>التفاصيل</button>
+          </div>
+        ))}
+      </div>
+
+      {open && (
+        <Modal size="md" title={open.title}
+          text={`${audience(open)} · ${open.recipient_count} طالب`}
+          onClose={() => setOpen(null)}
+          footer={<Btn variant="ghost" onClick={() => setOpen(null)}>إغلاق</Btn>}>
+          <p className="msg-body">{open.body || "—"}</p>
+          <h4 className="msg-sub">المستلمون</h4>
+          {detail === null
+            ? <p className="field-msg">جارٍ التحميل…</p>
+            : <ul className="msg-recipients">
+                {detail.recipients.map((r) => (
+                  <li key={r.enrollment_id}>{r.name}<span className="stat-sub">{r.delivery_status}</span></li>
+                ))}
+              </ul>}
+        </Modal>
+      )}
     </>
   );
 }
