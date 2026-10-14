@@ -139,6 +139,7 @@ function SchedulesModal({ group, onClose }) {
   const [status, setStatus] = useState("loading");
   const [weekday, setWeekday] = useState(5);
   const [time, setTime] = useState("18:00");
+  const [endTime, setEndTime] = useState("19:00");
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -149,8 +150,10 @@ function SchedulesModal({ group, onClose }) {
 
   const add = async (e) => {
     e.preventDefault();
-    setErr(null); setBusy(true);
-    try { await schedulingApi.schedules.create({ group_id: group.id, weekday, start_time: time }); await load(); }
+    setErr(null);
+    if (endTime <= time) { setErr("وقت الانتهاء يجب أن يكون بعد وقت البداية في نفس اليوم."); return; }
+    setBusy(true);
+    try { await schedulingApi.schedules.create({ group_id: group.id, weekday, start_time: time, end_time: endTime }); await load(); }
     catch (e2) { setErr(e2 instanceof ApiError ? (e2.fields ? Object.values(e2.fields).flat().join(" ") : e2.message) : "تعذّر إضافة الموعد."); }
     finally { setBusy(false); }
   };
@@ -164,7 +167,7 @@ function SchedulesModal({ group, onClose }) {
         <div className="list-rows" style={{ marginBlockEnd: 14 }}>
           {items.map((s) => (
             <div key={s.id} className="list-row">
-              <span><Clock size={14} /> {s.weekday_label} — <span>{fmtClock(s.start_time)}</span></span>
+              <span><Clock size={14} /> {s.weekday_label} — <span>{fmtClock(s.start_time)}{s.end_time ? ` – ${fmtClock(s.end_time)}` : ""}</span></span>
               <button className="mini-btn danger" onClick={() => remove(s.id)}><Trash2 size={13} /> حذف</button>
             </div>
           ))}
@@ -177,7 +180,9 @@ function SchedulesModal({ group, onClose }) {
             {WEEKDAYS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <TimePicker value={time} onChange={setTime} required />
+          <TimePicker value={endTime} onChange={setEndTime} required />
         </div>
+        <p className="stat-sub">من الساعة الأولى إلى الثانية. تُغلق الجلسة تلقائيًا عند الانتهاء ويُسجَّل غائبًا من لم يُسجَّل حضوره.</p>
         <Btn type="submit" loading={busy} loadingText="جارٍ الإضافة…">إضافة موعد</Btn>
       </form>
     </Modal>
