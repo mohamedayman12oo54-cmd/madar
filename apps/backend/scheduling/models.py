@@ -9,14 +9,19 @@ Domain rules (docs: domain-model, invariants INV-4/INV-8, lifecycles, functional
 - Schedule = the recurring EXPECTED slot of a Group (e.g. Monday 18:00). It
   never prevents recording an off-schedule session.
 - Attendance is binary Present/Absent per (session, enrollment). Records are
-  created ONLY when the teacher marks a student — never pre-filled — so an
-  "Absent" always means the teacher said so (Absent fires a notification).
+  created when the teacher marks a student, with ONE exception: when a session
+  CLOSES (the teacher closes it, or its end time passes) every active member
+  nobody marked is recorded Absent with `auto_marked=True`, and the usual
+  absence notification fires. A teacher who reopens the session and marks the
+  student overrides it (`auto_marked` goes back to False).
 - Recitation: Studied / Not-Studied persist; "Skip" records nothing.
 - A student may belong to several groups of their grade (INV-4), so the
   roster of a session is `group.member_enrollments` (active only).
 - Records can only be written while the session is OPEN (docs: lifecycles);
   corrections go through reopen -> edit -> close.
 """
+from datetime import timedelta
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models, transaction
@@ -35,6 +40,9 @@ class Schedule(TenantOwnedModel):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="schedules")
     weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS, validators=[MaxValueValidator(6)])
     start_time = models.TimeField()
+    # When the lesson ends (same day). Sessions generated from this slot get
+    # `ends_at` from it and close themselves at that time. Empty = no auto-close.
+    end_time = models.TimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -56,6 +64,10 @@ class SessionInstance(TenantOwnedModel):
 
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name="sessions")
     scheduled_at = models.DateTimeField()
+    # End of the lesson. While OPEN, the session closes itself at this moment
+    # (see auto_close_at) and records Absent for every unmarked member.
+    # Empty = it only closes when the teacher closes it.
+    ends_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PLANNED)
     opened_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
@@ -65,9 +77,29 @@ class SessionInstance(TenantOwnedModel):
     class Meta:
         ordering = ["-scheduled_at"]
 
+    # A session opened late (or reopened to fix a record) must not close again
+    # the instant it opens just because its end time already passed.
+    FIRST_OPEN_GRACE = timedelta(minutes=15)
+    REOPEN_WINDOW = timedelta(hours=2)
+
     def clean(self):
         if self.group_id and self.environment_id and self.group.environment_id != self.environment_id:
             raise ValidationError("الجلسة يجب أن تنتمي لنفس بيئة المجموعة.")
+        if self.ends_at and self.scheduled_at and self.ends_at <= self.scheduled_at:
+            raise ValidationError("وقت الانتهاء يجب أن يكون بعد وقت البداية.")
+
+    @property
+    def auto_close_at(self):
+        """When this OPEN session closes by itself (None = never)."""
+        if self.status != self.Status.OPEN or not self.ends_at:
+            return None
+        opened = self.opened_at or self.ends_at
+        grace = self.REOPEN_WINDOW if self.reopened_count else self.FIRST_OPEN_GRACE
+        return max(self.ends_at, opened + grace)
+
+    def is_overdue(self, now=None):
+        due = self.auto_close_at
+        return due is not None and due <= (now or timezone.now())
 
     def open(self):
         if self.status != self.Status.PLANNED:
@@ -82,12 +114,23 @@ class SessionInstance(TenantOwnedModel):
             # are recorded here automatically (see GuestVisit).
             apply_guest_visits(self)
 
-    def close(self):
-        if self.status != self.Status.OPEN:
-            raise ValidationError("لا يمكن إغلاق الجلسة إلا وهي مفتوحة.")
-        self.status = self.Status.CLOSED
-        self.closed_at = timezone.now()
-        self.save(update_fields=["status", "closed_at"])
+    def close(self, auto=False):
+        """Close the session and record Absent for every active member nobody
+        marked. Returns the enrollments auto-marked. `auto=True` (end time /
+        cron) silently does nothing if someone else already closed it."""
+        from .services import mark_unmarked_absent
+
+        with transaction.atomic():
+            locked = SessionInstance.objects.select_for_update().get(pk=self.pk)
+            if locked.status != self.Status.OPEN:
+                self.status = locked.status
+                if auto:
+                    return []
+                raise ValidationError("لا يمكن إغلاق الجلسة إلا وهي مفتوحة.")
+            self.status = self.Status.CLOSED
+            self.closed_at = timezone.now()
+            self.save(update_fields=["status", "closed_at"])
+            return mark_unmarked_absent(self)
 
     def reopen(self):
         """Reopens THIS SAME SessionInstance — never creates a new one.
@@ -133,6 +176,9 @@ class AttendanceRecord(_SessionRecord):
     session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="attendance_records")
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="attendance_records")
     status = models.CharField(max_length=10, choices=Status.choices)
+    # True = recorded by the system when the session closed (nobody marked
+    # this student). Cleared as soon as the teacher marks the student.
+    auto_marked = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["enrollment__student_name"]
