@@ -1,5 +1,5 @@
 // Guardian (ولي الأمر) portal. A guardian has NO account: they prove they control
-// the phone the teacher recorded (OTP), and receive a read-only, short-lived
+// the phone the teacher recorded plus the child's student code, and receive a read-only, short-lived
 // session bound to one child. It is kept in sessionStorage — it dies with the
 // tab — and sent as `Authorization: Parent <token>`, never as a user JWT.
 import { api } from "./api.js";
@@ -37,13 +37,10 @@ export function clearParentSession() {
   try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
 }
 
-const FLOW = "parent-access"; // accounts.views.PURPOSE_MAP
 const withParent = (token) => ({ authorization: `Parent ${token}` });
 
 export const parentApi = {
-  request: (phone) => api.post("/parent/request/", { phone }),
-  otpVerify: (pending_id, code) => api.post(`/auth/otp/${FLOW}/verify/`, { pending_id, code }),
-  otpResend: (pending_id) => api.post(`/auth/otp/${FLOW}/resend/`, { pending_id }),
-  verify: (pending_id) => api.post("/parent/verify/", { pending_id }),
+  // Phone the teacher recorded for the guardian + the child's student code.
+  login: (phone, student_code) => api.post("/parent/login/", { phone, student_code }),
   overview: (token) => api.get("/parent/overview/", withParent(token)),
 };
