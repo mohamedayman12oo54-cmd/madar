@@ -79,7 +79,7 @@
 .stu-badge{margin-block-start:12px}
 .stu-badge-toggle{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;
   font-size:.84rem;font-weight:700;color:var(--navy);background:var(--fill);
-  border:1px solid var(--line-2);border-radius:12px;padding:9px 14px}
+  border:1px solid var(--line-2);border-radius:12px;padding:9px 14px; margin-bottom: 8px;}
 .stu-badge-toggle:hover{background:var(--panel)}
 .stu-badge-body{margin-block-start:10px;display:grid;justify-items:center;gap:8px;text-align:center;
   background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px}
