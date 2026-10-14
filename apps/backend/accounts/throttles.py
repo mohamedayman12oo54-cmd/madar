@@ -65,7 +65,7 @@ class TargetRateThrottle(SimpleRateThrottle):
     Requests without a usable identifier are not counted here (the IP
     throttles and serializer validation still apply)."""
 
-    target_fields = ("identifier", "phone")
+    target_fields = ("identifier", "phone", "email")
 
     def get_cache_key(self, request, view):
         data = request.data
@@ -142,3 +142,34 @@ class ScanRateThrottle(UserRateThrottle):
     grinding tokens or replaying writes, not to slow a teacher down."""
 
     scope = "scan"
+
+
+# ---- guardian code login ---------------------------------------------------
+class GuardianLoginRateThrottle(IPRateThrottle):
+    scope = "guardian-login"
+
+
+class GuardianPhoneRateThrottle(TargetRateThrottle):
+    """Caps guesses of the student code for ONE guardian phone number."""
+
+    scope = "guardian-phone"
+    target_fields = ("phone",)
+
+
+class GuardianCodeRateThrottle(SimpleRateThrottle):
+    """Caps guesses of the guardian phone for ONE student code. Keyed on the
+    normalised code (case/space/dash-insensitive, like the login itself) so
+    \"ba5-n64\" and \"BA5N64\" share a bucket."""
+
+    scope = "guardian-code"
+
+    def get_cache_key(self, request, view):
+        data = request.data
+        raw = data.get("student_code") if isinstance(data, dict) else None
+        if not isinstance(raw, str):
+            return None
+        code = "".join(ch for ch in raw.upper() if ch.isalnum())
+        if not code:
+            return None
+        digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:32]
+        return self.cache_format % {"scope": self.scope, "ident": digest}
