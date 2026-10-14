@@ -15,9 +15,12 @@ from rest_framework.views import APIView
 
 from academics.models import Enrollment
 from accounts.models import PendingAuth, supersede_pending
-from accounts.serializers import clean_phone
-from accounts.throttles import OTPRequestRateThrottle, OTPTargetRateThrottle, SensitiveRateThrottle
-from accounts.views import consume_pending, otp_debug_field
+from accounts.serializers import clean_phone, normalize_student_code
+from accounts.throttles import (
+    GuardianCodeRateThrottle, GuardianLoginRateThrottle, GuardianPhoneRateThrottle,
+    OTPRequestRateThrottle, OTPTargetRateThrottle, SensitiveRateThrottle,
+)
+from accounts.views import consume_pending, otp_debug_field, send_pending_code
 from config.months import current_month
 from evaluation.models import MonthlyRating, StudentState
 from financials.models import MonthlyPayment
@@ -28,6 +31,7 @@ from .auth import IsParent, SESSION_TTL_SECONDS, guardian_visible_q, issue_sessi
 
 # One message for every failure mode, so the endpoint never reveals whether a
 # number belongs to a guardian, a teacher, or nobody.
+CODE_LOGIN_FAILED = "تعذّر الدخول. تأكد من رقم هاتفك المسجّل لدى المدرّس ومن كود الطالب، وأن ابنك فعّل حسابه."
 NOT_FOUND = "لا يوجد طالب مفعّل مرتبط بهذا الرقم. تأكد من الرقم، أو من تفعيل الطالب لحسابه."
 
 
@@ -71,11 +75,65 @@ class GuardianRequestView(APIView):
         )
         code = pending.set_new_otp()
         pending.save()
+        send_pending_code(pending, code, strict=False)
         return Response(
             {"pending_id": pending.id, "target": pending.target,
              "message": "تم إرسال رمز التحقق إلى رقمك.", **otp_debug_field(code)},
             status=status.HTTP_200_OK,
         )
+
+
+def session_response(enrollments):
+    children = [{
+        "token": issue_session(e),
+        "student_name": e.display_name,
+        "grade": e.grade.name,
+        "teacher_environment": e.environment.name,
+    } for e in enrollments]
+    return {
+        # `token` & friends = the first child, kept so a single-child
+        # guardian (the common case) needs no extra step.
+        **children[0],
+        "expires_in": SESSION_TTL_SECONDS,
+        "children": children,
+    }
+
+
+class CodeLoginSerializer(serializers.Serializer):
+    phone = serializers.CharField()
+    student_code = serializers.CharField(max_length=32)
+
+    def validate_phone(self, value):
+        return clean_phone(value)
+
+    def validate_student_code(self, value):
+        code = normalize_student_code(value)
+        if not code:
+            raise serializers.ValidationError("أدخل كود الطالب.")
+        return code
+
+
+class GuardianCodeLoginView(APIView):
+    """Sign in with the guardian phone the teacher recorded AND the student
+    code of that child — no OTP.
+
+    Two things the guardian must know, and both must belong to the SAME
+    enrolment. The session is bound to that one child. Every failure (unknown
+    code, wrong phone, child not activated, deactivated) is the same message,
+    so the endpoint is no oracle for codes, numbers or children. Guessing is
+    capped per IP, per phone and per code (accounts/throttles.py)."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [GuardianLoginRateThrottle, GuardianPhoneRateThrottle, GuardianCodeRateThrottle]
+
+    def post(self, request):
+        ser = CodeLoginSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        enrollment = guardian_enrollments(ser.validated_data["phone"]).filter(
+            qr_token=ser.validated_data["student_code"]).first()
+        if enrollment is None:
+            raise serializers.ValidationError({"detail": CODE_LOGIN_FAILED, "code": "not_found"})
+        return Response(session_response([enrollment]))
 
 
 class VerifySerializer(serializers.Serializer):
@@ -108,19 +166,7 @@ class GuardianVerifyView(APIView):
         if not enrollments:
             raise serializers.ValidationError({"detail": NOT_FOUND, "code": "not_found"})
 
-        children = [{
-            "token": issue_session(e),
-            "student_name": e.display_name,
-            "grade": e.grade.name,
-            "teacher_environment": e.environment.name,
-        } for e in enrollments]
-        return Response({
-            # `token` & friends = the first child, kept so a single-child
-            # guardian (the common case) needs no extra step.
-            **children[0],
-            "expires_in": SESSION_TTL_SECONDS,
-            "children": children,
-        })
+        return Response(session_response(enrollments))
 
 
 class GuardianOverviewView(APIView):
