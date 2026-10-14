@@ -147,15 +147,14 @@ See `.env.example` for the full list with comments. The important ones:
 - `DJANGO_DEBUG` — defaults to `False` (secure by default).
 - `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`,
   `DJANGO_CSRF_TRUSTED_ORIGINS` — comma-separated, no wildcards.
-- `DB_ENGINE`/`DB_NAME`/... — defaults to SQLite; set these for Postgres.
+- `DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_HOST`/`DB_PORT` — PostgreSQL connection (required; SQLite is no longer supported).
 
 ## Known limitations (being upfront about scope)
 - No real SMS/email sending (see above).
 - No teacher dashboard exists in the given frontend, so there's no UI for
   `POST /environments/students/` yet — it's real and tested, just needs a
   screen.
-- SQLite by default — fine for development and small deployments; swap in
-  Postgres via the `DB_*` env vars for anything serious.
+- PostgreSQL only (see `POSTGRESQL.md`; `docker-compose.yml` starts one locally).
 
 ## Deploying for real
 `manage.py runserver` is dev-only (Django says so itself). For production:
@@ -174,7 +173,7 @@ with `DEBUG=False` and the placeholder secret key, on purpose.
 
 ## لوحة المعلم (v2) — ما تغيّر
 - مراجعة الأمان: `SECURITY.md` • المطابقة للوثائق: `../CONFORMANCE.md`
-- بعد سحب هذه النسخة: `python manage.py migrate` (يحافظ على بياناتك؛ خذ نسخة من `db.sqlite3` أولًا).
+- بعد سحب هذه النسخة: `python manage.py migrate` (يحافظ على بياناتك؛ خذ نسخة احتياطية من قاعدة PostgreSQL أولًا).
 - الـ workers (عمليات منفصلة في الإنتاج):
   ```bash
   python manage.py process_notifications     # تسليم الإشعارات (غير متزامن)
