@@ -9,6 +9,9 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from rest_framework.exceptions import APIException
+
+from .delivery import OTPDeliveryError, deliver, mask_email, mask_phone
 from .models import PendingAuth, User
 from .session_revocation import revoke_all_sessions
 from .serializers import (
@@ -51,11 +54,46 @@ def otp_debug_field(code):
     return {"debug_otp": code} if settings.EXPOSE_OTP_IN_RESPONSE else {}
 
 
-def pending_response(pending, code, extra_message="تم إرسال رمز التحقق."):
+class OTPDeliveryFailed(APIException):
+    status_code = 503
+    default_code = "otp_delivery_failed"
+    default_detail = "تعذّر إرسال رمز التحقق الآن. حاول مرة أخرى بعد قليل أو اختر وسيلة أخرى."
+
+
+def masked_target(pending) -> str:
+    """What the screen may show as 'code sent to …' — never the full address."""
+    if pending.channel == "email":
+        return mask_email(pending.target)
+    return mask_phone(pending.target) if pending.target.isdigit() else pending.target
+
+
+def send_pending_code(pending, code, strict):
+    """Deliver the code over the channel the person chose.
+
+    strict=True  — the person typed their own destination just now (teacher
+                   signup, student activation): a delivery failure is shown
+                   to them, and the unusable flow is discarded.
+    strict=False — flows that must not reveal whether an account exists
+                   (reset, guardian): failure is logged and the person can
+                   press "resend"; the response is identical either way."""
+    try:
+        deliver(pending, code)
+    except OTPDeliveryError:
+        if strict:
+            pending.delete()
+            raise OTPDeliveryFailed()
+
+
+def pending_response(pending, code, extra_message="تم إرسال رمز التحقق.", strict=False):
+    send_pending_code(pending, code, strict)
     return Response(
-        {"pending_id": pending.id, "target": pending.target, "message": extra_message, **otp_debug_field(code)},
+        {"pending_id": pending.id, "target": pending.target, "channel": pending.channel,
+         "target_masked": masked_target(pending), "message": extra_message, **otp_debug_field(code)},
         status=status.HTTP_200_OK,
     )
+
+
+STRICT_PURPOSES = {PendingAuth.Purpose.TEACHER_SIGNUP, PendingAuth.Purpose.STUDENT_CLAIM}
 
 
 def consume_pending(pending) -> bool:
@@ -112,7 +150,8 @@ class TeacherSignupStartView(APIView):
         ser = TeacherSignupStartSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         pending, code = ser.save()
-        return pending_response(pending, code, "تم إرسال رمز التحقق إلى رقم هاتفك.")
+        where = "بريدك الإلكتروني" if pending.channel == "email" else "رقم هاتفك"
+        return pending_response(pending, code, f"تم إرسال رمز التحقق إلى {where}.", strict=True)
 
 
 class TeacherSignupEnvironmentView(APIView):
@@ -207,7 +246,8 @@ class StudentClaimRequestView(APIView):
         ser = StudentClaimRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         pending, code = ser.save()
-        return pending_response(pending, code, "تم إرسال رمز التحقق إلى رقم هاتفك.")
+        where = "بريدك الإلكتروني" if pending.channel == "email" else "رقم هاتفك"
+        return pending_response(pending, code, f"تم إرسال رمز التحقق إلى {where}.", strict=True)
 
 
 class StudentClaimActivateView(APIView):
@@ -233,11 +273,31 @@ class StudentClaimActivateView(APIView):
                     {"detail": "تعذّر تفعيل الحساب حاليًا. تواصل مع معلّمك.", "code": "student_inactive"},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            fields = ["password", "is_active", "is_verified"]
+            email = pending.payload.get("email")
+            if email:
+                # The student proved control of this address by OTP. Re-check
+                # uniqueness now: someone may have registered it since step 1.
+                if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
+                    return Response(
+                        {"detail": "هذا البريد الإلكتروني مستخدم في حساب آخر.", "code": "email_in_use"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                user.email = email
+                fields.append("email")
             user.set_password(ser.validated_data["password"])
             user.is_active = True
             user.is_verified = True
-            user.save(update_fields=["password", "is_active", "is_verified"])
-        return Response({**issue_tokens_for(user), "user": user_public(user)}, status=status.HTTP_201_CREATED)
+            user.save(update_fields=fields)
+        # No session is issued here: the student is sent to the normal login
+        # page and signs in with their phone + the password just created.
+        # `phone_hint` shows only the last digits, so someone who activated by
+        # email knows WHICH number to log in with without it being disclosed.
+        return Response(
+            {"message": "تم تفعيل حسابك. سجّل الدخول برقم هاتفك وكلمة المرور.",
+             "phone_hint": mask_phone(user.phone or "")},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 #---------- student forgot --
@@ -309,7 +369,7 @@ class OTPResendView(APIView):
         code = pending.set_new_otp()
         # update_fields: never write back the (stale) resend_count we loaded.
         pending.save(update_fields=["otp_hash", "otp_expires_at", "otp_attempts", "verified", "verified_at"])
-        return pending_response(pending, code, "تم إرسال رمز جديد.")
+        return pending_response(pending, code, "تم إرسال رمز جديد.", strict=pending.purpose in STRICT_PURPOSES)
 
 
 #-------- misc ----
