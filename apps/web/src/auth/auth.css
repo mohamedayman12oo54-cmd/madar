@@ -378,3 +378,15 @@ html[dir="rtl"] select.inp{background-position:left var(--ctl-pad-x) center}
   /* iOS zooms the page when a focused control is under 16px. */
   .inp,select.inp,textarea.inp{font-size:16px}
 }
+
+
+/* ---------- OTP channel picker (SMS / email) ---------- */
+.channel-picker{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.channel-opt{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 12px;
+  border-radius:14px;border:1.5px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer;
+  transition:border-color .2s,background .2s,box-shadow .2s}
+.channel-opt:hover{border-color:var(--navy)}
+.channel-opt.on{border-color:var(--navy);background:var(--fill);color:var(--navy);box-shadow:0 0 0 4px rgba(49,56,81,.08)}
+.channel-opt:focus-visible{outline:none;box-shadow:0 0 0 4px rgba(49,56,81,.18)}
+.channel-opt:disabled{opacity:.6;cursor:not-allowed}
+.code-inp{letter-spacing:.28em;text-transform:uppercase;text-align:center;font-weight:700;direction:ltr}
