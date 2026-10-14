@@ -15,7 +15,8 @@ export const authApi = {
   teacherForgotRequest: (identifier) => api.post("/auth/teacher/forgot/", { identifier }),
   teacherForgotReset: (payload) => api.post("/auth/teacher/forgot/reset/", payload),
 
-  studentClaimRequest: (phone) => api.post("/auth/student/claim/", { phone }),
+  // payload: { channel: "phone"|"email", student_code, phone? | email? }
+  studentClaimRequest: (payload) => api.post("/auth/student/claim/", payload),
   studentClaimActivate: (payload) => api.post("/auth/student/claim/activate/", payload),
 
   studentForgotRequest: (phone) => api.post("/auth/student/forgot/", { phone }),
