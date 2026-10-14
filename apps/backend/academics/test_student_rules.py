@@ -19,9 +19,16 @@ PHONE = "201555100001"
 NATIONAL_NEW = "201555100002"
 
 
+def code_for(phone):
+    """The student code the teacher would hand over (the enrolment's badge
+    code). Unknown numbers get a code that matches nothing."""
+    e = Enrollment.objects.filter(student__phone=phone).first()
+    return e.qr_token if e else "AAAAAA"
+
+
 def claim(phone, password=PASSWORD):
     c = APIClient()
-    r = c.post("/api/v1/auth/student/claim/", {"phone": phone})
+    r = c.post("/api/v1/auth/student/claim/", {"channel": "phone", "phone": phone, "student_code": code_for(phone)})
     if r.status_code != 200:
         return r, None
     pid, code = r.data["pending_id"], r.data["debug_otp"]
@@ -56,8 +63,10 @@ class StudentActivationTests(TenantTestCase):
 
     def test_inactive_message_is_identical_to_unknown_number_no_oracle(self):
         self.add(self.client_a, self.env_a, self.grade, is_active=False)
-        inactive = APIClient().post("/api/v1/auth/student/claim/", {"phone": PHONE})
-        unknown = APIClient().post("/api/v1/auth/student/claim/", {"phone": "201555199999"})
+        inactive = APIClient().post("/api/v1/auth/student/claim/",
+                                    {"channel": "phone", "phone": PHONE, "student_code": code_for(PHONE)})
+        unknown = APIClient().post("/api/v1/auth/student/claim/",
+                                   {"channel": "phone", "phone": "201555199999", "student_code": "AAAAAA"})
         self.assertEqual((inactive.status_code, inactive.json()), (unknown.status_code, unknown.json()))
 
     def test_deactivating_the_only_teacher_blocks_login_and_kills_existing_tokens(self):
