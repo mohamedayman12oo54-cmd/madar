@@ -35,7 +35,7 @@ class MonthlyPaymentsView(APIView):
             qs = qs.filter(grade_id=gid)
         if grp := p.get("group_id"):
             qs = qs.filter(groups__id=grp)
-        if search := p.get("search", "").strip():
+        if search := p.get("search", "").replace("\x00", "").strip():
             qs = qs.filter(student_name__icontains=search)
         enrollments = list(qs.distinct().order_by("student_name", "id")[:MAX_ROWS])
         rows_by_enrollment = {
