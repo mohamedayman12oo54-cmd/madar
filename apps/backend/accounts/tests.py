@@ -192,15 +192,19 @@ class StudentClaimFlowTests(TestCase):
             is_active=False, password=None,
         )
         EnvironmentMembership.objects.create(user=self.pre_reg, environment=self.env, role="student")
-        ensure_active_enrollment(self.pre_reg, env=self.env)
+        self.enrollment = ensure_active_enrollment(self.pre_reg, env=self.env)
+        self.code = self.enrollment.qr_token
 
-    def test_claim_unknown_phone_returns_not_found(self):
-        r = self.client.post("/api/v1/auth/student/claim/", {"phone": "201230009999"})
+    def claim_body(self, **kw):
+        return {"channel": "phone", "phone": "201230001111", "student_code": self.code, **kw}
+
+    def test_claim_unknown_code_returns_not_found(self):
+        r = self.client.post("/api/v1/auth/student/claim/", self.claim_body(student_code="AAAAAA"))
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.data.get("code"), "not_found")
 
     def test_full_claim_flow(self):
-        r = self.client.post("/api/v1/auth/student/claim/", {"phone": "201230001111"})
+        r = self.client.post("/api/v1/auth/student/claim/", self.claim_body())
         self.assertEqual(r.status_code, 200)
         pending_id, code = r.data["pending_id"], r.data["debug_otp"]
 
@@ -211,7 +215,9 @@ class StudentClaimFlowTests(TestCase):
             "pending_id": pending_id, "password": VALID_PW, "password2": VALID_PW,
         })
         self.assertEqual(activate.status_code, 201, activate.data)
-        self.assertIn("access", activate.data)
+        # No session on activation: the student is sent to the login page.
+        self.assertNotIn("access", activate.data)
+        self.assertNotIn("refresh", activate.data)
 
         self.pre_reg.refresh_from_db()
         self.assertTrue(self.pre_reg.is_active)
@@ -222,7 +228,7 @@ class StudentClaimFlowTests(TestCase):
     def test_already_claimed_cannot_be_claimed_again(self):
         self.pre_reg.is_active = True
         self.pre_reg.save()
-        r = self.client.post("/api/v1/auth/student/claim/", {"phone": "201230001111"})
+        r = self.client.post("/api/v1/auth/student/claim/", self.claim_body())
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.data.get("code"), "not_found")
 
