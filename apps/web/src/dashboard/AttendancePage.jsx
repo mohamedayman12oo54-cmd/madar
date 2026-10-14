@@ -159,6 +159,7 @@ export default function AttendancePage() {
                 <div className="row-actions">
                   {s.carried_from && <span className="stat-sub">مُرحَّل من زيارة {s.carried_from.group} — {fmtDateTime(s.carried_from.scheduled_at)}</span>}
                   {["attendance", "recitation"].map((kind) => s[kind] && <span key={kind} className={"chip-s " + TONE[s[kind]]}>{LABEL[s[kind]]}</span>)}
+                  {s.auto_absent && <span className="stat-sub">غياب تلقائي — يمكنك تغييره</span>}
                   {["attendance", "recitation"].map((kind) => failed[`${kind}:${s.enrollment_id}`] && (
                     <button key={kind} className="mini-btn danger" onClick={() => retry(s, kind)}>لم يُحفظ — إعادة المحاولة</button>))}
                 </div>

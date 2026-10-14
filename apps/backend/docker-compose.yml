@@ -1,0 +1,18 @@
+# Local PostgreSQL for development: `docker compose up -d db`
+# Then set in backend/.env (values below match this file):
+#   DB_ENGINE=django.db.backends.postgresql  DB_NAME=madar  DB_USER=madar
+#   DB_PASSWORD=<same as POSTGRES_PASSWORD>  DB_HOST=localhost  DB_PORT=5432
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: madar
+      POSTGRES_USER: madar
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in your shell or .env}
+    ports:
+      - "127.0.0.1:5432:5432"   # local only, never expose publicly
+    volumes:
+      - madar_pgdata:/var/lib/postgresql/data
+volumes:
+  madar_pgdata:

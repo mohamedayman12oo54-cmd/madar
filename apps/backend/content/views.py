@@ -25,7 +25,7 @@ class ContentListCreateView(TenantScopedQuerySetMixin, generics.ListCreateAPIVie
         p = self.request.query_params
         if grade_id := p.get("grade_id"):
             qs = qs.filter(target_grades__id=grade_id)
-        if search := p.get("search", "").strip():
+        if search := p.get("search", "").replace("\x00", "").strip():
             qs = qs.filter(title__icontains=search)
         if p.get("published") in ("1", "true"):
             qs = qs.filter(published_at__isnull=False)

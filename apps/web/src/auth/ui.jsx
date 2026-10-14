@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useId } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Check, AlertCircle, Info, ArrowRight, ChevronLeft, X } from "lucide-react";
+import { Eye, EyeOff, Check, AlertCircle, Info, ArrowRight, ChevronLeft, X, Smartphone, Mail } from "lucide-react";
 import logo from "../assets/madar-logo.png";
 import { COUNTRIES, COUNTRY_BY_ISO, DEFAULT_ISO, cleanNational, dialLabel, parseInternational } from "../lib/phone.js";
 import "./auth.css";
@@ -83,8 +83,34 @@ export function Field({ label, required, error, hint, children, className = "" }
   );
 }
 
-export function TextInput({ ltr, error, ...p }) {
-  return <input className={"inp" + (ltr ? " ltr" : "") + (error ? " err" : "")} {...p} />;
+/* Two-way choice of where the verification code is delivered: SMS or email.
+   Controlled: value is "phone" | "email". */
+export function ChannelPicker({ value, onChange, label = "أرسل رمز التحقق عبر", disabled }) {
+  const opts = [
+    { v: "phone", t: "رسالة SMS", icon: <Smartphone size={18} /> },
+    { v: "email", t: "البريد (Gmail)", icon: <Mail size={18} /> },
+  ];
+  return (
+    <div className="field">
+      {label && <label>{label}</label>}
+      <div className="channel-picker" role="radiogroup" aria-label={label}>
+        {opts.map((o) => (
+          <button
+            key={o.v} type="button" role="radio" aria-checked={value === o.v} disabled={disabled}
+            className={"channel-opt" + (value === o.v ? " on" : "")} onClick={() => onChange(o.v)}
+          >
+            {o.icon}<span>{o.t}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export const emailLooksValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((v || "").trim());
+
+export function TextInput({ ltr, error, className = "", ...p }) {
+  return <input {...p} className={"inp" + (ltr ? " ltr" : "") + (error ? " err" : "") + (className ? " " + className : "")} />;
 }
 
 export function PasswordInput({ error, ...p }) {

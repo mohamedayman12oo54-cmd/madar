@@ -27,7 +27,7 @@ SETTINGS_VARS = [
     "CORS_ALLOWED_ORIGINS", "DJANGO_CSRF_TRUSTED_ORIGINS", "DJANGO_NUM_PROXIES",
     "DJANGO_BEHIND_TLS_PROXY", "DJANGO_CACHE_BACKEND", "DJANGO_SECURE_SSL_REDIRECT",
     "DJANGO_HSTS_SECONDS", "DJANGO_HSTS_INCLUDE_SUBDOMAINS", "DJANGO_HSTS_PRELOAD",
-    "EXPOSE_OTP_IN_RESPONSE", "DB_ENGINE", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT",
+    "EXPOSE_OTP_IN_RESPONSE", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT",
 ]
 
 PROD = {
@@ -56,6 +56,9 @@ print(json.dumps({
 def run_python(code, overrides, argv=None):
     env = {k: os.environ[k] for k in ("PATH", "SYSTEMROOT", "HOME") if k in os.environ}
     env.update({name: "" for name in SETTINGS_VARS})
+    # PostgreSQL is mandatory; settings refuse to load without credentials.
+    # Dummy values are enough because these scenarios never open a connection.
+    env.update({"DB_USER": "u", "DB_PASSWORD": "p", "DB_HOST": "localhost"})
     env.update(overrides)
     env["DJANGO_SETTINGS_MODULE"] = "config.settings"
     env["PYTHONPATH"] = str(BASE_DIR)
@@ -90,6 +93,20 @@ class ProductionGuardRailTests(SimpleTestCase):
     def test_short_or_low_entropy_key_refused(self):
         self.assertRefuses({"DJANGO_SECRET_KEY": "a1b2c3d4e5"}, "DJANGO_SECRET_KEY")
         self.assertRefuses({"DJANGO_SECRET_KEY": "x" * 60}, "DJANGO_SECRET_KEY")
+
+    # --- DATABASE ----------------------------------------------------------
+    def test_missing_postgres_credentials_refused(self):
+        """PostgreSQL is the only database: no credentials, no boot."""
+        for missing in ("DB_USER", "DB_PASSWORD", "DB_HOST"):
+            with self.subTest(missing=missing):
+                self.assertRefuses({missing: ""}, "DB_USER, DB_PASSWORD and DB_HOST")
+
+    def test_database_engine_is_always_postgresql(self):
+        # A leftover DB_ENGINE in someone's .env must no longer select SQLite.
+        r = run_python("from django.conf import settings as s; print(s.DATABASES['default']['ENGINE'])",
+                       {**PROD, "DB_ENGINE": "django.db.backends.sqlite3"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "django.db.backends.postgresql")
 
     # --- ALLOWED_HOSTS -----------------------------------------------------
     def test_empty_allowed_hosts_refused_in_production(self):

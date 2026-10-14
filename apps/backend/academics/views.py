@@ -121,7 +121,7 @@ class EnrollmentListCreateView(TenantScopedQuerySetMixin, generics.ListAPIView):
             qs = qs.filter(groups__id=group_id)
         if is_active := params.get("is_active"):
             qs = qs.filter(is_active=is_active.lower() in ("1", "true", "yes"))
-        if search := params.get("search", "").strip():
+        if search := params.get("search", "").replace("\x00", "").strip():
             cond = Q(student_name__icontains=search)
             digits = digits_only(search).lstrip("0")
             if digits:

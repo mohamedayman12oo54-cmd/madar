@@ -1,5 +1,7 @@
 # Running Madar on PostgreSQL
 
+PostgreSQL is the **only** supported database; SQLite support was removed.
+
 The application is database-agnostic Django ORM code — there is **no raw SQL,
 no SQLite-specific query, and no naive datetime arithmetic** anywhere in the
 backend (verified by scan). Switching engines is therefore configuration plus
@@ -13,7 +15,6 @@ the driver.
 
 Never hardcode credentials. In `.env`:
 
-    DB_ENGINE=django.db.backends.postgresql
     DB_NAME=madar
     DB_USER=madar
     DB_PASSWORD=<secret>
@@ -53,12 +54,12 @@ committed and `makemigrations --check` reports no pending changes.
   worker's single-row conditional claim both rely only on standard
   `transaction.atomic()` / conditional `UPDATE`, which behave identically.
 
-## Migrating existing data
+## Migrating existing data from the old SQLite file (one-time)
 
-For an existing SQLite database, the engine-independent route preserves every
-row and relationship:
+The new settings cannot open SQLite, so dump the data FIRST, using the previous
+version of the code (before this change) that still reads `db.sqlite3`:
 
-    # with the OLD settings still active (SQLite)
+    # with the OLD code/settings still active (SQLite)
     python manage.py dumpdata --natural-foreign --natural-primary \
         --exclude contenttypes --exclude auth.permission --exclude sessions \
         --indent 2 -o madar-dump.json

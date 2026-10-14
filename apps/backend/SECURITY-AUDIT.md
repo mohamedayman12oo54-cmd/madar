@@ -235,3 +235,33 @@ activate an account: no `User` row is made for them.
 * **Several children:** one verified number returns a read-only session per
   child (all share the same proven phone); each session is still bound to a
   single enrolment.
+
+## Activation & signup: choice of OTP channel + student code (new)
+
+**Student activation** now needs two independent proofs, in this order:
+
+1. **Membership — the student code** (the enrolment's badge code the teacher hands out). Checked
+   *before anything is sent*, so the endpoint cannot be used to push SMS/email to arbitrary
+   numbers or addresses. Unknown code, deactivated enrolment, already-activated account and a
+   phone that is not the one on the student's record all return the **same** `not_found`
+   response (asserted byte-identical) — no oracle for codes, numbers or accounts.
+2. **Control of a contact — OTP over the student's choice of channel**: SMS to the phone on
+   record, or an email of the student's choosing (stored on the account, as verified, only at
+   activation; uniqueness is re-checked there).
+
+Then the student creates a password. **Activation no longer issues a session**; the student is
+sent to the normal login page and signs in with phone + password. The response carries only a
+masked `phone_hint` so a student who activated by email knows which number to use.
+
+**Teacher signup** accepts `otp_channel` (`phone` default, or `email`). Switching channel
+supersedes the earlier code (both destinations are invalidated), so only the newest is live.
+
+**Delivery** is now real and lives in one place (`accounts/delivery.py`): email through Django's
+email backend (SMTP/Gmail via env vars), SMS through `OTP_SMS_BACKEND` (no provider exists yet:
+the default only logs in DEBUG and **raises outside DEBUG** instead of pretending). Flows where
+the person typed their own destination (signup, activation) report a delivery failure (503) and
+discard the flow; reset and guardian flows never reveal whether an account exists, so a failure
+there is logged and the person uses "resend". Reset requests for unknown accounts still send
+nothing. Resend always uses the channel originally chosen. Throttling also keys on `email`.
+
+Not changed (decision needed): guardians still have **no account** (see parents/auth.py).

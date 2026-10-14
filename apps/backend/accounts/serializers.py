@@ -69,7 +69,13 @@ class StudentInactive(exceptions.APIException):
 
 
 STUDENT_INACTIVE = "تم إيقاف حسابك لدى معلّمك حاليًا. تواصل مع معلّمك لإعادة التفعيل."
-CLAIM_NOT_FOUND = "لم نجد حسابًا مفعّلًا لطالب بهذا الرقم. تأكد من الرقم أو تواصل مع معلّمك."
+CLAIM_NOT_FOUND = "لم نتمكن من التحقق من بياناتك. تأكد من كود الطالب ومن الرقم المسجّل لدى معلّمك، أو تواصل مع معلّمك."
+CLAIM_EMAIL_IN_USE = "هذا البريد الإلكتروني مستخدم في حساب آخر، استخدم بريدًا آخر أو فعّل بالرقم."
+
+
+def normalize_student_code(raw: str) -> str:
+    """Badge codes are typed by hand: ignore case, spaces and dashes."""
+    return "".join(ch for ch in str(raw or "").upper() if ch.isalnum())
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
@@ -132,6 +138,9 @@ class TeacherSignupStartSerializer(NewPasswordMixin, serializers.Serializer):
     name = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     phone = serializers.CharField()
+    # Where the teacher wants the verification code: the registered phone
+    # (SMS) or the registered email.
+    otp_channel = serializers.ChoiceField(choices=["phone", "email"], required=False, default="phone")
     password = serializers.CharField(trim_whitespace=False)
     password2 = serializers.CharField(trim_whitespace=False)
 
@@ -154,7 +163,11 @@ class TeacherSignupStartSerializer(NewPasswordMixin, serializers.Serializer):
         return digits
 
     def create(self, validated):
+        channel = validated.get("otp_channel", "phone")
+        # Either destination may have been used by an earlier attempt for the
+        # same person: invalidate both so only the newest code is ever live.
         supersede_pending(PendingAuth.Purpose.TEACHER_SIGNUP, validated["phone"])
+        supersede_pending(PendingAuth.Purpose.TEACHER_SIGNUP, validated["email"])
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.TEACHER_SIGNUP,
             payload={
@@ -163,7 +176,8 @@ class TeacherSignupStartSerializer(NewPasswordMixin, serializers.Serializer):
                 "phone": validated["phone"],
                 "password_hash": make_password(validated["password"]),
             },
-            target=validated["phone"],
+            channel=channel,
+            target=validated["email"] if channel == "email" else validated["phone"],
         )
         code = pending.set_new_otp()
         pending.save()
@@ -210,6 +224,7 @@ class TeacherForgotRequestSerializer(serializers.Serializer):
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.TEACHER_RESET,
             payload={"user_id": user.id if user else None},
+            channel="email" if looks_like_email(ident) else "phone",
             target=ident,
         )
         code = pending.set_new_otp()
@@ -251,24 +266,78 @@ class StudentLoginSerializer(serializers.Serializer):
 
 # -------------------------------------------------------- student claim --
 class StudentClaimRequestSerializer(serializers.Serializer):
-    phone = serializers.CharField()
+    """Activation, step 1. TWO independent proofs are required:
 
-    def validate_phone(self, value):
-        return clean_phone(value)
+      1. control of a contact — the student's phone (SMS) or an email of their
+         choice — proven later by the OTP;
+      2. membership — the STUDENT CODE their teacher gave them (the badge
+         code of their enrolment), proving the person really is a student of
+         some teacher in the system.
+
+    The code is checked BEFORE anything is sent, so nobody can use this
+    endpoint to push SMS/email to arbitrary numbers or addresses, and every
+    failure (unknown code, wrong phone, already activated, deactivated) is the
+    same message — it is not an oracle for codes, numbers or accounts."""
+
+    channel = serializers.ChoiceField(choices=["phone", "email"])
+    student_code = serializers.CharField(max_length=32)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["channel"] == "phone":
+            if not (attrs.get("phone") or "").strip():
+                raise serializers.ValidationError({"phone": "أدخل رقم الهاتف."})
+            attrs["phone"] = clean_phone(attrs["phone"])
+            attrs.pop("email", None)
+        else:
+            if not (attrs.get("email") or "").strip():
+                raise serializers.ValidationError({"email": "أدخل البريد الإلكتروني."})
+            attrs["email"] = attrs["email"].strip().lower()
+            attrs.pop("phone", None)
+        attrs["student_code"] = normalize_student_code(attrs["student_code"])
+        if not attrs["student_code"]:
+            raise serializers.ValidationError({"student_code": "أدخل كود الطالب."})
+        return attrs
 
     def create(self, validated):
-        user = User.objects.filter(
-            role=User.Role.STUDENT, phone=validated["phone"], is_active=False
-        ).first()
-        # One message for "no such account", "already claimed" and "inactive
-        # with every teacher": the response must not reveal which it was.
+        from academics.models import Enrollment
+
+        channel = validated["channel"]
+        enrollment = (
+            Enrollment.objects.select_related("student")
+            .filter(
+                qr_token=validated["student_code"],
+                is_active=True,
+                student__role=User.Role.STUDENT,
+                student__is_active=False,
+            )
+            .first()
+        )
+        user = enrollment.student if enrollment else None
         if not user or not student_can_access(user):
             raise serializers.ValidationError({"detail": CLAIM_NOT_FOUND, "code": "not_found"})
-        supersede_pending(PendingAuth.Purpose.STUDENT_CLAIM, validated["phone"])
+        # Phone channel: the number must be the one on the student's record
+        # (it is also their login). Email channel: any email the student
+        # controls — the code already identified the account.
+        if channel == "phone" and user.phone != validated["phone"]:
+            raise serializers.ValidationError({"detail": CLAIM_NOT_FOUND, "code": "not_found"})
+        if channel == "email" and User.objects.filter(email__iexact=validated["email"]).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError({"detail": CLAIM_EMAIL_IN_USE, "code": "email_in_use"})
+
+        target = validated["phone"] if channel == "phone" else validated["email"]
+        # One live activation per student, whichever channel was used before.
+        for old in filter(None, (user.phone, user.email, target)):
+            supersede_pending(PendingAuth.Purpose.STUDENT_CLAIM, old)
+        payload = {"user_id": user.id}
+        if channel == "email":
+            payload["email"] = target
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.STUDENT_CLAIM,
-            payload={"user_id": user.id},
-            target=validated["phone"],
+            payload=payload,
+            channel=channel,
+            target=target,
         )
         code = pending.set_new_otp()
         pending.save()

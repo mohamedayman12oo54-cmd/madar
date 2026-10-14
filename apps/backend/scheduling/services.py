@@ -10,12 +10,19 @@ from django.utils import timezone
 
 from notifications.services import notify_absent, notify_not_studied
 
+from academics.models import Enrollment
 from .models import AttendanceRecord, GuestVisit, RecitationRecord, Schedule, SessionInstance
 
 MAX_GENERATE_WEEKS = 8
 
 
 def _guard(session, enrollment):
+    # An open session whose time is over closes itself the moment anyone
+    # touches it, so correctness never depends on the cron job having run.
+    if session.is_overdue():
+        session.close(auto=True)
+        raise ValidationError(
+            "انتهى وقت الجلسة وأُغلقت تلقائيًا وسُجّل غياب من لم يُسجَّل حضوره. أعد فتحها لتعديل التسجيل.")
     if session.status != SessionInstance.Status.OPEN:
         raise ValidationError("الجلسة غير مفتوحة. افتحها (أو أعد فتحها للتصحيح) قبل تسجيل أي بيانات.")
     if enrollment.environment_id != session.environment_id:
@@ -35,9 +42,16 @@ def _upsert(model, session, enrollment, status):
                     session=session, enrollment=enrollment, defaults={"environment_id": session.environment_id, "status": status},
                 )
                 previous = None if created else record.status
-                if not created and record.status != status:
+                # A teacher touching an auto-recorded absence takes ownership
+                # of it, whether they confirm it or change it.
+                taken_over = not created and getattr(record, "auto_marked", False)
+                if not created and (record.status != status or taken_over):
                     record.status = status
-                    record.save(update_fields=["status", "marked_at"])
+                    fields = ["status", "marked_at"]
+                    if taken_over:
+                        record.auto_marked = False
+                        fields.append("auto_marked")
+                    record.save(update_fields=fields)
                 return record, previous
         except IntegrityError:
             continue
@@ -69,6 +83,41 @@ def mark_recitation(session, enrollment, status):
     return record
 
 
+def mark_unmarked_absent(session):
+    """Closing rule: every ACTIVE member of the session's group with no
+    attendance record becomes Absent (auto_marked), and the normal absence
+    notification fires for each. Students already marked — present or absent —
+    are never touched. Returns the enrollments that were auto-marked."""
+    marked = set(AttendanceRecord.objects.filter(session=session).values_list("enrollment_id", flat=True))
+    missing = list(
+        Enrollment.objects.filter(environment_id=session.environment_id, is_active=True, groups=session.group_id)
+        .exclude(pk__in=marked).select_related("student").distinct()
+    )
+    with transaction.atomic():
+        for enrollment in missing:
+            AttendanceRecord.objects.create(
+                session=session, enrollment=enrollment, environment_id=session.environment_id,
+                status=AttendanceRecord.Status.ABSENT, auto_marked=True)
+            notify_absent(enrollment, session)
+    return missing
+
+
+def close_due_sessions(env=None, now=None):
+    """Close every OPEN session whose end time has passed. Safe to call from
+    anywhere, any number of times (cron every minute, or lazily when a teacher
+    opens a screen). Returns how many sessions were closed."""
+    now = now or timezone.now()
+    qs = SessionInstance.objects.filter(status=SessionInstance.Status.OPEN, ends_at__isnull=False, ends_at__lte=now)
+    if env is not None:
+        qs = qs.filter(environment=env)
+    closed = 0
+    for session in qs.select_related("group"):
+        if session.is_overdue(now):
+            session.close(auto=True)
+            closed += 1
+    return closed
+
+
 def generate_planned_sessions(env, weeks, group=None, today=None):
     """Materialise PLANNED sessions from the environment's schedules for the
     next `weeks` weeks (today included). Idempotent: an existing session for
@@ -92,7 +141,10 @@ def generate_planned_sessions(env, weeks, group=None, today=None):
                 moment = timezone.make_aware(dt.datetime.combine(day, schedule.start_time), tz)
                 if moment in existing or moment < timezone.now():
                     continue
-                created.append(SessionInstance.objects.create(environment=env, group=schedule.group, scheduled_at=moment))
+                ends = (timezone.make_aware(dt.datetime.combine(day, schedule.end_time), tz)
+                        if schedule.end_time else None)
+                created.append(SessionInstance.objects.create(
+                    environment=env, group=schedule.group, scheduled_at=moment, ends_at=ends))
     return created
 
 

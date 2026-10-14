@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PartyPopper } from "lucide-react";
 import {
   AuthShell, AuthCard, Head, Field, TextInput, PhoneInput, PasswordInput, Btn, Banner, Otp, Timer,
-  Stepper, StateView, SuccessRing, EnvCard, PasswordChecklist, passwordValid,
+  Stepper, StateView, SuccessRing, EnvCard, PasswordChecklist, passwordValid, ChannelPicker,
 } from "../ui.jsx";
 import { authApi, envApi, fieldErrorsFrom } from "../api.js";
 import { ApiError } from "../../lib/api.js";
@@ -63,7 +63,8 @@ export function TeacherSignup() {
   const session = useSession();
   const [step, setStep] = useState(0); const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState(""); const [otpErr, setOtpErr] = useState(null);
-  const [f, setF] = useState({ name: "", email: "", phone: "", pw: "", pw2: "" });
+  const [f, setF] = useState({ name: "", email: "", phone: "", pw: "", pw2: "", channel: "phone" });
+  const [maskedTarget, setMaskedTarget] = useState("");
   const [fe, setFe] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [envForm, setEnvForm] = useState({ name: "", subject_stage: "" });
@@ -84,8 +85,10 @@ export function TeacherSignup() {
     try {
       const data = await authApi.teacherSignupStart({
         name: f.name, email: f.email, phone: f.phone, password: f.pw, password2: f.pw2,
+        otp_channel: f.channel, // "phone" (SMS) | "email" — the teacher's choice
       });
       setPendingId(data.pending_id);
+      setMaskedTarget(data.target_masked || "");
       setStep(1);
     } catch (e) {
       const mapped = e instanceof ApiError ? fieldErrorsFrom(e) : null;
@@ -144,11 +147,12 @@ export function TeacherSignup() {
               <PasswordChecklist value={f.pw} />
             </Field>
             <Field label="تأكيد كلمة المرور" required error={fe.pw2}><PasswordInput value={f.pw2} onChange={on("pw2")} placeholder="أعد إدخال كلمة المرور" error={fe.pw2} /></Field>
+            <ChannelPicker value={f.channel} onChange={(c) => setF((s) => ({ ...s, channel: c }))} label="أرسل رمز التحقق إلى" />
             <Btn loading={loading} loadingText="جاري المتابعة…" onClick={next1}>متابعة</Btn>
           </div>
         </>)}
         {step === 1 && (<>
-          <Head title="تأكيد الحساب" sub="أدخل رمز التحقق المرسل إلى وسيلة الاتصال الخاصة بك." />
+          <Head title="تأكيد الحساب" sub={`أدخل رمز التحقق المرسل ${f.channel === "email" ? "إلى بريدك الإلكتروني" : "برسالة SMS إلى رقم هاتفك"}${maskedTarget ? ` (${maskedTarget})` : ""}.`} />
           <div className="auth-body">
             <Otp value={otp} onChange={setOtp} error={!!otpErr} />
             {otpErr && <Banner tone="err">{otpErr}</Banner>}

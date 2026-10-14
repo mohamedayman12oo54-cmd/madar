@@ -31,7 +31,9 @@ class User(AbstractUser):
                  there is no public "team signup" screen in the product)
       - teacher: phone OR email + password
       - student: phone + password (account is pre-created by a teacher,
-                 then "claimed" — phone verified via OTP — by the student)
+                 then "claimed": the student proves they control a phone OR an
+                 email via OTP AND proves they belong to a teacher with the
+                 student code from that teacher — see StudentClaim*)
 
     `username` (inherited from AbstractUser) is never shown to a human;
     it exists only so we can build on Django's standard user/permission
@@ -139,8 +141,15 @@ class PendingAuth(models.Model):
         STUDENT_RESET = "student_reset", "Student password reset"
         PARENT_ACCESS = "parent_access", "Guardian read-only access"
 
+    class Channel(models.TextChoices):
+        PHONE = "phone", "SMS"
+        EMAIL = "email", "Email"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     purpose = models.CharField(max_length=20, choices=Purpose.choices)
+    # How the code is delivered. `target` is where it went (a phone or an
+    # email); resend uses the same channel the person originally chose.
+    channel = models.CharField(max_length=5, choices=Channel.choices, default=Channel.PHONE)
     payload = models.JSONField(default=dict, blank=True)
 
     # OTP delivery target, kept only for display / resend ("رمز أُرسل إلى ...").

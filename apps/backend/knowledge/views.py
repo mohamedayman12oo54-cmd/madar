@@ -28,7 +28,7 @@ class KBDocumentListCreateView(generics.ListCreateAPIView):
         qs = super().get_queryset()
         if status_filter := self.request.query_params.get("status"):
             qs = qs.filter(status=status_filter)
-        if search := self.request.query_params.get("search", "").strip():
+        if search := self.request.query_params.get("search", "").replace("\x00", "").strip():
             qs = qs.filter(title__icontains=search)
         return qs
 

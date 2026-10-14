@@ -269,3 +269,67 @@ class GuardianIsolationTests(_Base):
             with self.subTest(url=url):
                 self.assertIn(c.get(url, **self.with_env(self.env_a.id)).status_code, (401, 403),
                               f"{url} reachable with a guardian token")
+
+
+class GuardianCodeLoginTests(_Base):
+    """Phone + the child's student code, no OTP."""
+
+    URL = "/api/v1/parent/login/"
+
+    def login(self, phone=GUARDIAN, code=None, client=None):
+        return (client or self.anon).post(
+            self.URL, {"phone": phone, "student_code": code or self.enr.qr_token}, format="json")
+
+    def test_phone_and_student_code_give_a_working_read_only_session(self):
+        r = self.login()
+        self.assertEqual(r.status_code, 200, r.content)
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION="Parent " + r.json()["token"])
+        self.assertEqual(c.get(OVERVIEW).status_code, 200)
+
+    def test_code_is_forgiving_about_case_spaces_and_dashes(self):
+        code = self.enr.qr_token
+        sloppy = f" {code[:3].lower()}-{code[3:].lower()} "
+        self.assertEqual(self.login(code=sloppy).status_code, 200)
+
+    def test_every_failure_looks_the_same(self):
+        other = self.make_student_in(self.env_a, "201555800002", "آخر")
+        self.activate(other)
+        other_enr = Enrollment.objects.create(
+            environment=self.env_a, student=other, grade=self.grade,
+            student_name="آخر", parent_phone="201099000111")
+        wrong_phone = self.login(phone="201099000222")
+        wrong_code = self.login(code="ZZZZZZ")
+        crossed = self.login(code=other_enr.qr_token)  # my phone + someone else's child
+        bodies = {r.content for r in (wrong_phone, wrong_code, crossed)}
+        self.assertEqual({r.status_code for r in (wrong_phone, wrong_code, crossed)}, {400})
+        self.assertEqual(len(bodies), 1, bodies)
+
+    def test_a_child_who_has_not_activated_cannot_be_followed(self):
+        self.student.is_active = False
+        self.student.save(update_fields=["is_active"])
+        self.assertEqual(self.login().status_code, 400)
+
+    def test_a_deactivated_enrolment_is_refused(self):
+        self.enr.is_active = False
+        self.enr.save(update_fields=["is_active"])
+        self.assertEqual(self.login().status_code, 400)
+
+    def test_only_the_child_of_that_code_is_returned(self):
+        sibling = self.make_student_in(self.env_a, "201555800003", "أخ")
+        self.activate(sibling)
+        Enrollment.objects.create(
+            environment=self.env_a, student=sibling, grade=self.grade,
+            student_name="أخ", parent_phone=GUARDIAN)
+        data = self.login().json()
+        self.assertEqual(len(data["children"]), 1)
+        self.assertEqual(data["children"][0]["student_name"], "ابن")
+
+    def test_guessing_codes_for_one_phone_is_throttled(self):
+        statuses = [self.login(code=f"AAAA{i:02d}").status_code for i in range(12)]
+        self.assertIn(429, statuses)
+
+    def test_guessing_phones_for_one_code_is_throttled(self):
+        code = self.enr.qr_token
+        statuses = [self.login(phone=f"2010000000{i:02d}", code=code).status_code for i in range(12)]
+        self.assertIn(429, statuses)

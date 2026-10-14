@@ -83,5 +83,6 @@ class Command(BaseCommand):
         self.stdout.write("  Team login:    identifier=team@madar")
         self.stdout.write("  Teacher login: identifier=ahmed@madar.test  (or phone 201001234567)")
         self.stdout.write("  Student login (already claimed): phone=201119998888")
-        self.stdout.write("  Student claim (try /auth/student/claim): phone=201117776666")
+        code = Enrollment.objects.get(environment=env_a, student=unclaimed).qr_token
+        self.stdout.write(f"  Student claim (try /auth/student/claim): phone=201117776666  student code={code}")
         self.stdout.write("  Student deactivated by the teacher (cannot claim/login): phone=201116665555")

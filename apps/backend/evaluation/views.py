@@ -67,7 +67,7 @@ class MonthlyEvaluationView(APIView):
             qs = qs.filter(grade_id=gid)
         if grp := p.get("group_id"):
             qs = qs.filter(groups__id=grp)
-        if search := p.get("search", "").strip():
+        if search := p.get("search", "").replace("\x00", "").strip():
             qs = qs.filter(student_name__icontains=search)
         enrollments = list(qs.distinct().order_by("student_name", "id")[:MAX_ROWS])
         ids = [e.id for e in enrollments]
@@ -173,8 +173,16 @@ class RatingPublishAllView(APIView):
         if grp := v.get("group_id"):
             qs = qs.filter(enrollment__groups__id=grp)
         published = 0
+        # DISTINCT is only needed because the group filter joins a many-to-many;
+        # PostgreSQL forbids FOR UPDATE together with DISTINCT, so pick the ids
+        # first and then lock exactly those rows (re-checking they are still
+        # unpublished once the lock is held).
+        ids = list(qs.order_by().values_list("pk", flat=True).distinct())
         with transaction.atomic():
-            for rating in qs.select_for_update(of=("self",)).distinct():
+            locked = (MonthlyRating.objects.select_for_update(of=("self",))
+                      .filter(pk__in=ids, environment=env, published_at__isnull=True)
+                      .select_related("enrollment"))
+            for rating in locked:
                 _publish(rating, rating.enrollment)
                 published += 1
         return Response({"published": published})

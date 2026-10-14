@@ -123,6 +123,7 @@ INSTALLED_APPS = [
     "ai",
     "knowledge",
     "parents",
+    "billing",
     "studentarea",
 ]
 
@@ -162,32 +163,32 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 
 # --------------------------------------------------------------- data -----
-# SQLite by default (zero setup for dev/small deployments). Point
-# DATABASE_URL-style vars at Postgres in production if you like — kept
-# simple/explicit here rather than pulling in another dependency.
+# PostgreSQL is the ONLY supported database (SQLite support was removed).
+# Billing (student-capacity limits, one invoice per cycle, webhook idempotency)
+# relies on row locks and partial unique indexes. Credentials come from the
+# environment only; there are no defaults for user/password/host.
 DATABASES = {
     "default": {
-        "ENGINE": env_str(
-            "DB_ENGINE",
-            "django.db.backends.sqlite3",
-        ),
-        "NAME": env_str(
-            "DB_NAME",
-            str(BASE_DIR / "db.sqlite3"),
-        ),
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env_str("DB_NAME", "madar"),
         "USER": os.environ.get("DB_USER", ""),
         "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", ""),
-        "PORT": os.environ.get("DB_PORT", ""),
+        "PORT": os.environ.get("DB_PORT", "5432"),
         # Reusing connections matters on PostgreSQL (each new connection forks
-        # a backend process). 0 = close after every request, which is the safe
-        # default for SQLite/local dev. CONN_HEALTH_CHECKS stops a pooled
-        # connection that the server already dropped from surfacing as a
-        # request error.
+        # a backend process). 0 = close after every request (safe default for
+        # local dev). CONN_HEALTH_CHECKS stops a pooled connection that the
+        # server already dropped from surfacing as a request error.
         "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 0),
         "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", default=False),
     }
 }
+
+_db = DATABASES["default"]
+if not (_db["USER"] and _db["PASSWORD"] and _db["HOST"]):
+    raise ImproperlyConfigured(
+        "PostgreSQL needs DB_USER, DB_PASSWORD and DB_HOST (see backend/POSTGRESQL.md)."
+    )
 
 
 # ------------------------------------------------------------- cache -------
@@ -303,6 +304,10 @@ REST_FRAMEWORK = {
         # --- per submitted identifier (phone/email), any number of IPs ---
         "login-account": "20/hour",
         "otp-target": "5/hour",
+        # guardian code login: per IP, per guardian phone, per student code
+        "guardian-login": "30/hour",
+        "guardian-phone": "10/hour",
+        "guardian-code": "10/hour",
 
         # --- per authenticated user ---
         "scan": "240/min",
@@ -514,16 +519,40 @@ if env_bool(
     )
 
 
-# Dev-only convenience: return the generated OTP code in API responses so
-# the whole flow is testable without a real SMS/email provider wired up.
-# Hard-gated on DEBUG, so it cannot be enabled in production by an env var.
-EXPOSE_OTP_IN_RESPONSE = (
-    DEBUG
-    and env_bool(
-        "EXPOSE_OTP_IN_RESPONSE",
-        default=True,
-    )
+# The OTP code is NEVER returned by the API outside `manage.py test` (the suite
+# reads it from the `debug_otp` field). It is deliberately NOT controlled by an
+# environment variable: anything in the response is readable by anyone in the
+# browser's Network tab, which defeats sending the code to a phone/inbox, and a
+# forgotten `.env` line must never be able to switch it on. In development read
+# the code from the runserver terminal (console email) or your real inbox.
+EXPOSE_OTP_IN_RESPONSE = "test" in sys.argv
+
+
+# ------------------------------------------------- OTP delivery (SMS/email) -
+# Email goes through Django's normal email machinery. In DEBUG the default is
+# the console backend (the message is printed by runserver); outside DEBUG it
+# is SMTP and EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD must be set
+# (Gmail SMTP works with an app password: smtp.gmail.com:587, TLS).
+EMAIL_BACKEND = env_str(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
 )
+EMAIL_HOST = env_str("EMAIL_HOST", "")
+EMAIL_PORT = env_int("EMAIL_PORT", 587)
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = env_str("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "Madar <no-reply@madar.local>")
+
+# SMS has no built-in provider. Point this at a class with
+# `send(phone, message)` (see accounts/delivery.py) once an SMS account
+# exists. The default only logs, and outside DEBUG it refuses to pretend a
+# message was sent.
+OTP_SMS_BACKEND = env_str("OTP_SMS_BACKEND", "accounts.delivery.ConsoleSMSBackend")
+# Fixed at startup (not read from settings.DEBUG at runtime, which Django's
+# test runner forces to False): may the console SMS stand-in count as "sent"?
+OTP_SMS_CONSOLE_ALLOWED = DEBUG
 
 
 # ------------------------------------------------------------ logging -----

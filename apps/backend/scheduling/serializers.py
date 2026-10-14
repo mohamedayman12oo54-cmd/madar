@@ -7,14 +7,21 @@ from academics.models import Group
 from .models import Schedule, SessionInstance
 
 
+def _check_window(start, end):
+    if end is not None and start is not None and end <= start:
+        raise serializers.ValidationError({"ends_at": "وقت الانتهاء يجب أن يكون بعد وقت البداية."})
+
+
 class SessionInstanceSerializer(serializers.ModelSerializer):
     """Read shape, and the shape returned after any lifecycle action."""
 
     group = serializers.SerializerMethodField()
+    auto_close_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = SessionInstance
-        fields = ["id", "group", "scheduled_at", "status", "opened_at", "closed_at", "reopened_count", "created_at"]
+        fields = ["id", "group", "scheduled_at", "ends_at", "auto_close_at", "status", "opened_at", "closed_at",
+                  "reopened_count", "created_at"]
 
     def get_group(self, obj):
         return {"id": obj.group_id, "name": obj.group.name, "grade_id": obj.group.grade_id}
@@ -29,8 +36,12 @@ class SessionInstanceCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SessionInstance
-        fields = ["id", "group_id", "scheduled_at"]
+        fields = ["id", "group_id", "scheduled_at", "ends_at"]
         read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        _check_window(attrs.get("scheduled_at"), attrs.get("ends_at"))
+        return attrs
 
     def validate_group_id(self, value):
         env = self.context["request"].environment
@@ -53,7 +64,13 @@ class SessionInstanceRescheduleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SessionInstance
-        fields = ["scheduled_at"]
+        fields = ["scheduled_at", "ends_at"]
+
+    def validate(self, attrs):
+        start = attrs.get("scheduled_at", self.instance.scheduled_at if self.instance else None)
+        end = attrs["ends_at"] if "ends_at" in attrs else (self.instance.ends_at if self.instance else None)
+        _check_window(start, end)
+        return attrs
 
     def to_representation(self, instance):
         return SessionInstanceSerializer(instance, context=self.context).data
@@ -65,7 +82,7 @@ class ScheduleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Schedule
-        fields = ["id", "group", "weekday", "weekday_label", "start_time"]
+        fields = ["id", "group", "weekday", "weekday_label", "start_time", "end_time"]
 
     def get_group(self, obj):
         return {"id": obj.group_id, "name": obj.group.name}
@@ -79,7 +96,7 @@ class ScheduleWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Schedule
-        fields = ["id", "group_id", "weekday", "start_time"]
+        fields = ["id", "group_id", "weekday", "start_time", "end_time"]
         read_only_fields = ["id"]
 
     def validate_group_id(self, value):
@@ -94,6 +111,10 @@ class ScheduleWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"group_id": "هذا الحقل مطلوب."})
         if self.instance is not None and "group_id" in attrs:
             raise serializers.ValidationError({"group_id": "لا يمكن نقل الموعد إلى مجموعة أخرى."})
+        start = attrs.get("start_time", self.instance.start_time if self.instance else None)
+        end = attrs["end_time"] if "end_time" in attrs else (self.instance.end_time if self.instance else None)
+        if end is not None and start is not None and end <= start:
+            raise serializers.ValidationError({"end_time": "وقت الانتهاء يجب أن يكون بعد وقت البداية في نفس اليوم."})
         return attrs
 
     def create(self, validated):
@@ -137,10 +158,12 @@ class BulkSessionSerializer(serializers.Serializer):
     """
 
     scheduled_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
     grade_id = serializers.IntegerField(required=False)
     group_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, max_length=200)
 
     def validate(self, attrs):
         if not attrs.get("grade_id") and not attrs["group_ids"]:
             raise serializers.ValidationError({"detail": "اختر صفًا أو مجموعة واحدة على الأقل."})
+        _check_window(attrs["scheduled_at"], attrs.get("ends_at"))
         return attrs

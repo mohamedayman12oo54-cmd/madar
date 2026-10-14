@@ -7,7 +7,8 @@ import { ApiError } from "../lib/api.js";
 import { useGroups } from "./useGroups.js";
 import { useGrades } from "./useGrades.js";
 import DateTimePicker from "../components/DateTimePicker.jsx";
-import { groupByDay, timeLabel } from "../lib/dates.js";
+import TimePicker from "../components/TimePicker.jsx";
+import { groupByDay, timeLabel, fmtClock } from "../lib/dates.js";
 import { Confirm, Empty, PageHeader, fmtDateTime } from "./common.jsx";
 
 const STATUS = { planned: "مخططة", open: "مفتوحة", closed: "مغلقة" };
@@ -16,12 +17,20 @@ const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 const toIso = (local) => new Date(local).toISOString();
 const toLocalInput = (iso) => { const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 
+const pad2 = (n) => String(n).padStart(2, "0");
+// "YYYY-MM-DDTHH:MM" (local) → the clock part "HH:MM" one hour later (same day, capped at 23:55).
+const hourLater = (local) => { const h = Number(local.slice(11, 13)) + 1; return h > 23 ? "23:55" : `${pad2(h)}:${local.slice(14, 16)}`; };
+// The end time-of-day picked next to a start date-time → an ISO instant on the same local day.
+const endIso = (startLocal, hhmm) => new Date(`${startLocal.slice(0, 10)}T${hhmm}`).toISOString();
+const endsAfterStart = (startLocal, hhmm) => new Date(`${startLocal.slice(0, 10)}T${hhmm}`) > new Date(startLocal);
+
 function AddSessionModal({ grades, groups, onClose, onCreated }) {
   // A session belongs to ONE group, so "a grade" means one session per group
   // of that grade. The teacher picks the grade, then which of its groups.
   const [gradeId, setGradeId] = useState(grades[0]?.id || "");
   const [picked, setPicked] = useState([]);
   const [when, setWhen] = useState(toLocalInput(new Date().toISOString()));
+  const [until, setUntil] = useState(hourLater(toLocalInput(new Date().toISOString())));
   const [err, setErr] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -34,8 +43,9 @@ function AddSessionModal({ grades, groups, onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault(); setErr(null);
     if (!picked.length) { setErr("اختر مجموعة واحدة على الأقل."); return; }
+    if (!endsAfterStart(when, until)) { setErr("وقت الانتهاء يجب أن يكون بعد وقت البداية في نفس اليوم."); return; }
     setSaving(true);
-    try { onCreated(await schedulingApi.sessions.bulk({ grade_id: Number(gradeId), group_ids: picked, scheduled_at: toIso(when) })); }
+    try { onCreated(await schedulingApi.sessions.bulk({ grade_id: Number(gradeId), group_ids: picked, scheduled_at: toIso(when), ends_at: endIso(when, until) })); }
     catch (e2) { setErr(e2 instanceof ApiError ? (e2.fields ? Object.values(e2.fields).flat().join(" ") : e2.message) : "تعذّر إنشاء الجلسات."); }
     finally { setSaving(false); }
   };
@@ -49,7 +59,10 @@ function AddSessionModal({ grades, groups, onClose, onCreated }) {
             {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </Field>
-        <Field label="التاريخ والوقت" required><DateTimePicker value={when} onChange={setWhen} /></Field>
+        <Field label="التاريخ ووقت البداية" required><DateTimePicker value={when} onChange={setWhen} /></Field>
+        <Field label="وقت الانتهاء" required hint="تُغلق الجلسة تلقائيًا عند هذا الوقت، ويُسجَّل غائبًا كل من لم يُسجَّل حضوره.">
+          <TimePicker value={until} onChange={setUntil} required />
+        </Field>
         <Field className="form-wide" label="المجموعات" required>
           {ofGrade.length === 0 ? <p className="field-msg">لا توجد مجموعات في هذا الصف.</p> : (
             <div className="pick-chips" role="group" aria-label="المجموعات">
@@ -99,17 +112,20 @@ function GenerateModal({ groups, onClose, onDone }) {
 
 function RescheduleModal({ session, onClose, onDone }) {
   const [when, setWhen] = useState(toLocalInput(session.scheduled_at));
+  const [until, setUntil] = useState(session.ends_at ? toLocalInput(session.ends_at).slice(11, 16) : hourLater(toLocalInput(session.scheduled_at)));
   const [err, setErr] = useState(null);
   const submit = async (e) => {
     e.preventDefault(); setErr(null);
-    try { await schedulingApi.sessions.reschedule(session.id, toIso(when)); onDone(); }
+    if (!endsAfterStart(when, until)) { setErr("وقت الانتهاء يجب أن يكون بعد وقت البداية في نفس اليوم."); return; }
+    try { await schedulingApi.sessions.reschedule(session.id, toIso(when), endIso(when, until)); onDone(); }
     catch (e2) { setErr(e2 instanceof ApiError ? e2.message : "تعذّر التعديل."); }
   };
   return (
     <Modal title="تعديل موعد الجلسة" onClose={onClose}>
       <form onSubmit={submit} className="dash-form">
         {err && <Banner tone="err">{err}</Banner>}
-        <Field label="التاريخ والوقت" required><DateTimePicker value={when} onChange={setWhen} /></Field>
+        <Field label="التاريخ ووقت البداية" required><DateTimePicker value={when} onChange={setWhen} /></Field>
+        <Field label="وقت الانتهاء" required><TimePicker value={until} onChange={setUntil} required /></Field>
         <Btn type="submit">حفظ</Btn>
       </form>
     </Modal>
@@ -180,12 +196,13 @@ export default function SessionsPage() {
             <div className="cal-sessions">
               {day.sessions.map((s) => (
                 <article key={s.id} className={"cal-session s-" + s.status}>
-                  <div className="cal-time">{timeLabel(s.scheduled_at)}</div>
+                  <div className="cal-time">{timeLabel(s.scheduled_at)}{s.ends_at ? <span className="stat-sub"> – {timeLabel(s.ends_at)}</span> : null}</div>
                   <div className="cal-session-main">
                     <strong>{s.group?.name || s.group_name}</strong>
                     {gradeName(s.group?.grade_id) && <span className="stat-sub">{gradeName(s.group.grade_id)}</span>}
                     <span className={"chip-s " + TONE[s.status]}>{STATUS[s.status]}</span>
                     {s.reopened_count ? <span className="stat-sub">أُعيد فتحها {s.reopened_count} مرة</span> : null}
+                    {s.status === "open" && s.auto_close_at ? <span className="stat-sub">تُغلق تلقائيًا {timeLabel(s.auto_close_at)}</span> : null}
                   </div>
                   <div className="row-actions">
                     {s.status === "planned" && <>

@@ -21,7 +21,7 @@ from .serializers import (
     SessionInstanceSerializer,
 )
 from .services import (
-    add_guest, generate_planned_sessions, mark_attendance, mark_guest, mark_recitation, remove_guest, set_home_session,
+    add_guest, close_due_sessions, generate_planned_sessions, mark_attendance, mark_guest, mark_recitation, remove_guest, set_home_session,
 )
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
@@ -59,6 +59,9 @@ class SessionInstanceListCreateView(TenantScopedQuerySetMixin, generics.ListCrea
     queryset = SessionInstance.objects.select_related("group")
 
     def get_queryset(self):
+        # Sessions whose end time has passed close themselves (and record the
+        # unmarked as absent) as soon as the teacher looks at the list.
+        close_due_sessions(self.request.environment)
         qs = super().get_queryset()
         params = self.request.query_params
         if group_id := params.get("group_id"):
@@ -106,7 +109,8 @@ class SessionBulkCreateView(APIView):
                 if SessionInstance.objects.filter(environment=env, group=g, scheduled_at=v["scheduled_at"]).exists():
                     skipped.append(g.name)
                     continue
-                created.append(SessionInstance.objects.create(environment=env, group=g, scheduled_at=v["scheduled_at"]))
+                created.append(SessionInstance.objects.create(
+                    environment=env, group=g, scheduled_at=v["scheduled_at"], ends_at=v.get("ends_at")))
         return Response(
             {"created": len(created), "skipped": skipped, "results": SessionInstanceSerializer(created, many=True).data},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -196,12 +200,16 @@ class SessionRosterView(APIView):
         session = generics.get_object_or_404(
             SessionInstance.objects.filter(environment=request.environment).select_related("group"), pk=pk
         )
+        if session.is_overdue():
+            session.close(auto=True)
         enrollments = list(
             Enrollment.objects.filter(
                 environment=request.environment, is_active=True, groups=session.group_id
             ).select_related("student").order_by("student_name", "id")
         )
-        att = dict(AttendanceRecord.objects.filter(session=session).values_list("enrollment_id", "status"))
+        att_rows = list(AttendanceRecord.objects.filter(session=session).values_list("enrollment_id", "status", "auto_marked"))
+        att = {e: st for e, st, _ in att_rows}
+        auto = {e for e, _, a in att_rows if a}
         rec = dict(RecitationRecord.objects.filter(session=session).values_list("enrollment_id", "status"))
         carried = {}
         for v in GuestVisit.objects.filter(home_session=session, applied_at__isnull=False).select_related("session__group"):
@@ -212,7 +220,7 @@ class SessionRosterView(APIView):
         return Response({
             "session": SessionInstanceSerializer(session).data,
             "students": [
-                {"enrollment_id": e.id, "name": e.display_name, "attendance": att.get(e.id), "recitation": rec.get(e.id),
+                {"enrollment_id": e.id, "name": e.display_name, "attendance": att.get(e.id), "auto_absent": e.id in auto, "recitation": rec.get(e.id),
                  "carried_from": carried.get(e.id)}
                 for e in enrollments
             ],
@@ -221,6 +229,7 @@ class SessionRosterView(APIView):
                 "total": len(enrollments),
                 "present": sum(1 for v in att.values() if v == "present"),
                 "absent": sum(1 for v in att.values() if v == "absent"),
+                "auto_absent": len(auto),
                 "studied": sum(1 for v in rec.values() if v == "studied"),
                 "not_studied": sum(1 for v in rec.values() if v == "not_studied"),
             },
@@ -304,7 +313,7 @@ class GuestCandidatesView(APIView):
 
     def get(self, request, pk):
         host = _host_session(request, pk)
-        q = (request.query_params.get("q") or "").strip()
+        q = (request.query_params.get("q") or "").replace("\x00", "").strip()
         qs = (Enrollment.objects.filter(environment=request.environment, is_active=True)
               .exclude(groups=host.group_id).exclude(guest_visits__session=host)
               .select_related("student", "grade").prefetch_related("groups"))

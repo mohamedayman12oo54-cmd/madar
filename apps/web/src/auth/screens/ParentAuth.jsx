@@ -1,70 +1,48 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { phoneError } from "../../lib/phone.js";
-import { AuthShell, AuthCard, Head, Field, PhoneInput, Btn, Banner, Otp, Timer } from "../ui.jsx";
+import { AuthShell, AuthCard, Head, Field, TextInput, PhoneInput, Btn, Banner } from "../ui.jsx";
 import { ApiError } from "../../lib/api.js";
 import { parentApi, saveParentSession } from "../../lib/parentApi.js";
 
-/** Guardian sign-in: the phone number the teacher recorded for the student, then
- *  a code sent to it. No password and no account to activate — it works as soon
- *  as the student has activated their own account. */
+/** Guardian sign-in: the phone number the teacher recorded for the guardian plus
+ *  the student code of the child. No password, no OTP and no account to activate
+ *  — it works as soon as the child has activated their own account. */
 export function ParentLogin() {
   const nav = useNavigate();
-  const [phase, setPhase] = useState("entry"); // entry | otp
-  const [phone, setPhone] = useState(""); const [otp, setOtp] = useState("");
-  const [pendingId, setPendingId] = useState(null);
+  const [phone, setPhone] = useState(""); const [code, setCode] = useState("");
   const [fe, setFe] = useState({}); const [err, setErr] = useState(null); const [loading, setLoading] = useState(false);
-  const msg = (e) => (e instanceof ApiError ? e.message : "تعذّر الاتصال بالخادم، حاول مرة أخرى.");
 
-  const send = async (e) => {
+  const submit = async (e) => {
     e?.preventDefault();
-    const pe = phoneError(phone);
-    if (pe) { setFe({ phone: pe }); return; }
-    setFe({}); setErr(null); setLoading(true);
+    const f = {};
+    const pe = phoneError(phone); if (pe) f.phone = pe;
+    if (code.replace(/[^a-z0-9]/gi, "").length < 4) f.code = "أدخل كود الطالب الخاص بابنك.";
+    setFe(f); setErr(null);
+    if (Object.keys(f).length) return;
+    setLoading(true);
     try {
-      const data = await parentApi.request(phone);
-      setPendingId(data.pending_id);
-      setPhase("otp");
-    } catch (e2) {
-      setErr(msg(e2));
-    } finally { setLoading(false); }
-  };
-
-  const verify = async () => {
-    if (otp.length < 6) { setErr("أدخل الرمز المكوّن من ٦ خانات."); return; }
-    setErr(null); setLoading(true);
-    try {
-      await parentApi.otpVerify(pendingId, otp);
-      const data = await parentApi.verify(pendingId);
+      const data = await parentApi.login(phone, code.trim());
       saveParentSession(data);
       nav("/parent", { replace: true });
     } catch (e2) {
-      setErr(msg(e2));
+      setErr(e2 instanceof ApiError ? e2.message : "تعذّر الاتصال بالخادم، حاول مرة أخرى.");
     } finally { setLoading(false); }
   };
 
-  const resend = async () => { try { await parentApi.otpResend(pendingId); } catch { /* stay on screen either way */ } };
-
-  if (phase === "otp")
-    return (<AuthShell><AuthCard back>
-      <Head title="تأكيد رقم الهاتف" sub="أدخل رمز التحقق المرسل إلى رقم هاتفك المسجّل لدى المدرّس." />
-      <div className="auth-body">
-        <Otp value={otp} onChange={setOtp} error={!!err} />
-        {err && <Banner tone="err">{err}</Banner>}
-        <Btn loading={loading} loadingText="جاري التحقق…" onClick={verify}>تأكيد</Btn>
-        <Timer seconds={45} onResend={resend} />
-      </div>
-    </AuthCard></AuthShell>);
-
   return (
     <AuthShell><AuthCard back="/auth">
-      <Head title="دخول ولي الأمر" sub="ادخل برقم هاتفك المسجّل لدى المدرّس لمتابعة حضور ابنك وتسميعه ومدفوعاته وتقييمه. لا تحتاج إلى إنشاء حساب." />
-      <form className="auth-body" onSubmit={send} noValidate>
+      <Head title="دخول ولي الأمر" sub="ادخل برقم هاتفك المسجّل لدى المدرّس وكود الطالب الخاص بابنك لمتابعة حضوره وتسميعه ومدفوعاته وتقييمه." />
+      <form className="auth-body" onSubmit={submit} noValidate>
         {err && <Banner tone="err">{err}</Banner>}
         <Field label="رقم هاتف ولي الأمر" required error={fe.phone} hint="الرقم الذي سجّله المدرّس عند إضافة الطالب.">
           <PhoneInput value={phone} onChange={(e) => setPhone(e.target.value)} error={fe.phone} />
         </Field>
-        <Btn type="submit" loading={loading} loadingText="جاري الإرسال…">إرسال رمز التحقق</Btn>
+        <Field label="كود الطالب" required error={fe.code} hint="كود من ٦ خانات مع ابنك — نفس الكود الذي يفعّل به حسابه.">
+          <TextInput className="code-inp" value={code} maxLength={12} autoCapitalize="characters" autoComplete="off" spellCheck={false}
+            onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="مثال: K7M2QX" error={fe.code} />
+        </Field>
+        <Btn type="submit" loading={loading} loadingText="جاري الدخول…">دخول</Btn>
       </form>
       <div className="auth-foot" style={{ textAlign: "center" }}>
         المتابعة تتاح بعد أن يفعّل الطالب حسابه على مدار.
