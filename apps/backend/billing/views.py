@@ -16,7 +16,7 @@ Checkout (BILL-WU-019), cancellation (BILL-WU-028) and the webhook
 later units — explicitly out of scope here (this unit's own exclusions).
 """
 from django.utils import timezone
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,7 +25,15 @@ from environments.tenancy import IsEnvironmentMember, StandardPagination
 
 from . import entitlements
 from .models import PaymentAttempt, Plan, Subscription
-from .serializers import PaymentHistoryRowSerializer, PlanSerializer, SubscriptionStatusSerializer
+from .serializers import (
+    CheckoutRequestSerializer,
+    CheckoutResponseSerializer,
+    CheckoutStatusSerializer,
+    PaymentHistoryRowSerializer,
+    PlanSerializer,
+    SubscriptionStatusSerializer,
+)
+from .services import CheckoutError, get_checkout_status, start_checkout
 
 # Every environment-scoped billing endpoint requires the caller to be the
 # OWNER member of their own environment (header-resolved, never trusted
@@ -77,6 +85,50 @@ class SubscriptionStatusView(APIView):
             },
         }
         serializer = SubscriptionStatusSerializer(data)
+        return Response(serializer.data)
+
+
+class CheckoutView(APIView):
+    """POST — start (or resume) Kashier's hosted recurring-setup checkout
+    for one plan (BILL-WU-019). Allowed in EVERY access state — billing
+    resolution is one of `entitlements.ALWAYS_PERMITTED_CATEGORIES`, so
+    this is deliberately not gated by `entitlements.decide(...)`
+    (AC-BILL-019-6)."""
+
+    permission_classes = IS_ENV_OWNER
+
+    def post(self, request):
+        serializer = CheckoutRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        return_url = request.build_absolute_uri("/api/v1/billing/checkout/return/")
+        try:
+            attempt, session_url = start_checkout(
+                request.environment, serializer.validated_data["plan_key"], return_url
+            )
+        except CheckoutError as exc:
+            http_status = (
+                status.HTTP_409_CONFLICT if exc.code == "paid_period_active" else status.HTTP_400_BAD_REQUEST
+            )
+            return Response({"detail": exc.detail, "code": exc.code}, status=http_status)
+
+        response = CheckoutResponseSerializer({"session_url": session_url, "attempt_id": attempt.id})
+        return Response(response.data, status=status.HTTP_201_CREATED)
+
+
+class CheckoutReturnView(APIView):
+    """GET — the redirect-return landing page. **Display only** (ADR-016):
+    whatever the query string claims (including anything that looks like
+    "success"), this view never writes to Subscription, PaymentAttempt or
+    entitlement state — it only reports the attempt's current server-side
+    status (AC-BILL-019-3)."""
+
+    permission_classes = IS_ENV_OWNER
+
+    def get(self, request):
+        attempt = get_checkout_status(request.environment, request.query_params.get("attempt_id"))
+        data = {"attempt_id": attempt.id if attempt else None, "status": attempt.status if attempt else None}
+        serializer = CheckoutStatusSerializer(data)
         return Response(serializer.data)
 
 

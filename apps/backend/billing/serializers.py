@@ -21,6 +21,28 @@ class PlanSerializer(serializers.ModelSerializer):
         fields = ["key", "name", "price_minor_units", "currency", "max_students"]
 
 
+class CheckoutRequestSerializer(serializers.Serializer):
+    """BILL-WU-019 — the body carries only a plan identifier (this unit's
+    own "Expected outcome"). Any other field sent (`amount`, `currency`,
+    `status`, `environment_id`, ...) is simply not a declared field, so DRF
+    never reads it into `validated_data` — AC-BILL-019-2."""
+
+    plan_key = serializers.ChoiceField(choices=Plan.Key.choices)
+
+
+class CheckoutResponseSerializer(serializers.Serializer):
+    session_url = serializers.CharField()
+    attempt_id = serializers.IntegerField()
+
+
+class CheckoutStatusSerializer(serializers.Serializer):
+    """The redirect-return page's display-only payload (ADR-016) — current
+    server-side status, nothing the query string said."""
+
+    attempt_id = serializers.IntegerField(allow_null=True)
+    status = serializers.CharField(allow_null=True)
+
+
 class EntitlementSummarySerializer(serializers.Serializer):
     """Mirrors `billing.entitlements.EntitlementDecision` — never the ORM
     model, since this is a computed decision, not a stored row."""
