@@ -4,11 +4,15 @@
 > level).
 > **Source of truth** for the *existence and purpose* of the Free Trial → Subscription lifecycle.
 > **Depends on:** `01-product/product.md`, `03-domain/actor-lifecycles.md`.
-> **Scope note:** this document establishes that Madar has a commercial/access lifecycle and what it
-> means for access. It deliberately does **not** specify pricing, plans, billing provider, payment
-> gateway, invoicing, trial duration, renewal/cancellation mechanics, or accounting behavior — all of
-> which are **unresolved/deferred**. It does not touch student fee-tracking, which is a separate
-> concept (see below).
+> **Scope note:** this document establishes the **existence and shape** of the commercial/access
+> lifecycle. The concrete commercial parameters (pricing, plans, trial duration, billing cycle,
+> renewal/cancellation mechanics, failed-payment policy direction, and the access-not-granted
+> principle) are now **decided and authoritatively recorded** in
+> [`commercial-model.md`](commercial-model.md) — this document does not duplicate them and defers to
+> that document for all numbers. What remains genuinely open after that commercial-design pass (exact
+> retry/grace numbers, student-facing restricted-access behavior, refunds, proration, etc.) is listed
+> there, not invented here. It does not touch student fee-tracking, which is a separate concept (see
+> below).
 
 ## Why this exists
 
@@ -58,12 +62,13 @@ Teacher's access state:
 This removes the previously unexplained "no commercial ending": access is no longer assumed to be
 perpetual and unconditional.
 
-> **Unresolved (do not assume):** the exact behavior when access is not granted — whether the
-> environment is suspended, becomes read-only, enters a grace period, or is otherwise handled, and any
-> data-retention consequence — is **not decided** here. The existing data-retention stance
-> (`06-data/lifecycle-retention.md`: indefinite retention, no deletion workflow in V1) remains the
-> only documented retention rule and is unchanged. Suspension/grace/cancellation mechanics are
-> deferred (`10-decisions/rejected-deferred.md`).
+> **Principle decided; exact mechanics remain open.** The access-not-granted **principle** is now
+> decided (`commercial-model.md` §Access-not-granted principle): the account/data are never destroyed;
+> the Teacher retains authentication, billing-resolution, and data-review/export access; paid-capability
+> gating is Backend-enforced. The **exact** student-facing restricted-access behavior and the complete
+> teacher read-only permission ruleset remain **not decided** — see `commercial-model.md` §Open items.
+> The existing data-retention stance (`06-data/lifecycle-retention.md`: indefinite retention, no
+> deletion workflow in V1) remains the only documented retention rule and is unchanged.
 
 ## Distinct from student fee tracking (do not conflate)
 
@@ -79,9 +84,11 @@ environment** ("Madar records payment information; it is not an accounting/payme
 `01-product/scope.md`). It is unrelated to how the Teacher pays for Madar. Neither definition changes
 the other.
 
-## Deferred commercial mechanics
+## Commercial mechanics — now resolved by a commercial-design pass
 
-Explicitly **not decided** and not invented here: pricing, plans/tiers, payment provider/gateway,
-billing/invoicing, exact **trial duration**, renewal mechanics, cancellation UX, financial
-accounting, and proration. These are recorded as deferred (`10-decisions/rejected-deferred.md`) and
-belong to a later commercial-design pass, not to this system-lifecycle correction.
+Pricing, plans/tiers, free-trial duration, billing-cycle mechanics, renewal/cancellation, and the
+failed-payment policy direction are **no longer deferred** — they are decided and authoritatively
+recorded in [`commercial-model.md`](commercial-model.md), which is the product of the commercial-design
+pass this document previously named as the resolution path (`10-decisions/rejected-deferred.md`).
+Financial accounting, proration, refund policy, and several other specific sub-items remain explicitly
+**open** — see `commercial-model.md` §Open items; they are not resolved by implication here.

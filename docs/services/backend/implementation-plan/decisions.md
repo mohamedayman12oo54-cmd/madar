@@ -36,7 +36,7 @@
 | Node | Fences | Owner / path | Blocks (scope) |
 |---|---|---|---|
 | **NODE-TeacherAuth** 🔧 | Teacher authentication mechanism (credentials/OTP/token/provider) | Product/Implementation | mechanism portion of TAL-01 (seam unblocked) |
-| **NODE-EnvProvision** 🔧🚧 | Environment provisioning trigger + per-Teacher cardinality (one vs many) | System (unresolved)/Implementation | mechanism portion of TAL-02 (empty-state seam unblocked) |
+| **NODE-EnvProvision** 🔧 | Environment provisioning **trigger** mechanism only — **cardinality is resolved** (ADR-013/INV-9: exactly one Environment per Teacher Account, permanently; the 🚧 cardinality fence is removed) | Implementation | trigger-mechanism portion of TAL-02 (empty-state seam unblocked; cardinality no longer a fenced unknown) |
 | **NODE-Invitation** 🔧 | Secure Teacher→Student invitation mechanism | System (unresolved)/Implementation | mechanism portion of TAL-03 (connection unblocked) |
 | **NODE-AccessBehavior** 🔧 | Access-not-granted behavior (suspend/grace/read-only) + commercial mechanics + source of access state | Commercial-design / System | mechanism/policy portion of TAL-04 (input seam unblocked) |
 | **NODE-OTP** 🔧 | Student claiming OTP/verification provider | Security/Ops | mechanism portion of AUTH-01 (claiming seam unblocked) |

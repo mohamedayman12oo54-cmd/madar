@@ -13,7 +13,7 @@
 | R-03 | External LLM latency/failure (Quiz / State-rec) | External | Med | ADR-006; AI-02/03, RUN-02 |
 | R-04 | Push / Video vendor undecided | External | Low-Med | NODE-Vendors; EXT-02/03 |
 | R-05 | Teacher authentication mechanism undecided | Decision | Med | NODE-TeacherAuth; TAL-01 |
-| R-06 | Environment cardinality (one vs many) — Open, structural-ish | Decision/Structural | Med-High | NODE-EnvProvision; TAL-02, DAT-4 |
+| R-06 | ~~Environment cardinality (one vs many) — Open, structural-ish~~ **RESOLVED by ADR-013/INV-9** (exactly one, permanently); residual risk is now only the implementation follow-up (OneToOneField migration, live-data check, `environments/tests.py` fixture update) — tracked as implementation work, not a planning risk | Decision/Structural → Resolved (implementation follow-up remains) | Low (was Med-High) | ADR-013; NODE-EnvProvision; TAL-02, DAT-4 |
 | R-07 | Environment provisioning trigger undecided | Decision | Low-Med | NODE-EnvProvision; TAL-02 |
 | R-08 | Access-not-granted behavior (suspend/grace/read-only) + retention — Open | Decision/Product | Med-High | NODE-AccessBehavior; TAL-04, EX-3 |
 | R-09 | Teacher→Student invitation mechanism undecided | Decision | Low | NODE-Invitation; TAL-03 |
@@ -26,10 +26,11 @@
 - **R-01 / R-02 → decomposition, ordering, verification depth.** Justify SPIKEs (FND-03, FND-08) in **W0**,
   before consumers (FND-04, FND-09/10, RUN-01/02); raise verification depth (isolation negative-suites,
   Outbox crash/replay). No change to the WB.
-- **R-06 (cardinality) → possible structural effect on the Teacher↔Environment association (DAT-4).**
-  ADR-008 already permits plural "authorized environments," so it is **structurally non-blocking**; the
-  per-Teacher limit is a product decision. **Classification: decision Node, not SPIKE, not a blocking
-  dependency** — flagged as the most structurally sensitive delta item.
+- **R-06 (cardinality) → RESOLVED.** The commercial-design pass decided permanent one-Environment-per-
+  Teacher-Account cardinality (ADR-013/INV-9). ADR-008's "authorized environments" (plural) language is
+  reconciled, not contradicted (see ADR-013 §Consequences). The remaining structural effect on the
+  Teacher↔Environment association (DAT-4) is now an **implementation task** (OneToOneField migration,
+  live-data integrity check, `environments/tests.py` fixture update), not an open planning risk.
 - **R-08 (access-not-granted) → enforcement semantics + possible worker re-evaluation (EX-3 fenced) +
   retention.** The **seam** (access-state input) is plannable; the **enforcement behavior** is fenced.
   **Classification: product/System decision.** A small SPIKE may be warranted *after* the product decision
@@ -48,8 +49,9 @@
 - **Ordering:** unchanged in substance; WS-TAL seams enter early (W2.5) with mechanisms deferred.
 - **Readiness:** consumers stay READY on the seams; mechanism-completion of SEAM-READY WUs and AUTH-01 is
   gated on decision Nodes — this does **not** prevent starting execution, only declaring those WUs "done".
-- **Gate:** the plan does not reach overall READY until R-05/06/08 (+ R-10) are resolved. These are
-  **product/System-owned**, not planning blockers.
+- **Gate:** the plan does not reach overall READY until R-05/08 (+ R-10) are resolved. **R-06 is now
+  resolved** (ADR-013) and no longer part of this gate; R-05/08/10 remain **product/System-owned**, not
+  planning blockers.
 
 ## Stage 9 gate
 

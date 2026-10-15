@@ -41,19 +41,22 @@ guarantee) and against operational simplicity at this team size.
 The module boundaries are kept clean specifically so that **future extraction** of a component
 remains possible if a concrete driver appears — without committing to distribution now.
 
-## The seven modules
+## The eight modules
 
-Aligned with the conceptual sub-domains from `03-domain/`:
+Aligned with the conceptual sub-domains from `03-domain/`. **Billing** was added after the
+commercial-design pass (`10-decisions/ADR-014-billing-bounded-module.md`); the original seven are
+unchanged.
 
 | Module | Responsibility |
 |--------|----------------|
 | **Identity & Enrollment** | Student (global), Enrollment, Grade, Group, Academic Year |
 | **Educational Operations** | Schedule, Session Instance, Attendance, Recitation |
-| **Financials** | Grade fee, Payment |
+| **Financials** | Grade fee, Payment (student→teacher fee tracking; unrelated to Billing) |
 | **Student Evaluation** | State, Rating, Teacher Private Notes |
 | **Content** | Video metadata + targeting |
 | **Learning & AI** | AI orchestration (Assistant, Quiz, State recommendation) |
 | **Notifications** | Notification events + dispatch |
+| **Billing** | Plan, Subscription, BillingPeriod, Invoice, PaymentAttempt, provider event, entitlement (Teacher↔Madar commercial relationship) |
 
 Boundaries are strong and internal: modules collaborate through clear internal interfaces, not by
 reaching into each other's data.

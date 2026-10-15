@@ -36,11 +36,32 @@
 | Notification content, delivery lifecycle | Requirements / Cross-cutting detail |
 | Homework upload/annotation | Fenced feasibility gate (outside V1 Definition-of-Done) |
 | Teacher authentication mechanism (credentials/OTP/token/provider) | Implementation |
-| Teacher Environment provisioning trigger & cardinality (one vs. many) | System (unresolved) / Implementation |
 | Secure Teacher→Student invitation/access mechanism | System (unresolved) / Implementation |
-| Commercial mechanics: pricing, plans, billing provider/gateway, invoicing | Commercial-design pass |
-| Free Trial exact duration; renewal & cancellation mechanics | Commercial-design pass |
-| Access-not-granted behavior: suspension / grace / read-only | System (unresolved) / Operations |
+
+### Resolved since the table above was first written
+
+| Item | Resolution |
+|------|------------|
+| ~~Teacher Environment provisioning trigger & cardinality (one vs. many)~~ | **Cardinality resolved by ADR-013** — permanent one Teacher Account : one Teacher Environment (INV-9). The **provisioning-trigger mechanism** (automatic vs. explicit action) remains open, deferred to Implementation. |
+| ~~Commercial mechanics: pricing, plans, billing provider/gateway, invoicing~~ | **Resolved by the commercial-design pass** — see `01-product/commercial-model.md` (3 plans, exact prices/caps/features; Kashier as payment provider per ADR-015). Invoicing/tax requirements and refund policy remain open (recorded in `commercial-model.md` §Open items), as does Kashier's own merchant-onboarding/invoicing mechanics. |
+| ~~Free Trial exact duration; renewal & cancellation mechanics~~ | **Resolved by the commercial-design pass** — 16-day trial, 250-student cap, no card, no auto-convert; 30-elapsed-day billing period; auto-renewal; cancel-at-period-end (`01-product/commercial-model.md`). Exact failed-renewal retry/grace numbers remain open. |
+| Access-not-granted behavior: suspension / grace / read-only | **Principle resolved, exact mechanics remain open.** The access-not-granted principle (account/data never destroyed; auth/billing/export access preserved; Backend-enforced gating) is decided (`01-product/commercial-model.md` §Access-not-granted principle, ADR-018). The exact student-facing restricted-access behavior and the complete teacher read-only ruleset remain **System (unresolved) / Operations**. |
+
+### Newly deferred (Kashier/billing-specific; not decided here)
+
+| Deferred item | Deferred to |
+|---------------|-------------|
+| Exact failed-renewal retry count/schedule; grace-period duration | Commercial-design follow-up |
+| Student-facing restricted-access behavior; teacher read-only ruleset (exact scope) | System (unresolved) / Operations |
+| Repeat-trial / trial-abuse controls | Commercial-design follow-up |
+| AI usage quotas / cost controls | Commercial-design follow-up |
+| Upgrade/downgrade timing; proration policy | Commercial-design follow-up |
+| Refund eligibility / process | Commercial-design follow-up |
+| Existing-subscriber treatment on future price changes | Commercial-design follow-up |
+| Invoice/receipt/tax requirements | Commercial-design follow-up / legal |
+| Kashier's exact recurring-agreement consent requirements; ambiguous-outcome recovery procedure | External verification (Kashier) |
+| Whether Kashier's recurring-agreement product supports an exact 30-elapsed-day interval vs. only calendar-month | External verification (Kashier) — **launch/design gate** |
+| Concrete production scheduling/monitoring for renewal/reconciliation jobs | Operations |
 
 ## Product decisions that superseded the original brief
 

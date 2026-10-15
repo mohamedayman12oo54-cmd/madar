@@ -58,17 +58,23 @@ identity — which is unchanged and documented in
 ## System boundary
 
 **Inside Madar:**
-- Core Madar system / domain (the seven modules — see `04-architecture/`)
+- Core Madar system / domain (the eight modules, including Billing — see `04-architecture/`)
 - The central curated **Knowledge Base** (product-owned)
 - **AI product logic / orchestration** (behavior, boundaries, decision rules)
 
-**Outside Madar (external dependencies, outbound only):**
-- **LLM / AI provider** — the underlying model; Madar owns orchestration, the model is external
-- **Push-notification delivery** infrastructure
-- **Video storage / streaming / delivery** infrastructure
+**Outside Madar (external dependencies):**
+- **LLM / AI provider** — the underlying model; Madar owns orchestration, the model is external (outbound only)
+- **Push-notification delivery** infrastructure (outbound only)
+- **Video storage / streaming / delivery** infrastructure (outbound only)
+- **Payment provider (Kashier)** — outbound checkout/status calls, **plus** the system's one approved
+  inbound integration (see below)
 
-**No inbound external integrations in V1.** Only Teacher, Student, and Content Maintainer act *on*
-Madar. There is no inbound SMS, WhatsApp, email, online-payment, or third-party integration.
+**No inbound external integrations in V1, except one narrowly-scoped exception.** Only Teacher,
+Student, and Content Maintainer act *on* Madar, and the three original providers remain outbound only.
+The sole exception is Kashier's signature-verified payment-result webhook, approved by
+[`10-decisions/ADR-016-inbound-webhook-exception.md`](../10-decisions/ADR-016-inbound-webhook-exception.md)
+following the commercial-design pass — it is not a general reopening of this rule, and no other
+inbound SMS, WhatsApp, email, or third-party integration exists.
 
 See the diagram: [`diagrams/system/system-context.mmd`](../diagrams/system/system-context.mmd).
 

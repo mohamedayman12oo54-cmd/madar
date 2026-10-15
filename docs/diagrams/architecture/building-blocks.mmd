@@ -18,6 +18,7 @@ flowchart TB
         CON["Content"]
         AI["Learning & AI"]
         NOT["Notifications"]
+        BIL["Billing\n(ADR-014)"]
         DAB["Data-access boundary:\ntenant scope enforced\n(ADR-004/007)"]
     end
 
@@ -25,16 +26,19 @@ flowchart TB
     LLM["LLM provider\n(external)"]
     PUSH["Push delivery\n(external)"]
     VID["Video storage/streaming\n(external)"]
+    PAY["Payment provider\n(Kashier; external)"]
 
     T --> API
     S --> API
     M --> API
     API --> RB
-    RB --> IE & EO & FIN & SE & CON & AI & NOT
+    RB --> IE & EO & FIN & SE & CON & AI & NOT & BIL
     EO -. "Absent / Not-Studied events" .-> NOT
     SE -. "advisory State rec" .-> AI
-    IE & EO & FIN & SE & CON & AI & NOT --> DAB
+    IE -. "capability" .-> BIL
+    IE & EO & FIN & SE & CON & AI & NOT & BIL --> DAB
     DAB --> PERS
     AI -->|LLM interface| LLM
     NOT -->|Push interface| PUSH
     CON -->|Video interface| VID
+    BIL -->|Payment-provider interface\n(outbound + sole inbound exception, ADR-016)| PAY

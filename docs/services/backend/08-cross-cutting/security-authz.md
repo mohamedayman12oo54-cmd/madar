@@ -24,15 +24,35 @@ Together these realize the inherited composite decision — **actor + role + aut
 + relationship/ownership**, role alone never sufficient (`ADR-010`) — without centralizing all
 authorization into one generic module.
 
-**Access state is a separate, prior question.** The System Documentation's access lifecycle (Free
-Trial → Subscription — `../../../01-product/access-lifecycle.md`) introduces an abstract **access
-state** governing *whether* a Teacher currently has access at all. This is an input to the
-access-decision boundary that sits **alongside** — not inside, and not replacing — the composite
-authorization model: composite authz governs **what** an authenticated, authorized Teacher may do;
-access state governs **whether access is currently granted**. The Backend-level treatment, kept
-abstract and explicitly **not** a billing architecture, is in
-`../01-scope/teacher-access-lifecycle.md` (TAL-5). All commercial mechanics and the exact
-access-not-granted behavior remain **fenced**.
+**Access state is a separate, prior question, now owned by the Billing module.** The commercial-design
+pass (`../../../01-product/commercial-model.md`) and
+`../../../10-decisions/ADR-018-billing-entitlement-boundary.md` make concrete what TAL-5 named
+abstractly: the **Billing** module (`../../../10-decisions/ADR-014-billing-bounded-module.md`) owns the
+commercial decision of what a Teacher's current Subscription/Trial state permits, and exposes it as an
+explicit **entitlement-policy contract** — a capability other boundaries consult, not a side effect of
+any other mechanism. This sits **alongside, and after**, not inside, the composite authorization
+model: composite authz (this document, `ADR-010`) governs **what** an authenticated, authorized
+Teacher may do; entitlement governs **whether access is currently granted at all** and which
+plan-gated capabilities are available.
+
+> **Explicit caution — do not fold entitlement into the authentication hook.**
+> `accounts/authentication.py`'s `MadarJWTAuthentication.get_user()` is the one per-request hook every
+> authenticated request already passes through, and it already re-checks session revocation and (for
+> students) active-enrollment status on every request. It would be a natural-looking shortcut to add
+> entitlement/billing checks there too, merely because the hook is available on every request — **this
+> is explicitly rejected** (`ADR-018`). Entitlement is a commercial-policy decision with different
+> ownership (Billing, not identity/auth) and a different change cadence (plan rules, not session
+> mechanics); it must be consulted at the correct authorization/application boundary, **after** an
+> authenticated actor and authorized tenant/environment context are already resolved — not bolted onto
+> the authentication hook.
+
+Frontend-hiding of gated capabilities is explicitly **insufficient** — entitlement must be enforced at
+the Backend. During an access-not-granted state, the entitlement contract must still permit
+authentication, billing-resolution actions, and data review/export
+(`../../../01-product/commercial-model.md` §Access-not-granted principle). The exact student-facing
+restricted-access behavior and the complete teacher read-only ruleset remain **fenced** — see
+`../01-scope/teacher-access-lifecycle.md` (TAL-5) and `../../../01-product/commercial-model.md` §Open
+items.
 
 ## Non-bypassability (recap)
 

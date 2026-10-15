@@ -34,6 +34,28 @@ Product: AI is advisory / never authoritative
   → Contracts: submit → operation-id → poll; explicit failure; selective idempotency (ADR-011)
 ```
 
+## Billing / Kashier chain (added after the commercial-design pass)
+
+```
+Product: commercial-design pass confirms plans/trial/renewal/failed-payment-policy direction
+  → Commercial model: 01-product/commercial-model.md (prices, caps, 16-day trial, 30-day period)
+  → Domain: INV-9 permanent one-Environment-per-Teacher-Account cardinality (ADR-013)
+  → Architecture: Billing as an eighth bounded Backend module (ADR-014)
+  → Contracts: Madar-owned payment-provider interface / Kashier adapter (ADR-015);
+               narrow inbound-webhook exception to outbound-only (ADR-016);
+               external-interfaces.md / api-contract.md / system-context.mmd updated to match
+  → Cross-cutting: payment-event integrity distinct from AI client-request idempotency (ADR-017);
+                    billing-owned entitlement boundary, integrated with composite authz (ADR-018)
+  → Data: candidate Billing logical concepts (06-data/data-model.md), distinct from financials/Payment
+  → Backend specialization: services/backend/{01-scope,06-data,07-contracts,08-cross-cutting,
+    09-operations,10-decisions,11-validation}/* and implementation-plan/* (cardinality items resolved)
+  → Remaining open (by design, not oversight): retry/grace numbers, student-facing restricted-access
+    behavior, refunds, proration, 30-day-vs-Kashier-recurring-interval compatibility, production
+    scheduling — see 01-product/commercial-model.md §Open items.
+```
+Evidence base: `KASHIER_BACKEND_READINESS_AUDIT.md`, `KASHIER_SUPPLEMENTARY_AUDIT.md` (repo root,
+read-only audits; not themselves part of this traceability chain's authoritative docs).
+
 ## Structural spine (cross-checked)
 
 Grade owns fee / Group owns sessions — consistent across Requirements (INV-5), Domain, and Data.

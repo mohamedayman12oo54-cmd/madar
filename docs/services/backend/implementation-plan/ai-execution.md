@@ -43,10 +43,11 @@ discrepancy is a **deviation** to record (see `changes.md`), not a silent fix.
 
 ## Dangerous assumptions to avoid
 
-- Do **not** assume a Teacher account/authentication mechanism, an Environment provisioning trigger or
-  cardinality, a Teacher→Student invitation mechanism, a billing model, an access-not-granted behavior, an
-  OTP provider, an AI-persistence owner, a serialized API schema, or any vendor. All are fenced Nodes
-  (`decisions.md`).
+- Do **not** assume a Teacher account/authentication mechanism, an Environment provisioning **trigger**
+  (cardinality itself is resolved — ADR-013/INV-9, no longer a fenced Node), a Teacher→Student
+  invitation mechanism, the exact numeric/behavioral billing-policy sub-decisions (retry/grace numbers,
+  refunds, proration), an OTP provider, an AI-persistence owner, a serialized API schema, or any vendor.
+  All are fenced Nodes (`decisions.md`).
 - Do **not** introduce `default-open` or any access policy for TAL-04; implement only the abstract
   access-state input seam.
 - Do **not** redesign or duplicate the Student identity/claiming model; TAL-03 connects into it unchanged.

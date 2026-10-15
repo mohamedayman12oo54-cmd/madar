@@ -322,11 +322,11 @@
 - **Fenced:** 🔧 Teacher authentication mechanism (NODE-TeacherAuth). Seam = "authenticated Teacher actor context must exist before capability requests are authorized."
 - **Verify:** capability request refused without authenticated Teacher context; actor distinct from student; **no auth mechanism assumed**. Method: contract + integration + regression. Evidence: CI.
 
-### TAL-02 — Environment establishment + initial empty state · SEAM-READY 🔧🚧 · W2.5
-- **Outcome:** Recognize Environment establishment/origin and initial **empty** state (no years/grades/groups/enrollments/records) as a real lifecycle point; isolation semantics unchanged.
-- **Source:** OBL-TAL-03 ← TAL-2·DAT-4 (BE), actor-lifecycles (Sys), BD-22. **Prereqs:** FND-02, FND-04 seam. **Consumers:** FND-05 (CONTRACT), IE-02 (DATA).
-- **Fenced:** 🔧 provisioning trigger · 🚧 per-Teacher cardinality (one vs many) (NODE-EnvProvision).
-- **Verify:** established Environment is empty; isolation holds from origin; **trigger/cardinality not asserted**. Method: integration + isolation negative-test. Evidence: CI.
+### TAL-02 — Environment establishment + initial empty state · SEAM-READY 🔧 · W2.5
+- **Outcome:** Recognize Environment establishment/origin and initial **empty** state (no years/grades/groups/enrollments/records) as a real lifecycle point; isolation semantics unchanged. **Cardinality is now resolved** — exactly one Environment per Teacher Account, permanently (ADR-013/INV-9).
+- **Source:** OBL-TAL-03 ← TAL-2·DAT-4 (BE), actor-lifecycles (Sys), BD-22; cardinality resolved by ADR-013. **Prereqs:** FND-02, FND-04 seam. **Consumers:** FND-05 (CONTRACT), IE-02 (DATA).
+- **Fenced:** 🔧 provisioning trigger only (NODE-EnvProvision). Cardinality is no longer fenced.
+- **Verify:** established Environment is empty; isolation holds from origin; exactly-one-per-account cardinality holds (pending the implementation follow-up — OneToOneField migration, data-integrity check, test-fixture update, per ADR-013 §Consequences); **trigger mechanism not asserted**. Method: integration + isolation negative-test. Evidence: CI.
 
 ### TAL-03 — Teacher→Student introduction (bridge) · SEAM-READY 🔧 · W3
 - **Outcome:** Represent the Teacher-side introduction/association as the entry point into the **existing** claiming model — a connection, not a new identity/account system.

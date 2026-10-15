@@ -8,7 +8,7 @@ Each ADR records **Context · Decision · Alternatives · Consequences · Status
 decision was made and what was rejected — not only the final state. A decision, once accepted, is
 stable; a future change produces a **new** ADR that supersedes the old one rather than editing it.
 
-Not every choice is an ADR. These twelve cross the bar of being architecturally significant —
+Not every choice is an ADR. These eighteen cross the bar of being architecturally significant —
 someone will later need to understand why they were made. Minor implementation choices are not
 recorded here.
 
@@ -28,6 +28,12 @@ recorded here.
 | [ADR-010](ADR-010-composite-authorization.md) | Composite authorization | Accepted |
 | [ADR-011](ADR-011-selective-idempotency.md) | Selective idempotency | Accepted |
 | [ADR-012](ADR-012-web-worker-split.md) | Web/worker runtime split within one deployable | Accepted |
+| [ADR-013](ADR-013-permanent-environment-cardinality.md) | Permanent one-Teacher-Account-to-one-Teacher-Environment cardinality | Accepted |
+| [ADR-014](ADR-014-billing-bounded-module.md) | Billing as an independent bounded Backend module | Accepted |
+| [ADR-015](ADR-015-payment-provider-interface.md) | Madar-owned payment-provider interface (Kashier), extending ADR-009 | Accepted |
+| [ADR-016](ADR-016-inbound-webhook-exception.md) | Narrow inbound-webhook exception for Kashier payment-result callbacks | Accepted |
+| [ADR-017](ADR-017-payment-event-idempotency.md) | Payment-event integrity distinct from client-request idempotency | Accepted |
+| [ADR-018](ADR-018-billing-entitlement-boundary.md) | Billing-owned entitlement boundary, integrated with composite authorization | Accepted |
 
 See also [`rejected-deferred.md`](rejected-deferred.md) — the negative register that preserves
 architectural intent by recording what was explicitly rejected and what was deferred.

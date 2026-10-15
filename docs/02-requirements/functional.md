@@ -79,6 +79,33 @@
 - AI operations shall be asynchronous and failure-tolerant; AI failure shall never block or corrupt
   deterministic data (see `05-runtime/` and ADR-006).
 
+## Billing (Teacher ↔ Madar commercial relationship — distinct from Payments above)
+
+> **Do not conflate with the Payments section above.** Payments (above) is the teacher recording a
+> **student's** monthly Grade-fee status inside their environment. Billing (here) is the **Teacher's**
+> own commercial relationship with Madar. They are unrelated features; see
+> `01-product/commercial-model.md` and `00-overview/glossary.md`.
+
+- The system shall support exactly three paid plans with fixed prices, student caps, and feature deltas
+  as recorded in `01-product/commercial-model.md` (Plan 1/2/3). No additional tier, annual billing
+  option, or discount mechanism is required or implied.
+- The system shall grant a Teacher Account a 16-day Free Trial, starting at the Backend-authoritative
+  instant of account activation + Environment establishment, with the full Plan 3 feature set and a
+  250-student cap, no payment card required, and no auto-conversion to a paid plan.
+- The system shall track a Subscription's billing period as exactly 30 elapsed days per cycle (never
+  calendar-month arithmetic), support auto-renewal for subscriptions on an appropriate recurring-payment
+  agreement, and apply cancellation at the end of the already-paid period only.
+- The system shall not immediately terminate access on a single failed renewal attempt; a limited
+  retry/notification/grace-period behavior is required, with exact numeric parameters tracked as open
+  (`01-product/commercial-model.md` §Open items).
+- The system shall never destroy a Teacher Account or its data due to an access-not-granted state, and
+  shall preserve the Teacher's ability to authenticate, resolve billing, and review/export their own
+  data in that state. Paid-capability gating shall be enforced at the Backend, not only hidden in the
+  Frontend.
+- Billing persistence and enforcement are owned by a dedicated `billing` Backend module, distinct from
+  `financials` — see `06-data/data-model.md` and
+  `services/backend/06-data/data-model.md`.
+
 ## Homework (fenced)
 
 Homework upload/annotation is outside the V1 Definition-of-Done. Its feasibility go/no-go is a

@@ -75,11 +75,27 @@ Active educational environment
   context, two-layer enforcement — ADR-004/007/008) are unchanged. This document does not alter how
   isolation works; it only documents when/why the Environment first exists.
 
-> **Unresolved (do not assume):** whether a Teacher may hold **one or multiple** Environments, and
-> the exact provisioning trigger/mechanics (automatic on account creation vs. an explicit action),
-> are **not decided**. The existing tenant model already permits an actor to be authorized for one or
-> more environments (ADR-008 speaks of "authorized environments," plural), so cardinality is left
-> open here rather than fixed. See `10-decisions/rejected-deferred.md`.
+> **Resolved — permanent one-to-one cardinality.** A Teacher Account owns **exactly one** Teacher
+> Environment, permanently (not a V1-only limitation). A Teacher wanting a second, separate environment
+> creates another account. See INV-9 (`03-domain/invariants.md`) and
+> `10-decisions/ADR-013-permanent-environment-cardinality.md`, which is the authoritative decision and
+> reconciles this with ADR-008's "authorized environments" (plural) language — that phrasing describes
+> the general server-derived-context mechanism (an actor is resolved against *whichever* environments
+> it is authorized for) and is not, and was never intended as, a cardinality commitment; ADR-008 is
+> otherwise unaffected and continues to govern context-resolution mechanics regardless of how many
+> environments an actor type may hold.
+>
+> **The exact provisioning trigger/mechanics** (automatic on account creation vs. an explicit action)
+> remain **not decided** — in the current signup flow, account creation and the one Environment's
+> establishment happen atomically, but this is a description of today's code, not a binding
+> specification of the only allowed mechanism. See `10-decisions/rejected-deferred.md`.
+>
+> **Implementation follow-up (not performed by this documentation pass):** enforcing the invariant at
+> the Django ORM level (a `OneToOneField` is the expected semantic target, replacing the current plain
+> `ForeignKey` on `Environment.owner`) and at the Postgres DB-integrity level; no live database has been
+> checked for pre-existing violating data; and existing tests
+> (e.g. `environments/tests.py:26-40`) currently assume multiple environments per teacher and will need
+> updating to reflect the new invariant. These are implementation tasks, tracked but not resolved here.
 
 ## Initial use (empty → usable)
 
