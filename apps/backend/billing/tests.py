@@ -7,6 +7,7 @@ PostgreSQL (see apps/backend/POSTGRESQL.md) — SQLite silently ignores some
 of what's asserted here.
 """
 import ast
+import itertools
 import os
 
 from django.db import IntegrityError, transaction
@@ -16,6 +17,8 @@ from django.utils import timezone
 from accounts.models import User
 from environments.models import Environment
 
+from . import capabilities
+from . import entitlements
 from .models import (
     AmountOwed,
     BillingPeriod,
@@ -27,14 +30,22 @@ from .models import (
 )
 
 
-def make_environment(owner_username="teacher-billwu008"):
+_environment_counter = itertools.count(1)
+
+
+def make_environment(owner_username=None):
+    # A unique default per call, not a fixed string: several tests create
+    # more than one Environment within a single test method (e.g. looping
+    # over all three plans), and `User.username` is unique, so a fixed
+    # default collides on the second call.
+    owner_username = owner_username or f"teacher-billwu008-{next(_environment_counter)}"
     owner = User.objects.create(username=owner_username, role=User.Role.TEACHER)
     return Environment.objects.create(owner=owner, name="Env for BILL-WU-008 tests")
 
 
-def make_subscription(environment=None):
+def make_subscription(environment=None, **extra):
     environment = environment or make_environment()
-    return Subscription.objects.create(environment=environment)
+    return Subscription.objects.create(environment=environment, **extra)
 
 
 def make_billing_period(subscription=None, start=None):
@@ -396,3 +407,236 @@ class CapabilityRegistryTests(TestCase):
 
         with self.assertRaises(KeyError):
             capabilities_for_plan("not_a_real_plan")
+
+
+def _plan(key):
+    return Plan.objects.get(key=key)
+
+
+class TrialBoundaryTests(TestCase):
+    """BILL-WU-010 — AC-BILL-010-1. A frozen clock (explicit `now=`) is
+    passed to `decide()` for every instant; nothing relies on wall-clock
+    time, so DST/timezone cannot make these flaky."""
+
+    def setUp(self):
+        self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        self.subscription = make_subscription(trial_started_at=self.start)
+
+    def test_trial_granted_at_start(self):
+        decision = entitlements.decide(self.subscription.environment, now=self.start)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.TRIAL)
+
+    def test_trial_granted_one_microsecond_before_16_days(self):
+        almost_end = self.start + timezone.timedelta(days=16) - timezone.timedelta(microseconds=1)
+        decision = entitlements.decide(self.subscription.environment, now=almost_end)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.TRIAL)
+
+    def test_trial_not_granted_at_exactly_16_days(self):
+        exactly_16_days = self.start + timezone.timedelta(days=16)
+        decision = entitlements.decide(self.subscription.environment, now=exactly_16_days)
+        self.assertFalse(decision.access_granted)
+        self.assertEqual(decision.reason_code, entitlements.ReasonCode.TRIAL_EXPIRED)
+
+
+class PaidPeriodBoundaryTests(TestCase):
+    """AC-BILL-010-2."""
+
+    def setUp(self):
+        self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        self.end = self.start + timezone.timedelta(days=30)
+        self.plan = _plan(Plan.Key.PLAN_1)
+        self.subscription = make_subscription(plan=self.plan)
+        self.period = BillingPeriod.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            period_start=self.start, period_end=self.end,
+        )
+
+    def _succeed(self):
+        PaymentAttempt.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            billing_period=self.period, status=PaymentAttempt.Status.SUCCEEDED,
+            merchant_order_id="paid-order-1", amount_minor_units=self.plan.price_minor_units,
+        )
+
+    def test_granted_at_period_start_with_a_covering_succeeded_payment(self):
+        self._succeed()
+        decision = entitlements.decide(self.subscription.environment, now=self.start)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.PAID_ACTIVE)
+
+    def test_granted_one_microsecond_before_period_end(self):
+        self._succeed()
+        almost_end = self.end - timezone.timedelta(microseconds=1)
+        decision = entitlements.decide(self.subscription.environment, now=almost_end)
+        self.assertTrue(decision.access_granted)
+
+    def test_not_granted_at_exactly_period_end_without_a_new_covering_payment(self):
+        self._succeed()
+        decision = entitlements.decide(self.subscription.environment, now=self.end)
+        self.assertFalse(decision.access_granted)
+        self.assertEqual(decision.reason_code, entitlements.ReasonCode.PERIOD_ENDED)
+
+    def test_not_granted_within_the_period_without_any_succeeded_payment(self):
+        # No PaymentAttempt at all for this period — an unpaid/initiated
+        # checkout must not grant access.
+        decision = entitlements.decide(self.subscription.environment, now=self.start)
+        self.assertFalse(decision.access_granted)
+
+
+class CancelAtPeriodEndTests(TestCase):
+    """AC-BILL-010-3."""
+
+    def setUp(self):
+        self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        self.end = self.start + timezone.timedelta(days=30)
+        self.plan = _plan(Plan.Key.PLAN_2)
+        self.subscription = make_subscription(plan=self.plan, cancel_at_period_end=True)
+        self.period = BillingPeriod.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            period_start=self.start, period_end=self.end,
+        )
+        PaymentAttempt.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            billing_period=self.period, status=PaymentAttempt.Status.SUCCEEDED,
+            merchant_order_id="paid-order-cancel", amount_minor_units=self.plan.price_minor_units,
+        )
+
+    def test_granted_until_period_end_when_cancelled(self):
+        decision = entitlements.decide(self.subscription.environment, now=self.start)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.CANCELLED_BUT_PAID_THROUGH)
+
+    def test_not_granted_after_period_end_when_cancelled(self):
+        decision = entitlements.decide(self.subscription.environment, now=self.end)
+        self.assertFalse(decision.access_granted)
+
+
+class FailedRenewalNoTerminationTests(TestCase):
+    """AC-BILL-010-4: one failed renewal must not terminate access, and no
+    numeric grace expiry may be invented (BILL-DEC-05 stays open)."""
+
+    def setUp(self):
+        self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        self.end = self.start + timezone.timedelta(days=30)
+        self.plan = _plan(Plan.Key.PLAN_1)
+        self.subscription = make_subscription(plan=self.plan)
+        self.period = BillingPeriod.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            period_start=self.start, period_end=self.end,
+        )
+        PaymentAttempt.objects.create(
+            environment=self.subscription.environment, subscription=self.subscription,
+            billing_period=self.period, status=PaymentAttempt.Status.FAILED,
+            merchant_order_id="renewal-attempt-failed", amount_minor_units=self.plan.price_minor_units,
+        )
+
+    def test_access_still_granted_after_the_period_ends_with_only_a_failed_attempt(self):
+        just_after_end = self.end + timezone.timedelta(hours=1)
+        decision = entitlements.decide(self.subscription.environment, now=just_after_end)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.PAYMENT_FAILED_PENDING_POLICY)
+
+    def test_no_numeric_expiry_is_invented(self):
+        """`period_end` on the decision is the already-known end of the
+        elapsed BillingPeriod — not some new deadline this module invented
+        (BILL-DEC-05 has no number to invent one from)."""
+        just_after_end = self.end + timezone.timedelta(hours=1)
+        decision = entitlements.decide(self.subscription.environment, now=just_after_end)
+        self.assertEqual(decision.period_end, self.end)
+
+    def test_an_unrelated_later_failure_still_does_not_terminate_access_months_later(self):
+        much_later = self.end + timezone.timedelta(days=90)
+        decision = entitlements.decide(self.subscription.environment, now=much_later)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, entitlements.Basis.PAYMENT_FAILED_PENDING_POLICY)
+
+
+class CapabilitiesAndCapFollowPlanTests(TestCase):
+    """AC-BILL-010-5."""
+
+    def test_each_plan_reports_its_own_capabilities_and_cap(self):
+        start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        end = start + timezone.timedelta(days=30)
+        for plan_key in (Plan.Key.PLAN_1, Plan.Key.PLAN_2, Plan.Key.PLAN_3):
+            plan = _plan(plan_key)
+            subscription = make_subscription(plan=plan)
+            period = BillingPeriod.objects.create(
+                environment=subscription.environment, subscription=subscription,
+                period_start=start, period_end=end,
+            )
+            PaymentAttempt.objects.create(
+                environment=subscription.environment, subscription=subscription, billing_period=period,
+                status=PaymentAttempt.Status.SUCCEEDED, merchant_order_id=f"order-{plan_key}",
+                amount_minor_units=plan.price_minor_units,
+            )
+            decision = entitlements.decide(subscription.environment, now=start)
+            self.assertEqual(decision.capabilities, capabilities.capabilities_for_plan(plan_key))
+            self.assertEqual(decision.student_cap, plan.max_students)
+
+    def test_trial_reports_plan_3_capabilities_and_cap_250(self):
+        start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
+        subscription = make_subscription(trial_started_at=start)
+        decision = entitlements.decide(subscription.environment, now=start)
+        self.assertEqual(decision.capabilities, capabilities.PLAN_CAPABILITIES[Plan.Key.PLAN_3])
+        self.assertEqual(decision.student_cap, 250)
+
+
+class AlwaysPermittedCategoriesTests(TestCase):
+    """AC-BILL-010-6."""
+
+    def test_always_permitted_categories_are_allowed_even_when_access_is_not_granted(self):
+        decision = entitlements.EntitlementDecision(
+            access_granted=False, basis=entitlements.Basis.NONE, capabilities=frozenset(),
+            student_cap=None, period_end=None, reason_code=entitlements.ReasonCode.NO_SUBSCRIPTION,
+        )
+        for category in ("authentication", "billing_resolution", "data_export"):
+            self.assertTrue(decision.permits(category))
+
+    def test_a_gated_category_follows_access_granted(self):
+        granted = entitlements.EntitlementDecision(
+            access_granted=True, basis=entitlements.Basis.TRIAL, capabilities=frozenset(),
+            student_cap=None, period_end=None, reason_code=entitlements.ReasonCode.TRIAL_ACTIVE,
+        )
+        not_granted = entitlements.EntitlementDecision(
+            access_granted=False, basis=entitlements.Basis.NONE, capabilities=frozenset(),
+            student_cap=None, period_end=None, reason_code=entitlements.ReasonCode.NO_SUBSCRIPTION,
+        )
+        self.assertTrue(granted.permits("ai.quiz_from_video"))
+        self.assertFalse(not_granted.permits("ai.quiz_from_video"))
+
+
+class NoSubscriptionTests(TestCase):
+    """A legacy/never-subscribed Environment gets `no_subscription`, not an
+    exception — BILL-WU-015 decides what legacy accounts actually get."""
+
+    def test_an_environment_with_no_subscription_row_is_not_granted(self):
+        environment = make_environment("teacher-no-sub")
+        decision = entitlements.decide(environment, now=timezone.now())
+        self.assertFalse(decision.access_granted)
+        self.assertEqual(decision.reason_code, entitlements.ReasonCode.NO_SUBSCRIPTION)
+
+
+class AuthenticationDoesNotImportBillingTests(TestCase):
+    """AC-BILL-010-7: a static check, not a behavioural test — ADR-018's
+    whole point is that this import must never exist."""
+
+    def test_accounts_authentication_module_does_not_import_billing(self):
+        import accounts.authentication as auth_module
+
+        path = auth_module.__file__
+        with open(path, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=path)
+
+        offending = []
+        for node in ast.walk(tree):
+            modules = []
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules = [node.module]
+            for module in modules:
+                if module == "billing" or module.startswith("billing."):
+                    offending.append(module)
+        self.assertEqual(offending, [], f"accounts/authentication.py must never import billing: {offending}")
