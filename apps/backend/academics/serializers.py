@@ -4,8 +4,10 @@ from rest_framework import serializers
 from accounts.models import User
 from accounts.phones import digits_only
 from accounts.serializers import clean_phone
+from billing.entitlements import StudentCapReached, student_cap_locked
 from environments.models import EnvironmentMembership
 
+from .access import count_for_cap
 from .models import Enrollment, Grade, Group
 
 
@@ -232,6 +234,23 @@ class EnrollmentCreateSerializer(_ParentFieldsMixin, serializers.Serializer):
                     user = User.objects.filter(phone=phone, role=User.Role.STUDENT).first()
                     if user is None:
                         raise serializers.ValidationError({"phone": NOT_ADDABLE})
+
+            # BILL-WU-012: an idempotent re-add of a student already enrolled
+            # here (the `created=False` path below) is never a NEW addition
+            # and must never be blocked by the cap (this unit's own Failure
+            # modes). Only check when this really will insert a new row —
+            # checked and locked inside this SAME transaction as the insert
+            # below, so two concurrent adds at cap - 1 cannot both pass.
+            is_new_addition = not Enrollment.objects.filter(environment=env, student=user).exists()
+            if is_new_addition and v["is_active"]:
+                # An inactive new enrollment (`is_active=False`) never
+                # changes `count_for_cap`'s own count, so it is never
+                # blocked by the cap either — only an addition that will
+                # actually count.
+                cap = student_cap_locked(env)
+                if cap is not None and count_for_cap(env) >= cap:
+                    raise StudentCapReached()
+
             enrollment, created = Enrollment.objects.get_or_create(
                 environment=env, student=user,
                 defaults={
@@ -303,6 +322,15 @@ class EnrollmentUpdateSerializer(_ParentFieldsMixin, serializers.Serializer):
                     setattr(instance, field, validated[field])
             was_active = instance.is_active
             if "is_active" in validated:
+                activating = validated["is_active"] and not was_active
+                if activating:
+                    # BILL-WU-012: re-activation is gated exactly like a new
+                    # addition — deactivating (or no change) never is (this
+                    # unit's own AC-2). Locked and checked inside this SAME
+                    # transaction as the save below.
+                    cap = student_cap_locked(instance.environment)
+                    if cap is not None and count_for_cap(instance.environment) >= cap:
+                        raise StudentCapReached()
                 instance.is_active = validated["is_active"]
             instance.save()
             if "groups" in validated:

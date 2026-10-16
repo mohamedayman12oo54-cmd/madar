@@ -42,11 +42,25 @@ import dataclasses
 from typing import Optional
 
 from django.utils import timezone
+from rest_framework import exceptions
 
 from . import capabilities
 from .models import PaymentAttempt, Subscription
 
 TRIAL_DAYS = 16
+
+
+class StudentCapReached(exceptions.PermissionDenied):
+    """BILL-WU-012 — a stable, machine-readable rejection for "this
+    Environment's counted-student set is already at its plan's cap."
+    `Basis`/cap NUMBERS are commercial-model's decided values via
+    `decide()`; the counted SET is academics' own tracked open item
+    (`academics.access.count_for_cap`'s docstring) — this exception
+    carries neither, by design, so it never needs to change when that
+    open item resolves."""
+
+    default_detail = "تم الوصول للحد الأقصى لعدد الطلاب المسموح به في باقتك الحالية."
+    default_code = "student_cap_reached"
 
 
 class Basis:
@@ -166,3 +180,27 @@ def decide(environment, *, now=None):
     ):
         return _no_access(ReasonCode.TRIAL_EXPIRED)
     return _no_access(ReasonCode.PERIOD_ENDED)
+
+
+def student_cap_locked(environment, *, now=None):
+    """BILL-WU-012 — the same `student_cap` `decide()` would report, but
+    read with the Environment's Subscription row locked
+    (`select_for_update()`) first — this unit's own required race-safety:
+    "lock the Environment's Subscription row inside the same
+    `transaction.atomic()` as the insert, so two concurrent adds cannot
+    both pass at cap − 1." MUST be called from inside the caller's own
+    `transaction.atomic()` block — `select_for_update()` requires an open
+    transaction and raises `TransactionManagementError` otherwise; this
+    function deliberately does not open one itself, so the lock is held
+    for exactly as long as the CALLER's transaction is (through the
+    caller's own insert), not just for this read.
+
+    Billing owns the Subscription row (BND-1) — academics never queries
+    `billing.models.Subscription` directly, only this function, even
+    though the lock it takes is what actually makes academics' own insert
+    race-safe."""
+    try:
+        Subscription.objects.select_for_update().get(environment=environment)
+    except Subscription.DoesNotExist:
+        pass
+    return decide(environment, now=now).student_cap
