@@ -4,10 +4,22 @@ transactional state transitions (ADR-016/017).
 
 `apply(event_record)` is idempotent and meant to be called from the
 webhook (best effort, after the receipt commits) and from the recovery
-worker — neither caller exists yet (that wiring is BILL-WU-022's job,
-which depends on this unit; it is not in this unit's own implementation
-surfaces). This module only delivers the standalone, directly-callable
-function, exercised here by calling it directly in tests.
+worker (BILL-WU-022, which depends on this unit). This module only
+delivers the standalone, directly-callable function, exercised here by
+calling it directly in tests.
+
+**BILL-WU-022 addendum (disclosed):** the re-entrancy guard below treats
+any event NOT already in a terminal `ProcessingStatus`
+(`processed`/`failed_to_apply`/`ignored_duplicate`) as still eligible —
+not only an exact-equals-`received` check. This was generalized (from an
+exact `== RECEIVED` check) so BILL-WU-022's recovery worker can claim an
+event into its own transient, ad-hoc `"processing"` marker (not a
+declared `ProcessingStatus` member — see that command's own module
+docstring) before calling this function, without this function treating
+the claim itself as "already resolved" and no-op'ing. Every existing
+caller/test from this unit still only ever passes a `received` event, so
+this change is behavior-preserving for all of them (re-verified: the
+full BILL-WU-021 test suite still passes unchanged after this edit).
 
 **Known gaps, disclosed, not silently defaulted** (mirrors BILL-WU-029's
 own disclosed gap in `transitions.py`): BILL-WU-008's persisted schema
@@ -40,6 +52,15 @@ REFUND_LIKE_KINDS = frozenset({"refund", "void", "reversal"})
 # charge (status-lookup reconciliation, BILL-WU-023, not built yet; this
 # is forward-compatible plumbing for it).
 SUCCESS_LIKE_STATUSES = frozenset({"SUCCESS", "ORDER_PAID_BEFORE"})
+
+# An event in any of these is already resolved; re-entry is a no-op.
+# Anything else (received, or BILL-WU-022's own transient claim marker)
+# is still eligible to process.
+_TERMINAL_PROCESSING_STATUSES = frozenset({
+    ProviderEvent.ProcessingStatus.PROCESSED,
+    ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
+    ProviderEvent.ProcessingStatus.IGNORED_DUPLICATE,
+})
 
 
 def _mark(event_record, processing_status, last_error=""):
@@ -149,9 +170,9 @@ def apply(event_record):
         attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt.pk)
         locked_event = ProviderEvent.objects.select_for_update().get(pk=event_record.pk)
 
-        if locked_event.processing_status != ProviderEvent.ProcessingStatus.RECEIVED:
-            # AC-2: a second application of the same row (bypassing
-            # receipt-time dedup) is a pure no-op.
+        if locked_event.processing_status in _TERMINAL_PROCESSING_STATUSES:
+            # AC-2: a second application of an already-resolved row
+            # (bypassing receipt-time dedup) is a pure no-op.
             return
 
         if attempt.status not in PaymentAttempt.NON_TERMINAL_STATUSES:
