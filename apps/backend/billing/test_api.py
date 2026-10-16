@@ -132,6 +132,66 @@ class SubscriptionStatusExpiredTrialTests(TenantTestCase):
         self.assertEqual(r.status_code, 200, r.content)
 
 
+class CancelSubscriptionEndpointTests(TenantTestCase):
+    """BILL-WU-028 — AC-BILL-028-5 (no refund/deletion, via the HTTP
+    surface) and AC-BILL-028-6 (non-owner/cross-tenant refused). The
+    race-safety ACs (2-4) and the frozen-clock AC (1) are exercised at the
+    service layer directly in `test_cancel.py`, which needs real
+    (non test-wrapped) transactions `TenantTestCase` doesn't give."""
+
+    def setUp(self):
+        super().setUp()
+        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.subscription = _make_subscription(
+            self.env_a, plan=self.plan, state=Subscription.State.ACTIVE, cancel_at_period_end=False,
+            current_period_start=timezone.now() - timezone.timedelta(days=5),
+            current_period_end=timezone.now() + timezone.timedelta(days=25),
+        )
+
+    def test_the_owner_can_cancel_and_the_response_reflects_the_flag(self):
+        r = self.client_a.post("/api/v1/billing/subscription/cancel/", **self.with_env(self.env_a.id))
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertTrue(body["cancel_at_period_end"])
+        self.assertFalse(body["renewal_already_in_progress"])
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.subscription.cancel_at_period_end)
+
+    def test_a_repeat_cancel_call_is_idempotent(self):
+        self.client_a.post("/api/v1/billing/subscription/cancel/", **self.with_env(self.env_a.id))
+        r = self.client_a.post("/api/v1/billing/subscription/cancel/", **self.with_env(self.env_a.id))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.json()["cancel_at_period_end"])
+
+    def test_cancel_creates_no_refund_and_deletes_no_data(self):
+        attempts_before = PaymentAttempt.objects.filter(subscription=self.subscription).count()
+        self.client_a.post("/api/v1/billing/subscription/cancel/", **self.with_env(self.env_a.id))
+        self.assertEqual(
+            PaymentAttempt.objects.filter(subscription=self.subscription).count(), attempts_before
+        )
+        self.assertTrue(Subscription.objects.filter(pk=self.subscription.pk).exists())
+
+    def test_cross_tenant_cancel_is_denied(self):
+        self.assert_cross_tenant_denied("post", "/api/v1/billing/subscription/cancel/")
+
+    def test_a_non_owner_member_of_the_same_environment_is_refused(self):
+        student = self.make_student_in(self.env_a, "201020000097")
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=student)
+        r = client.post("/api/v1/billing/subscription/cancel/", **self.with_env(self.env_a.id))
+        self.assertIn(r.status_code, (401, 403))
+        self.subscription.refresh_from_db()
+        self.assertFalse(self.subscription.cancel_at_period_end)
+
+    def test_anonymous_is_refused(self):
+        from rest_framework.test import APIClient
+
+        r = APIClient().post("/api/v1/billing/subscription/cancel/")
+        self.assertEqual(r.status_code, 401)
+
+
 class PaymentHistoryEndpointTests(TenantTestCase):
     """AC-BILL-031-1, AC-BILL-031-2, AC-BILL-031-3."""
 
