@@ -515,6 +515,14 @@ if not DEBUG and PAYMENT_PROVIDER == "kashier":
             f"{', '.join(_kashier_missing)}."
         )
 
+# Live-mode kill switch for the renewal-charging worker (BILL-WU-025).
+# Madar owns the billing schedule and initiates each cycle's charge
+# itself, so this is the one setting that decides whether a real card is
+# ever actually charged. Stays False until BILL-WU-026 (the 30-day
+# compatibility gate) passes — this unit builds and verifies the
+# capability against the fake provider only; it never flips this on.
+BILLING_RENEWALS_LIVE_ENABLED = env_bool("BILLING_RENEWALS_LIVE_ENABLED", False)
+
 
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
 SECURE_SSL_REDIRECT = env_bool(
