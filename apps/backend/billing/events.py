@@ -21,6 +21,23 @@ caller/test from this unit still only ever passes a `received` event, so
 this change is behavior-preserving for all of them (re-verified: the
 full BILL-WU-021 test suite still passes unchanged after this edit).
 
+**BILL-WU-023 addendum (disclosed):** `apply_success` below was `_apply_success`
+(private, `event_record`-shaped) until this unit. Reconciliation
+(`reconcile_billing_attempts`) needs the exact same success-application
+logic for a `provider.lookup_order(...)` result, which has no
+`ProviderEvent`/`VerifiedEvent` wrapper at all — and this unit's own
+spec says reconciliation must "feed the result through the same
+transition functions as webhook events... it does not use a second
+state machine." So this function was made public and reshaped to take
+plain keyword values instead of an `event_record`, and given its own
+self-contained atomic claim (a conditional `UPDATE ... WHERE status IN
+(non-terminal)`, exactly like `transitions.record_confirmed_failure`'s
+existing pattern) so it is safe to call directly from any context,
+not only from inside `apply()`'s own lock. `apply()`'s own behavior is
+unchanged (re-verified: the full BILL-WU-021 test suite still passes
+unchanged after this edit) — it now just extracts the same values from
+`event_record` and passes them as arguments.
+
 **Known gaps, disclosed, not silently defaulted** (mirrors BILL-WU-029's
 own disclosed gap in `transitions.py`): BILL-WU-008's persisted schema
 (already VERIFIED) has no dedicated `ProcessingStatus` values for
@@ -73,56 +90,65 @@ def _mark(event_record, processing_status, last_error=""):
     event_record.attempts_count += 1
 
 
-def _apply_success(attempt, subscription, event_record):
-    now = timezone.now()
-    agreement_ref = event_record.redacted_payload.get("agreement_ref") or ""
-    # PROPOSED (BILL-EXT-03 not yet confirmed which field carries the
-    # card-token reference): fall back to the provider transaction id as
-    # the opaque token reference when no dedicated agreement_ref is
-    # present, so a real agreement reference is never fabricated.
-    card_token = agreement_ref or event_record.provider_transaction_id or attempt.merchant_order_id
+def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", agreement_ref="", mode="test"):
+    """Shared success-application logic (BILL-WU-021 and BILL-WU-023 both
+    call this — "no second state machine"). Self-contained: claims the
+    attempt with its own atomic conditional UPDATE, so it is safe to call
+    from any context, locked or not, concurrent or not (the same pattern
+    `transitions.record_confirmed_failure` already uses)."""
+    with transaction.atomic():
+        updated = PaymentAttempt.objects.filter(pk=attempt.pk, status__in=PaymentAttempt.NON_TERMINAL_STATUSES).update(
+            status=PaymentAttempt.Status.SUCCEEDED,
+            provider_transaction_id=provider_transaction_id or attempt.provider_transaction_id,
+            provider_order_id=provider_order_id or attempt.provider_order_id,
+        )
+        if not updated:
+            # Already terminal (a concurrent caller, or a webhook/lookup
+            # got there first) — never regress a terminal attempt.
+            return
 
-    PaymentAttempt.objects.filter(pk=attempt.pk).update(
-        status=PaymentAttempt.Status.SUCCEEDED,
-        provider_transaction_id=event_record.provider_transaction_id or attempt.provider_transaction_id,
-        provider_order_id=event_record.provider_order_id or attempt.provider_order_id,
-    )
+        subscription = Subscription.objects.select_for_update().get(pk=attempt.subscription_id)
+        now = timezone.now()
+        # PROPOSED (BILL-EXT-03 not yet confirmed which field carries the
+        # card-token reference): fall back to the provider transaction id
+        # as the opaque token reference when no dedicated agreement_ref is
+        # present, so a real agreement reference is never fabricated.
+        card_token = agreement_ref or provider_transaction_id or attempt.merchant_order_id
 
-    if attempt.billing_period_id is None:
-        # Checkout success: tokenize the recurring agreement (opaque
-        # reference only — ADR-015; never a PAN/CVV) and create the
-        # first period. *t* = this Backend's success-processing instant
-        # (decided and recorded here, since BILL-EXT-03 hasn't confirmed
-        # whether Kashier's own `creationDate` should be preferred).
-        agreement = RecurringAgreement.objects.create(
-            environment=attempt.environment, subscription=subscription,
-            card_token=card_token, kashier_agreement_id=agreement_ref or None,
-            mode=event_record.mode,
-        )
-        start, end = periods.next_period(now)
-        period = BillingPeriod.objects.create(
-            environment=attempt.environment, subscription=subscription, period_start=start, period_end=end,
-        )
-        AmountOwed.objects.create(
-            environment=attempt.environment, billing_period=period,
-            amount_minor_units=attempt.amount_minor_units, currency=attempt.currency,
-            status=AmountOwed.Status.SATISFIED,
-        )
-        PaymentAttempt.objects.filter(pk=attempt.pk).update(billing_period=period)
-        Subscription.objects.filter(pk=subscription.pk).update(
-            state=Subscription.State.ACTIVE, current_period_start=start, current_period_end=end,
-            active_agreement=agreement,
-        )
-    else:
-        # Renewal success: the period was pre-created by BILL-WU-025 (not
-        # built yet) — mark its amount-owed record satisfied and refresh
-        # the subscription's cached current-period bounds.
-        period = BillingPeriod.objects.get(pk=attempt.billing_period_id)
-        AmountOwed.objects.filter(billing_period_id=period.pk).update(status=AmountOwed.Status.SATISFIED)
-        Subscription.objects.filter(pk=subscription.pk).update(
-            state=Subscription.State.ACTIVE, current_period_start=period.period_start,
-            current_period_end=period.period_end,
-        )
+        if attempt.billing_period_id is None:
+            # Checkout success: tokenize the recurring agreement (opaque
+            # reference only — ADR-015; never a PAN/CVV) and create the
+            # first period. *t* = this Backend's success-processing instant
+            # (decided and recorded here, since BILL-EXT-03 hasn't confirmed
+            # whether Kashier's own `creationDate` should be preferred).
+            agreement = RecurringAgreement.objects.create(
+                environment=attempt.environment, subscription=subscription,
+                card_token=card_token, kashier_agreement_id=agreement_ref or None, mode=mode,
+            )
+            start, end = periods.next_period(now)
+            period = BillingPeriod.objects.create(
+                environment=attempt.environment, subscription=subscription, period_start=start, period_end=end,
+            )
+            AmountOwed.objects.create(
+                environment=attempt.environment, billing_period=period,
+                amount_minor_units=attempt.amount_minor_units, currency=attempt.currency,
+                status=AmountOwed.Status.SATISFIED,
+            )
+            PaymentAttempt.objects.filter(pk=attempt.pk).update(billing_period=period)
+            Subscription.objects.filter(pk=subscription.pk).update(
+                state=Subscription.State.ACTIVE, current_period_start=start, current_period_end=end,
+                active_agreement=agreement,
+            )
+        else:
+            # Renewal success: the period was pre-created by BILL-WU-025
+            # (not built yet) — mark its amount-owed record satisfied and
+            # refresh the subscription's cached current-period bounds.
+            period = BillingPeriod.objects.get(pk=attempt.billing_period_id)
+            AmountOwed.objects.filter(billing_period_id=period.pk).update(status=AmountOwed.Status.SATISFIED)
+            Subscription.objects.filter(pk=subscription.pk).update(
+                state=Subscription.State.ACTIVE, current_period_start=period.period_start,
+                current_period_end=period.period_end,
+            )
 
 
 def apply(event_record):
@@ -184,7 +210,12 @@ def apply(event_record):
 
         status = event_record.transaction_status
         if status in SUCCESS_LIKE_STATUSES:
-            _apply_success(attempt, subscription, locked_event)
+            agreement_ref = (event_record.redacted_payload or {}).get("agreement_ref") or ""
+            apply_success(
+                attempt, provider_transaction_id=event_record.provider_transaction_id,
+                provider_order_id=event_record.provider_order_id, agreement_ref=agreement_ref,
+                mode=event_record.mode,
+            )
         elif status == "FAILURE":
             record_confirmed_failure(attempt)
         elif status == "PENDING":
