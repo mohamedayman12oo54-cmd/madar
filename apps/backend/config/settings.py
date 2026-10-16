@@ -647,5 +647,15 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
+
+        # BILL-WU-035: structured, redacted billing money-state lines
+        # (`billing/audit.py`'s `log()` is the only caller). INFO so a
+        # production deployment keeps every event/attempt/reconciliation/
+        # renewal line without DEBUG's unrelated noise.
+        "billing": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }

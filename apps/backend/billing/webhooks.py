@@ -19,8 +19,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import audit
 from .models import ProviderEvent
 from .providers import InvalidSignature, get_payment_provider
+from .redaction import redact_mapping
 
 # A webhook payload is a small JSON document, never a file — this cap is
 # far below DATA_UPLOAD_MAX_MEMORY_SIZE's bulk-upload ceiling (that
@@ -29,20 +31,12 @@ from .providers import InvalidSignature, get_payment_provider
 # any of the usual request-size assumptions apply).
 MAX_BODY_BYTES = 64 * 1024
 
-_CARD_LIKE_KEYS = {"card", "cardinfo", "cardnumber", "cardholdername", "cvv", "cvc", "pan"}
-
-
-def _redact(value):
-    """Minimal defensive redaction: strip anything shaped like cardholder
-    data before it is ever written to `redacted_payload`. The full
-    redaction policy is BILL-WU-035's job (observability); this unit only
-    guarantees a raw, unredacted body is never a field that exists to
-    misuse (`models.py`'s own `ProviderEvent` docstring)."""
-    if isinstance(value, dict):
-        return {k: ("<redacted>" if k.lower() in _CARD_LIKE_KEYS else _redact(v)) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_redact(v) for v in value]
-    return value
+# BILL-WU-035: `redacted_payload` is now stripped/masked by the canonical
+# `redaction.redact_mapping` (cardholder name, masked card, tokens,
+# secrets, agreement ids) rather than this unit's own original
+# card-shaped-key-only pass — this is that unit's own disclosed
+# follow-up ("the full redaction policy is BILL-WU-035's job").
+_redact = redact_mapping
 
 
 def _dedup_key(event):
@@ -73,13 +67,19 @@ class KashierWebhookView(APIView):
         except InvalidSignature:
             # ADR-016 prerequisite 1: nothing is persisted, and the
             # payload is never used for anything once verification fails.
+            # "rejected (no body)": the raw/parsed payload is never a
+            # field in this log line.
+            audit.log("webhook_rejected", reason="invalid_signature")
             return Response(status=400)
 
         if event.mode != settings.KASHIER_MODE:
             # A signature that verified under the wrong mode's key (or a
             # payload that simply claims the wrong mode) must never be
             # accepted as if it matched this deployment's configuration.
+            audit.log("webhook_rejected", reason="mode_mismatch", mode=event.mode)
             return Response(status=400)
+
+        audit.log("webhook_verified", kind=event.kind, mode=event.mode)
 
         dedup_key = _dedup_key(event)
         try:
@@ -98,7 +98,10 @@ class KashierWebhookView(APIView):
             # The same event delivered again (ADR-017 dedup, not the AI
             # idempotency_key mechanism) — already recorded; do nothing
             # else, and change no billing state.
+            audit.log("webhook_duplicate", dedup_key=dedup_key)
             return Response(status=409)
+
+        audit.log("webhook_received", dedup_key=dedup_key, kind=event.kind)
 
         # Acknowledge fast: respond only after the receipt commits. No
         # application attempt happens here (explicitly out of scope;

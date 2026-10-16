@@ -29,6 +29,7 @@ this function's signature.
 """
 from django.db import transaction
 
+from . import audit
 from .models import PaymentAttempt, Subscription
 
 
@@ -40,6 +41,7 @@ def record_confirmed_failure(attempt, provider_code="", message=""):
         # Terminal-state precedence (AC-4): the conditional UPDATE only
         # matches a still-non-terminal attempt, so a failure arriving after
         # a success (or another failure) for the same attempt is a no-op.
+        previous_status = attempt.status
         updated = PaymentAttempt.objects.filter(
             pk=attempt.pk, status__in=PaymentAttempt.NON_TERMINAL_STATUSES
         ).update(status=PaymentAttempt.Status.FAILED)
@@ -47,6 +49,16 @@ def record_confirmed_failure(attempt, provider_code="", message=""):
             return
 
         attempt.status = PaymentAttempt.Status.FAILED
+        audit.record_transition(
+            environment=attempt.environment, model_name="payment_attempt", object_id=attempt.pk,
+            field="status", from_value=previous_status, to_value=PaymentAttempt.Status.FAILED,
+            actor="transitions.record_confirmed_failure",
+        )
+        # `provider_code` is a provider-chosen string of unknown shape
+        # (this unit's own "Failure modes": a secret could leak via an
+        # error path) — never logged verbatim; only that a failure
+        # happened, and for which attempt.
+        audit.log("attempt_outcome", merchant_order_id=attempt.merchant_order_id, outcome="failed")
         if attempt.billing_period_id is not None:
             # Renewal: mark the subscription payment-failed. Access is
             # unchanged by this — `entitlements.decide()` already keeps a
@@ -54,7 +66,16 @@ def record_confirmed_failure(attempt, provider_code="", message=""):
             # (`Basis.PAYMENT_FAILED_PENDING_POLICY`), independently of
             # `Subscription.state`, so AC-1's "entitlement stays granted"
             # holds without this module touching entitlements at all.
+            previous_sub_state = Subscription.objects.filter(pk=attempt.subscription_id).values_list(
+                "state", flat=True
+            ).first()
             Subscription.objects.filter(pk=attempt.subscription_id).update(state=Subscription.State.PAST_DUE)
+            if previous_sub_state is not None and previous_sub_state != Subscription.State.PAST_DUE:
+                audit.record_transition(
+                    environment=attempt.environment, model_name="subscription", object_id=attempt.subscription_id,
+                    field="state", from_value=previous_sub_state, to_value=Subscription.State.PAST_DUE,
+                    actor="transitions.record_confirmed_failure",
+                )
         # For a checkout attempt (`billing_period` is null): nothing
         # changes on the subscription — the teacher may simply retry
         # checkout (this unit's own documented outcome).
@@ -66,6 +87,14 @@ def record_ambiguous(attempt):
     attempt is left `unknown` (the model's own documented holding state
     "needs reconciliation"), and nothing on the Subscription changes."""
     with transaction.atomic():
-        PaymentAttempt.objects.filter(
+        previous_status = attempt.status
+        updated = PaymentAttempt.objects.filter(
             pk=attempt.pk, status__in=PaymentAttempt.NON_TERMINAL_STATUSES
         ).update(status=PaymentAttempt.Status.UNKNOWN)
+        if updated and previous_status != PaymentAttempt.Status.UNKNOWN:
+            audit.record_transition(
+                environment=attempt.environment, model_name="payment_attempt", object_id=attempt.pk,
+                field="status", from_value=previous_status, to_value=PaymentAttempt.Status.UNKNOWN,
+                actor="transitions.record_ambiguous",
+            )
+            audit.log("attempt_outcome", merchant_order_id=attempt.merchant_order_id, outcome="ambiguous")

@@ -33,7 +33,7 @@ from typing import Optional
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from . import entitlements
+from . import audit, entitlements
 from .models import PaymentAttempt, Plan, Subscription
 from .providers import ProviderError, get_payment_provider
 
@@ -110,6 +110,11 @@ def start_checkout(environment, plan_key, return_url):
                 amount_minor_units=plan.price_minor_units, currency=plan.currency,
                 status=PaymentAttempt.Status.INITIATED,
             )
+            audit.record_transition(
+                environment=environment, model_name="payment_attempt", object_id=attempt.pk,
+                field="status", to_value=PaymentAttempt.Status.INITIATED, actor="services.start_checkout",
+            )
+            audit.log("attempt_created", merchant_order_id=attempt.merchant_order_id, plan=plan.key)
 
     # Outside the transaction above: the lock is released before this call.
     provider = get_payment_provider()
@@ -172,6 +177,10 @@ def cancel_subscription(environment):
     except Subscription.DoesNotExist:
         raise CancelError("no_subscription", "No subscription exists for this environment.")
 
+    audit.log(
+        "subscription_cancel_requested", environment_id=environment.pk,
+        renewal_already_in_progress=in_progress is not None,
+    )
     return CancelResult(
         cancel_at_period_end=True,
         renewal_already_in_progress=in_progress is not None,

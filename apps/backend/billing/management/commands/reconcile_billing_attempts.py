@@ -44,7 +44,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from billing import events
+from billing import audit, events
 from billing.models import PaymentAttempt
 from billing.providers import get_payment_provider
 from billing.transitions import record_confirmed_failure
@@ -134,6 +134,9 @@ class Command(BaseCommand):
             else:
                 unresolved += 1
 
+        audit.log(
+            "reconciliation_run_summary", resolved=resolved, abandoned=abandoned, unresolved=unresolved,
+        )
         self.stdout.write(self.style.SUCCESS(
             f"Reconciled {resolved + abandoned + unresolved} billing attempt(s): "
             f"{resolved} resolved, {abandoned} abandoned, {unresolved} still unresolved."

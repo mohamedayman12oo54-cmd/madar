@@ -51,7 +51,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from billing import events, periods
+from billing import audit, events, periods
 from billing.models import AmountOwed, BillingPeriod, PaymentAttempt, Subscription
 from billing.providers import ProviderError, get_payment_provider
 from billing.transitions import record_confirmed_failure
@@ -109,6 +109,12 @@ def claim_due_subscription(subscription_id, now):
             amount_minor_units=plan.price_minor_units, currency=plan.currency,
             status=PaymentAttempt.Status.INITIATED,
         )
+        audit.record_transition(
+            environment=subscription.environment, model_name="payment_attempt", object_id=attempt.pk,
+            field="status", to_value=PaymentAttempt.Status.INITIATED,
+            actor="process_billing_renewals.claim_due_subscription",
+        )
+        audit.log("attempt_created", merchant_order_id=attempt.merchant_order_id, kind="renewal")
         return attempt
 
 
@@ -146,9 +152,20 @@ class Command(BaseCommand):
         # re-charging could double-bill. Only ever touches a RENEWAL
         # attempt (`billing_period` set); a checkout attempt's own
         # `initiated` state is untouched (see module docstring).
-        requeued = PaymentAttempt.objects.filter(
-            status=PaymentAttempt.Status.INITIATED, billing_period__isnull=False, updated_at__lt=stale_before,
-        ).update(status=PaymentAttempt.Status.UNKNOWN)
+        stale_ids = list(
+            PaymentAttempt.objects.filter(
+                status=PaymentAttempt.Status.INITIATED, billing_period__isnull=False, updated_at__lt=stale_before,
+            ).values_list("id", "environment_id")
+        )
+        requeued = PaymentAttempt.objects.filter(id__in=[i for i, _ in stale_ids]).update(
+            status=PaymentAttempt.Status.UNKNOWN
+        )
+        for attempt_id, environment_id in stale_ids:
+            audit.record_transition(
+                environment_id=environment_id, model_name="payment_attempt", object_id=attempt_id,
+                field="status", from_value=PaymentAttempt.Status.INITIATED, to_value=PaymentAttempt.Status.UNKNOWN,
+                actor="process_billing_renewals.stale_sweep",
+            )
 
         candidate_ids = list(
             Subscription.objects.filter(
@@ -168,6 +185,7 @@ class Command(BaseCommand):
                 continue
 
             agreement_ref = attempt.subscription.active_agreement.card_token
+            audit.log("attempt_charged", merchant_order_id=attempt.merchant_order_id, agreementref=agreement_ref)
 
             # OUTSIDE any transaction (AC-7) — the slow external call.
             try:
@@ -176,10 +194,23 @@ class Command(BaseCommand):
                 result = None  # a transport failure is ambiguous, never a confirmed failure
 
             if result is None or result.outcome in ("pending", "unknown"):
-                PaymentAttempt.objects.filter(pk=attempt.pk, status=PaymentAttempt.Status.INITIATED).update(
-                    status=PaymentAttempt.Status.UNKNOWN if result is None or result.outcome == "unknown"
+                new_status = (
+                    PaymentAttempt.Status.UNKNOWN if result is None or result.outcome == "unknown"
                     else PaymentAttempt.Status.PENDING
                 )
+                moved = PaymentAttempt.objects.filter(
+                    pk=attempt.pk, status=PaymentAttempt.Status.INITIATED
+                ).update(status=new_status)
+                if moved:
+                    audit.record_transition(
+                        environment=attempt.environment, model_name="payment_attempt", object_id=attempt.pk,
+                        field="status", from_value=PaymentAttempt.Status.INITIATED, to_value=new_status,
+                        actor="process_billing_renewals.run_once",
+                    )
+                    audit.log(
+                        "attempt_outcome", merchant_order_id=attempt.merchant_order_id,
+                        outcome="unknown" if new_status == PaymentAttempt.Status.UNKNOWN else "pending",
+                    )
             elif result.outcome == "succeeded":
                 events.apply_success(
                     attempt, provider_transaction_id=result.provider_transaction_id,
@@ -190,6 +221,7 @@ class Command(BaseCommand):
 
             charged += 1
 
+        audit.log("renewal_run_summary", charged=charged, skipped=skipped, requeued=requeued)
         self.stdout.write(self.style.SUCCESS(
             f"Processed {charged + skipped} due subscription(s): {charged} charged, {skipped} skipped"
             + (f"; requeued {requeued} stale." if requeued else ".")

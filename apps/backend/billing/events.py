@@ -55,7 +55,7 @@ ever exists), so this function does not re-check it.
 from django.db import transaction
 from django.utils import timezone
 
-from . import periods
+from . import audit, periods
 from .models import AmountOwed, BillingPeriod, PaymentAttempt, ProviderEvent, RecurringAgreement, Subscription
 from .transitions import record_confirmed_failure
 
@@ -97,6 +97,7 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
     from any context, locked or not, concurrent or not (the same pattern
     `transitions.record_confirmed_failure` already uses)."""
     with transaction.atomic():
+        previous_status = attempt.status
         updated = PaymentAttempt.objects.filter(pk=attempt.pk, status__in=PaymentAttempt.NON_TERMINAL_STATUSES).update(
             status=PaymentAttempt.Status.SUCCEEDED,
             provider_transaction_id=provider_transaction_id or attempt.provider_transaction_id,
@@ -107,6 +108,16 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
             # got there first) — never regress a terminal attempt.
             return
 
+        audit.record_transition(
+            environment=attempt.environment, model_name="payment_attempt", object_id=attempt.pk,
+            field="status", from_value=previous_status, to_value=PaymentAttempt.Status.SUCCEEDED,
+            actor="events.apply_success",
+        )
+        audit.log(
+            "attempt_outcome", merchant_order_id=attempt.merchant_order_id, outcome="succeeded",
+            provider_transaction_id=provider_transaction_id,
+        )
+
         subscription = Subscription.objects.select_for_update().get(pk=attempt.subscription_id)
         now = timezone.now()
         # PROPOSED (BILL-EXT-03 not yet confirmed which field carries the
@@ -114,6 +125,7 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
         # as the opaque token reference when no dedicated agreement_ref is
         # present, so a real agreement reference is never fabricated.
         card_token = agreement_ref or provider_transaction_id or attempt.merchant_order_id
+        previous_sub_state = subscription.state
 
         if attempt.billing_period_id is None:
             # Checkout success: tokenize the recurring agreement (opaque
@@ -150,6 +162,13 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
                 current_period_end=period.period_end,
             )
 
+        if previous_sub_state != Subscription.State.ACTIVE:
+            audit.record_transition(
+                environment=subscription.environment, model_name="subscription", object_id=subscription.pk,
+                field="state", from_value=previous_sub_state, to_value=Subscription.State.ACTIVE,
+                actor="events.apply_success",
+            )
+
 
 def apply(event_record):
     """Apply one verified, durably received `ProviderEvent` exactly once.
@@ -163,6 +182,7 @@ def apply(event_record):
         # change no state, alert (recorded here as `last_error`; sending
         # an actual alert is out of scope — no notification channel
         # exists yet, BILL-DEC-06).
+        audit.log("event_uncorrelated", event_id=event_record.pk, merchant_order_id=merchant_order_id)
         _mark(event_record, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
               f"uncorrelated: no PaymentAttempt for merchant_order_id={merchant_order_id!r}")
         return
@@ -180,10 +200,12 @@ def apply(event_record):
     expected_amount = payload.get("amount_minor_units")
     expected_currency = payload.get("currency")
     if expected_amount is not None and expected_amount != attempt.amount_minor_units:
+        audit.log("event_mismatched", event_id=event_record.pk, reason="amount_minor_units")
         _mark(event_record, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
               "rejected-mismatch: amount_minor_units does not match the attempt's expected amount")
         return
     if expected_currency and expected_currency != attempt.currency:
+        audit.log("event_mismatched", event_id=event_record.pk, reason="currency")
         _mark(event_record, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
               "rejected-mismatch: currency does not match the attempt's expected currency")
         return
@@ -233,3 +255,4 @@ def apply(event_record):
             attempts_count=locked_event.attempts_count + 1,
         )
         event_record.processing_status = ProviderEvent.ProcessingStatus.PROCESSED
+        audit.log("event_applied", event_id=locked_event.pk, status=status)

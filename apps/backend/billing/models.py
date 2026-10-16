@@ -295,3 +295,35 @@ class ProviderEvent(models.Model):
 
     def __str__(self):
         return f"ProviderEvent#{self.pk} [{self.processing_status}] {self.event_type}"
+
+
+class BillingTransition(models.Model):
+    """BILL-WU-035 — immutable transition-history record (ADR-014
+    "billing traceability records"). `billing/audit.py`'s
+    `record_transition` is the only writer anywhere in this codebase,
+    and it only ever calls `.create()` — no `update()`/`delete()` path
+    for this model exists in `billing/*` (this unit's own "append-only,
+    no update/delete paths in code").
+
+    `model_name`/`object_id` name the changed row generically
+    (Subscription or PaymentAttempt) rather than two separate tables,
+    since both need the exact same shape (who/what/when/from->to) and a
+    generic record avoids duplicating it."""
+
+    MODEL_SUBSCRIPTION = "subscription"
+    MODEL_PAYMENT_ATTEMPT = "payment_attempt"
+
+    environment = models.ForeignKey(Environment, on_delete=models.PROTECT, related_name="+")
+    model_name = models.CharField(max_length=20)
+    object_id = models.PositiveIntegerField()
+    field = models.CharField(max_length=20)
+    from_value = models.CharField(max_length=20, blank=True)
+    to_value = models.CharField(max_length=20)
+    actor = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["model_name", "object_id"])]
+
+    def __str__(self):
+        return f"BillingTransition#{self.pk} {self.model_name}#{self.object_id} {self.field} {self.from_value}->{self.to_value}"
