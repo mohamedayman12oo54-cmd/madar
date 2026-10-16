@@ -29,6 +29,8 @@ from accounts.permissions import IsStudent
 from accounts.throttles import AISubmitRateThrottle
 from ai.models import AIOperation
 from ai.views import AIOperationDetailView, AIOperationListSubmitView
+from billing import capabilities
+from billing.permissions import RequiresCapability
 from config.months import current_month, month_bounds
 from content.models import ContentItem, VideoProgress
 from content.video import describe_video
@@ -280,6 +282,19 @@ def _quiz_summary(q):
 
 
 class QuizListRequestView(StudentView):
+    """BILL-WU-011: the POST (submit) is gated on `ai.quiz_from_video`; the
+    GET (listing already-created quizzes — a read) is not, per this unit's
+    own "reads of existing AI results are not gated." `request.environment`
+    here is the TEACHER's Environment (resolved the same way, header plus
+    active Enrollment, per `my_enrollment`/`IsEnvironmentMember`), never the
+    student's — the capability is evaluated against the teacher's plan."""
+
+    def get_permissions(self):
+        classes = list(self.permission_classes)
+        if self.request.method == "POST":
+            classes = classes + [RequiresCapability(capabilities.AI_QUIZ_FROM_VIDEO)]
+        return [cls() for cls in classes]
+
     def get_throttles(self):
         return [AISubmitRateThrottle()] if self.request.method == "POST" else []
 
@@ -383,7 +398,12 @@ class QuizSubmitView(StudentView):
 # ------------------------- AI Study Assistant --------------------------------
 class AssistantListSubmitView(AIOperationListSubmitView):
     """Same general-tutor pipeline as the teacher's, for the student. The
-    operation has no link to any student record (database constraint)."""
+    operation has no link to any student record (database constraint).
+
+    BILL-WU-011: NOT gated — whether the Study Assistant is plan-gated at
+    all is BILL-DEC-07, an open System-level decision this unit does not
+    make (its own Escalation conditions). Do not add a RequiresCapability
+    check here until BILL-DEC-07 resolves it."""
 
     permission_classes = STUDENT
 
