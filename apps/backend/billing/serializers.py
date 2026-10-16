@@ -67,6 +67,18 @@ class SubscriptionStatusSerializer(serializers.Serializer):
     entitlement = EntitlementSummarySerializer()
 
 
+class CancelResponseSerializer(serializers.Serializer):
+    """BILL-WU-028. `renewal_already_in_progress` is the explicit,
+    never-hidden surface of this unit's own "Race-safety rule": the
+    renewal claim committed before this cancel call acquired the
+    Subscription lock, so a charge for the next period may already be
+    in flight."""
+
+    cancel_at_period_end = serializers.BooleanField()
+    renewal_already_in_progress = serializers.BooleanField()
+    renewal_attempt_status = serializers.CharField(allow_null=True)
+
+
 class PaymentHistoryRowSerializer(serializers.ModelSerializer):
     """One `PaymentAttempt`, annotated with its `BillingPeriod`'s bounds.
     Deliberately excludes `merchant_order_id`, `provider_transaction_id`

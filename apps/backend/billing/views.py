@@ -14,6 +14,10 @@ stay reachable even when access is not granted (commercial-model
 Checkout (BILL-WU-019), cancellation (BILL-WU-028) and the webhook
 (BILL-WU-020) endpoints mount into this same `billing.urls` namespace in
 later units — explicitly out of scope here (this unit's own exclusions).
+
+`CancelSubscriptionView` below is BILL-WU-028, not this unit — it is
+added later, into this same file/namespace, per that unit's own
+"Implementation surfaces".
 """
 from django.utils import timezone
 from rest_framework import generics, status
@@ -26,6 +30,7 @@ from environments.tenancy import IsEnvironmentMember, StandardPagination
 from . import entitlements
 from .models import PaymentAttempt, Plan, Subscription
 from .serializers import (
+    CancelResponseSerializer,
     CheckoutRequestSerializer,
     CheckoutResponseSerializer,
     CheckoutStatusSerializer,
@@ -33,7 +38,7 @@ from .serializers import (
     PlanSerializer,
     SubscriptionStatusSerializer,
 )
-from .services import CheckoutError, get_checkout_status, start_checkout
+from .services import CancelError, CheckoutError, cancel_subscription, get_checkout_status, start_checkout
 
 # Every environment-scoped billing endpoint requires the caller to be the
 # OWNER member of their own environment (header-resolved, never trusted
@@ -130,6 +135,31 @@ class CheckoutReturnView(APIView):
         data = {"attempt_id": attempt.id if attempt else None, "status": attempt.status if attempt else None}
         serializer = CheckoutStatusSerializer(data)
         return Response(serializer.data)
+
+
+class CancelSubscriptionView(APIView):
+    """POST — BILL-WU-028. Always permitted for the owner (commercial-model
+    §Cancellation): not gated by `entitlements.decide(...)` for the same
+    reason `CheckoutView` isn't (billing resolution is always-permitted).
+    Idempotent; never deletes data or issues a refund (this unit's own
+    exclusions, AC-BILL-028-5)."""
+
+    permission_classes = IS_ENV_OWNER
+
+    def post(self, request):
+        try:
+            result = cancel_subscription(request.environment)
+        except CancelError as exc:
+            return Response({"detail": exc.detail, "code": exc.code}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = CancelResponseSerializer(
+            {
+                "cancel_at_period_end": result.cancel_at_period_end,
+                "renewal_already_in_progress": result.renewal_already_in_progress,
+                "renewal_attempt_status": result.renewal_attempt_status,
+            }
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class PaymentHistoryView(generics.ListAPIView):

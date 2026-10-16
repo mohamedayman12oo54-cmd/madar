@@ -9,8 +9,26 @@ the teacher to. The row lock on `Subscription` is held only for the local
 decision-and-create step; the provider call happens after it is released
 (ai-execution-guidance directive 15 — no outbound call inside a DB
 transaction).
+
+BILL-WU-028 — `cancel_subscription` below adds cancel-at-period-end. It
+takes the SAME FIRST LOCK, in the same order, as the renewal claim
+(`process_billing_renewals.claim_due_subscription`, BILL-WU-025): the
+Subscription row via `select_for_update()`, before anything else. Neither
+path ever acquires a second lock before releasing or committing that one,
+so the two paths structurally cannot deadlock against each other (this
+unit's own "Failure modes": "prevented by single lock order").
+
+**Known gap, disclosed, not a `models.py` change** (same discipline as
+every other worker in this plan): this unit's own "Expected outcome"
+describes setting a `cancel_requested_at` timestamp alongside the flag,
+but `Subscription` has no such field. `updated_at` (`auto_now`) already
+records the moment the row was last written, which is this same moment
+whenever the flag transitions — no new field is needed to answer "when
+was this cancelled", and none is added.
 """
+import dataclasses
 import secrets
+from typing import Optional
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -103,6 +121,61 @@ def start_checkout(environment, plan_key, return_url):
     PaymentAttempt.objects.filter(pk=attempt.pk).update(provider_order_id=session.provider_session_ref)
     attempt.provider_order_id = session.provider_session_ref
     return attempt, session.session_url
+
+
+class CancelError(Exception):
+    """A stable, client-facing cancellation refusal. `code` is machine-readable."""
+
+    def __init__(self, code, detail):
+        self.code = code
+        self.detail = detail
+        super().__init__(detail)
+
+
+@dataclasses.dataclass(frozen=True)
+class CancelResult:
+    cancel_at_period_end: bool
+    renewal_already_in_progress: bool
+    renewal_attempt_status: Optional[str]
+
+
+def cancel_subscription(environment):
+    """Set `cancel_at_period_end=True` for `environment`'s Subscription.
+    Idempotent: a repeat call re-locks the same row, finds the flag
+    already set, and returns the same shape. Never touches
+    `current_period_end`, never deletes anything, never issues a refund
+    (this unit's own exclusions).
+
+    Race-safety (this unit's own "Race-safety rule", normative): after
+    locking, checks whether a non-terminal, period-bound `PaymentAttempt`
+    already exists — the renewal claim's own double-charge guard
+    (BILL-WU-008/025) means at most one such attempt can exist at a time,
+    and its mere existence means a renewal claim for the NEXT period
+    already committed before this call acquired the lock. The in-flight
+    charge is never cancelled (Kashier can't be assumed to support
+    aborting it) — this is surfaced to the caller, never hidden."""
+    try:
+        with transaction.atomic():
+            subscription = Subscription.objects.select_for_update().get(environment=environment)
+            subscription.cancel_at_period_end = True
+            subscription.save(update_fields=["cancel_at_period_end"])
+
+            in_progress = (
+                PaymentAttempt.objects.filter(
+                    subscription=subscription, billing_period__isnull=False,
+                    status__in=PaymentAttempt.NON_TERMINAL_STATUSES,
+                )
+                .order_by("-created_at")
+                .first()
+            )
+    except Subscription.DoesNotExist:
+        raise CancelError("no_subscription", "No subscription exists for this environment.")
+
+    return CancelResult(
+        cancel_at_period_end=True,
+        renewal_already_in_progress=in_progress is not None,
+        renewal_attempt_status=in_progress.status if in_progress is not None else None,
+    )
 
 
 def get_checkout_status(environment, attempt_id):
