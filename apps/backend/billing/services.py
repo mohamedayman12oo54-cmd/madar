@@ -33,6 +33,7 @@ from typing import Optional
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from . import entitlements
 from .models import PaymentAttempt, Plan, Subscription
 from .providers import ProviderError, get_payment_provider
 
@@ -186,3 +187,31 @@ def get_checkout_status(environment, attempt_id):
     if not attempt_id:
         return None
     return PaymentAttempt.objects.filter(pk=attempt_id, environment=environment).first()
+
+
+def start_trial(*, environment, activated_at):
+    """BILL-WU-014 — commercial-model §Free trial: 16 days, starting at
+    the instant the Teacher Account is activated AND its Environment is
+    established (one atomic signup event) — `activated_at` is the
+    Backend's own `timezone.now()`, captured once by the caller, never a
+    client-supplied timestamp. No payment method, no auto-conversion.
+
+    Called from INSIDE `accounts`' own atomic signup transaction (BND-1:
+    `accounts` calls this Billing capability; it never writes a Billing
+    table itself). `environment` was just created in that SAME
+    transaction, so this can never raise `IntegrityError` for an existing
+    Subscription — that matters because the caller's surrounding
+    `except IntegrityError` would otherwise mis-report this as its own
+    "phone/email already in use" conflict (this unit's own data-integrity
+    requirement).
+
+    Sets both `trial_started_at` and `trial_ends_at`. `entitlements.decide()`
+    (BILL-WU-010, already VERIFIED) derives the trial window from
+    `trial_started_at` alone and never reads `trial_ends_at` — it is set
+    here anyway, consistently, since the column already exists
+    (BILL-WU-008) and nothing should have to guess whether it was meant
+    to be populated."""
+    trial_ends_at = activated_at + timezone.timedelta(days=entitlements.TRIAL_DAYS)
+    return Subscription.objects.create(
+        environment=environment, trial_started_at=activated_at, trial_ends_at=trial_ends_at,
+    )
