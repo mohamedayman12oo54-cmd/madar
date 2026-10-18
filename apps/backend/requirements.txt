@@ -7,3 +7,9 @@ python-dotenv==1.2.2
 # PostgreSQL driver. Required when DB_ENGINE=django.db.backends.postgresql.
 # The binary wheel avoids needing libpq/build tools on the host.
 psycopg[binary]==3.3.6
+
+# Lesson-video transcription (speech-to-text, runs locally; model downloads on first use).
+# Decodes audio itself, so ffmpeg is NOT required.
+faster-whisper==1.2.1
+# faster-whisper 1.2.1 breaks on PyAV >= 17 (av.open no longer takes metadata_errors).
+av>=16,<17

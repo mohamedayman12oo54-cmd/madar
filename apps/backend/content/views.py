@@ -13,7 +13,7 @@ from .models import ContentItem
 from .serializers import ContentItemSerializer, ContentItemWriteSerializer
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
-_PREFETCH = ("target_grades", "target_groups", "target_enrollments")
+_PREFETCH = ("target_grades", "target_groups", "target_enrollments", "transcript")
 
 
 class ContentListCreateView(TenantScopedQuerySetMixin, generics.ListCreateAPIView):

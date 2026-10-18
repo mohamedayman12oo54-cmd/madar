@@ -1,10 +1,11 @@
-import { useEffect, useId, useState } from "react";
-import { Plus, Play, Pencil, Trash2, Send, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Plus, Play, Pencil, Trash2, Send, X, RefreshCw, Check, Copy } from "lucide-react";
 import { Field, TextInput, Btn, Banner, Modal } from "../auth/ui.jsx";
 import { enrollmentsApi } from "../lib/academicsApi.js";
 import { contentApi } from "../lib/dashboardApi.js";
 import { extractVideoId } from "../lib/video.js";
 import { ApiError } from "../lib/api.js";
+import { pollUntilDone } from "../lib/poll.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
 import { CheckList, Confirm, Empty, PageHeader, toggleId, useDebounced } from "./common.jsx";
@@ -111,10 +112,16 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
         <div className="form-wide">
           <VideoUploadField item={draft} ensureItem={ensureItem} onUploaded={onUploaded} />
         </div>
+        {draft?.id && draft.source === "upload" && (
+          <Field className="form-wide" label="نص الدرس (يُستخرج تلقائيًا من الفيديو)"
+            hint="يُحوَّل كلام الفيديو إلى نص بعد الرفع، ويُستخدم هذا النص لتوليد الاختبارات.">
+            <TranscriptPanel itemId={draft.id} />
+          </Field>
+        )}
 
         {/* 3 — optional AI material */}
         <Field className="form-wide" label="ملخص الدرس لتوليد الاختبارات (اختياري)"
-          hint="يُستخدم فقط لتوليد اختبارات بالذكاء الاصطناعي ولا يظهر للطالب. الفيديو نفسه لا يُقرأ.">
+          hint="يُستخدم فقط لتوليد اختبارات بالذكاء الاصطناعي ولا يظهر للطالب، ويُضاف إلى نص الفيديو المرفوع.">
           <textarea className="inp" rows={4} maxLength={4000} value={quizSource} onChange={(e) => setQuizSource(e.target.value)} /></Field>
 
         {/* 4 — who receives it */}
@@ -288,6 +295,97 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
         </div>
       )}
       {err && <Banner tone="err">{err}</Banner>}
+    </div>
+  );
+}
+
+const TRANSCRIPT_ACTIVE = new Set(["pending", "processing"]);
+const LANGS = { ar: "العربية", en: "English", fr: "Français" };
+
+function clock(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const mm = String(m).padStart(h ? 2 : 1, "0"), ss = String(r).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/** Shows the transcript the server extracts from the uploaded video (pipeline
+ *  step 2). Transcribing a long lesson takes minutes, so this polls until the
+ *  server reports a terminal state; closing the modal never loses the work —
+ *  it lives on the server and is shown again when the item is reopened. */
+function TranscriptPanel({ itemId }) {
+  const [tr, setTr] = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+  const [nonce, setNonce] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const [timed, setTimed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const timer = useRef(null);
+
+  useEffect(() => {
+    const ctl = new AbortController();
+    setLoadErr(null);
+    pollUntilDone(() => contentApi.transcript(itemId), {
+      isDone: (t) => !TRANSCRIPT_ACTIVE.has(t.status),
+      intervalMs: 3000, maxAttempts: 2400, maxConsecutiveErrors: 5,
+      onUpdate: setTr, signal: ctl.signal,
+    }).catch((e) => setLoadErr(e instanceof ApiError ? e.message : "تعذّر تحميل نص الدرس."));
+    return () => ctl.abort();
+  }, [itemId, nonce]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const retry = async () => {
+    setRetrying(true);
+    try { setTr(await contentApi.retryTranscript(itemId)); setNonce((n) => n + 1); }
+    catch (e) { setLoadErr(e instanceof ApiError ? e.message : "تعذّر إعادة المحاولة."); }
+    finally { setRetrying(false); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(tr.text); setCopied(true); timer.current = setTimeout(() => setCopied(false), 1800); }
+    catch { /* clipboard blocked: the text is still selectable */ }
+  };
+
+  if (loadErr) return <Banner tone="err">{loadErr}</Banner>;
+  if (!tr) return <p className="field-msg">جاري تحميل نص الدرس…</p>;
+  if (TRANSCRIPT_ACTIVE.has(tr.status)) {
+    return (
+      <div className="transcript-wait" role="status">
+        <span className="orbit-loader dark" />
+        <div>
+          <strong>{tr.status === "pending" ? "في الانتظار…" : "جارٍ تحويل الكلام إلى نص…"}</strong>
+          <div className="stat-sub">قد يستغرق ذلك عدة دقائق حسب طول الفيديو. يمكنك إغلاق النافذة؛ سيظهر النص هنا عند فتح المحتوى مجددًا.</div>
+        </div>
+      </div>
+    );
+  }
+  if (tr.status === "failed") {
+    return (
+      <div className="upload-field">
+        <Banner tone="err">{tr.error || "تعذّر تحويل الفيديو إلى نص."}</Banner>
+        <Btn variant="ghost" type="button" onClick={retry} loading={retrying} loadingText="جارٍ المحاولة…"><RefreshCw size={14} /> إعادة المحاولة</Btn>
+      </div>
+    );
+  }
+  if (tr.status !== "completed") return null;
+
+  return (
+    <div className="transcript">
+      <div className="transcript-bar">
+        <span className="stat-sub">
+          {[LANGS[tr.language] || tr.language, `${tr.word_count} كلمة`, tr.duration_seconds ? clock(tr.duration_seconds) : null].filter(Boolean).join(" • ")}
+        </span>
+        <span className="row-actions">
+          <button type="button" className="mini-btn" onClick={() => setTimed((v) => !v)}>{timed ? "بدون أوقات" : "مع الأوقات"}</button>
+          <button type="button" className="mini-btn" onClick={copy}>{copied ? <><Check size={13} /> تم النسخ</> : <><Copy size={13} /> نسخ</>}</button>
+          <button type="button" className="mini-btn" onClick={retry} disabled={retrying} title="إعادة التحويل"><RefreshCw size={13} /></button>
+        </span>
+      </div>
+      <div className="transcript-body" dir="auto" tabIndex={0}>
+        {timed
+          ? tr.segments.map((s, i) => (
+            <div key={i} className="transcript-seg"><span className="transcript-time">{clock(s.start)}</span><span>{s.text}</span></div>))
+          : tr.text}
+      </div>
     </div>
   );
 }

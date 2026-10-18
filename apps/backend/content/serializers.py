@@ -15,11 +15,16 @@ class ContentItemSerializer(serializers.ModelSerializer):
     video = serializers.SerializerMethodField()
     targets = serializers.SerializerMethodField()
     published = serializers.SerializerMethodField()
+    transcript_status = serializers.SerializerMethodField()
 
     class Meta:
         model = ContentItem
         fields = ["id", "title", "description", "quiz_source", "video", "source", "original_filename",
-                  "file_size", "targets", "published", "published_at", "created_at"]
+                  "file_size", "targets", "published", "published_at", "created_at", "transcript_status"]
+
+    def get_transcript_status(self, obj):
+        row = getattr(obj, "transcript", None) if hasattr(obj, "transcript") else None
+        return row.status if row else "none"
 
     def get_video(self, obj):
         return describe_video(obj.video_provider, obj.video_ref)

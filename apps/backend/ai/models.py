@@ -63,6 +63,11 @@ class AIOperation(TenantOwnedModel):
     # relevant material — the answer must say so rather than invent one.
     sources = models.JSONField(default=list, blank=True)
     idempotency_key = models.CharField(max_length=64, null=True, blank=True)
+    # HOW the result was produced, written by the worker for operators — never
+    # exposed by the API serializers. For quiz generation: prompt version,
+    # requested configuration, attempts, token usage, validation outcome and
+    # failure category. No secrets, no lesson text.
+    metadata = models.JSONField(default=dict, blank=True)
 
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
     result = models.TextField(blank=True)

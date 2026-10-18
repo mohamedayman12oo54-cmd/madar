@@ -101,6 +101,8 @@ export const contentApi = {
   update: (id, payload) => api.patch(`/content/${id}/`, payload, T),
   remove: (id) => api.delete(`/content/${id}/`, T),
   publish: (id) => api.post(`/content/${id}/publish/`, {}, T),
+  transcript: (id) => api.get(`/content/${id}/transcript/`, T),
+  retryTranscript: (id) => api.post(`/content/${id}/transcript/`, {}, T),
 
   // --- uploaded video (resumable) ---
   /**

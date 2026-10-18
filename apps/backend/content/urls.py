@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import upload_views, video_views, views
+from . import transcript_views, upload_views, video_views, views
 
 urlpatterns = [
     path("", views.ContentListCreateView.as_view()),
@@ -11,6 +11,7 @@ urlpatterns = [
     path("<int:pk>/playback-ticket/", video_views.PlaybackTicketView.as_view()),
     path("<int:pk>/progress/", video_views.VideoProgressView.as_view()),
     path("<int:pk>/watchers/", video_views.ItemProgressView.as_view()),
+    path("<int:pk>/transcript/", transcript_views.TranscriptView.as_view()),
     path("stream/", video_views.VideoStreamView.as_view()),
     # --- resumable upload (create / resume / continue / abandon) ---
     path("<int:pk>/uploads/", upload_views.UploadSessionCreateView.as_view()),

@@ -317,7 +317,7 @@ class QuizTests(Base):
     def test_only_teacher_provided_material_is_snapshotted_for_the_model(self):
         r = self.request()
         evidence = AIOp.objects.get(pk=r.json()["id"]).evidence
-        self.assertEqual(set(evidence), {"title", "text"})
+        self.assertEqual(set(evidence), {"title", "text", "source"})  # `source` = provenance only (ai/quiz_source.py)
         self.assertNotIn("أحمد", str(evidence))
 
     def test_generation_is_rate_limited(self):
