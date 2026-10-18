@@ -79,6 +79,21 @@ established five-event catalog remains System-level truth; this fixes ownership 
 module seam. The transactional hand-off pattern is detailed in
 `../04-architecture/architecture.md` and `../05-runtime/fast-session.md`.
 
+## BND-4 — Billing module boundary (added after the commercial-design pass)
+
+**Billing** (`../../../10-decisions/ADR-014-billing-bounded-module.md`) is an eighth internal module,
+following the same rules as BND-1/BND-2 above: it owns its private persistence (DAT-5,
+`../06-data/data-model.md`) and exposes explicit internal capabilities for other modules that need to
+know, e.g., whether a given Teacher Environment currently has access. No other module reads Billing's
+persistence directly, and Billing does not read another module's persistence directly — it obtains
+Environment/Enrollment context it needs (e.g., which Environment a Subscription belongs to) through
+the Identity & Enrollment module's capability, the same as Financials already does for fee resolution.
+
+Billing's **inbound webhook responsibility** (`../../../10-decisions/ADR-016-inbound-webhook-exception.md`)
+and its **payment-provider interface** (`../../../10-decisions/ADR-015-payment-provider-interface.md`)
+are owned entirely within the Billing module boundary — no other module is a secondary webhook
+recipient or payment-provider caller.
+
 ## Consistency with the all-paths guarantee
 
 BND-2 (cross-cutting isolation beneath the modules) and BR-1 (all-paths invariant enforcement,

@@ -94,6 +94,16 @@ The exact serialized schema (field names, envelope shape) is deferred to the API
 
 ## What this contract deliberately does not include (V1)
 
-No inbound third-party integrations; no online-payment endpoints; no SMS/WhatsApp/email; no
-teacher-published quiz; no streaming async transport; no per-client separate APIs. These are recorded
-as negative space so a future implementer does not assume them.
+No SMS/WhatsApp/email; no teacher-published quiz; no streaming async transport; no per-client separate
+APIs. These are recorded as negative space so a future implementer does not assume them.
+
+**Payment/billing endpoints — scoped exception, not a general opening.** Following the
+commercial-design pass, Madar now has online-payment/billing endpoints (checkout initiation, billing
+status) and exactly **one** inbound external integration — the signature-verified Kashier
+payment-result webhook, approved narrowly by
+[ADR-016](../10-decisions/ADR-016-inbound-webhook-exception.md). This is **not** a general reopening of
+"no inbound third-party integrations": every other inbound integration remains out of scope for V1
+unless and until it receives its own dedicated ADR. The webhook endpoint, its signature-verification
+requirement, and its separation from ordinary outbound/redirect traffic are detailed in
+`external-interfaces.md`. No endpoint catalog or serialized schema for billing is defined here — that
+remains deferred to the API-documentation stage, consistent with this document's scope note.

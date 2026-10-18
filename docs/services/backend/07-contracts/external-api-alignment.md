@@ -45,18 +45,64 @@ recorded as boundary consequences, not as new endpoint or schema design:
   credential/OTP/token/provider choice is made here.
 - **Environment availability is a lifecycle state.** The "authorized environment" a request targets is
   one that has been **established** and may begin **empty** (TAL-2); the contract does not assume an
-  Environment is always pre-existing and populated. Provisioning trigger and per-Teacher cardinality
-  remain **fenced**; the existing "one *active* environment per student-facing context" rule is
+  Environment is always pre-existing and populated. **Cardinality is resolved** — exactly one
+  Environment per Teacher Account, permanently (ADR-013/INV-9); only the provisioning **trigger**
+  mechanism remains fenced. The existing "one *active* environment per student-facing context" rule is
   unchanged.
 - **Access state may gate operations.** Whether a Teacher currently **has access** (Free Trial /
-  Subscription) is an abstract input to the access decision (TAL-5), **separate from and prior to**
-  composite authorization. Whether an access-not-granted condition surfaces as a distinct
-  client-facing outcome, and its exact semantics, are **fenced** (commercial mechanics and
-  access-not-granted behavior are unresolved upstream). No billing/entitlement API is designed here.
+  Subscription) is an input to the access decision (TAL-5), owned by the Billing module and consumed
+  **separate from and prior to** composite authorization (ADR-018). Commercial parameters are now
+  decided (`../../../01-product/commercial-model.md`); the exact client-facing surfacing of an
+  access-not-granted condition and its precise semantics remain **fenced**. No billing/entitlement
+  endpoint catalog is designed here — see AL-3 for the trust-boundary distinctions that **are**
+  asserted.
 
 No signup, billing, invitation, or provisioning endpoints are defined by these consequences — only the
 recognition that the existing contract's preconditions are now explicit. Endpoint/schema detail
 remains deferred to the API-documentation stage.
+
+## AL-3 — Payment trust-boundary distinctions (from the commercial-design pass)
+
+Following the commercial-design pass and `../../../10-decisions/ADR-016-inbound-webhook-exception.md`,
+the Backend asserts these trust-boundary distinctions explicitly, so a future implementer does not
+conflate them:
+
+- **Outbound calls to Kashier** (checkout initiation, status lookup) — ordinary outbound usage of the
+  payment-provider interface, the same shape as the LLM/Push/Video interfaces.
+- **Inbound, signature-verified Kashier webhook events** — the system's **one** approved inbound
+  external integration. Only a verified webhook event (or an internal reconciliation job polling
+  Kashier's own status API) may transition Subscription/Invoice/PaymentAttempt state.
+- **Browser return/redirect URLs** — carry **no trust weight**. A redirect must never independently
+  activate a subscription or any paid capability.
+- **Internal billing-state transitions** — occur only as a consequence of the two trusted paths above,
+  never from an unauthenticated inbound signal of any other kind.
+
+**Payment-event safety is distinct from the existing AI client-request idempotency mechanism.**
+`ai/models.py`'s `idempotency_key` (`../../../10-decisions/ADR-011-selective-idempotency.md`) prevents
+a **calling user's own retry** from creating a duplicate AI operation; it is **not** a substitute for
+provider-event deduplication, signature verification, or replay protection, which a payment webhook
+requires and which are a **new**, separate mechanism per
+`../../../10-decisions/ADR-017-payment-event-idempotency.md`. A webhook **arriving** is not, by itself,
+proof of a successful payment.
+
+## AL-4 — Future Frontend contract needs around Billing (noted, not designed)
+
+The following Frontend contract needs are anticipated around the Billing module and are recorded here
+for future coordination; **no endpoint, schema, or UI is designed by this note**:
+
+- Plan discovery (listing the three plans and their prices/caps/features).
+- Subscription/trial state (current plan, trial-days-remaining, billing-period end).
+- Checkout initiation (handing off to Kashier's hosted flow) and payment confirmation/pending states.
+- Billing status/history (past periods, invoices where applicable).
+- Renewal/cancellation status (next renewal date, cancellation-takes-effect-at-period-end messaging).
+- Restricted-access/recovery UI (what a Teacher sees and can still do once access is not granted).
+- Student-count-limit responses (what happens when a plan/trial cap is reached).
+- AI-feature-availability/quota responses (which AI capability a Teacher's current plan unlocks).
+
+**Separately, frontend-owned, out of Backend scope:** `apps/web/src/lib/financialsApi.js` references
+non-existent backend routes (`/financials/payments/`, `/financials/summary/`) and remains unused/dead
+code (per the Kashier readiness audits). This is a Frontend cleanup item, noted here for awareness
+only — not fixed by this Backend documentation pass.
 
 ## AL-1 — Semantic internal→external failure mapping (asserted); wire-level mapping deferred
 

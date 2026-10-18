@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 
 from academics.models import Grade, Group
 from accounts.testing import make_enrollment
+from billing.models import Subscription
 from config.months import current_month
 from content.models import ContentItem
 from environments.tenancy_testing import PASSWORD, TenantTestCase
@@ -34,6 +35,14 @@ class Base(TenantTestCase):
         self.g1 = Group.objects.create(environment=self.env_a, grade=self.grade, name="G1")
         self.me, self.e1 = self.student(self.env_a, "201555500001", "أحمد", self.grade, self.g1)
         self.peer, self.e2 = self.student(self.env_a, "201555500002", "سارة", self.grade, self.g1)
+        # BILL-WU-011 gates quiz generation on `ai.quiz_from_video`, which an
+        # Environment only has while on an active trial or a plan that
+        # grants it. `TenantTestCase`'s base fixture predates billing and
+        # creates no Subscription at all, so give this test's teacher an
+        # active trial — the same state every real signup will have once
+        # BILL-WU-014 starts one — rather than leave the pre-existing quiz
+        # tests exercising a denied path.
+        Subscription.objects.create(environment=self.env_a, trial_started_at=timezone.now())
 
     def student(self, env, phone, name, grade, group=None):
         user = self.make_student_in(env, phone, name)

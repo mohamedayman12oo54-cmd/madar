@@ -49,6 +49,42 @@ Enrollment (INV-3). This avoids a redundant consistency invariant
 > Explicit stamping would only be reconsidered if Enrollment ever became mutable across Grades or
 > historical records had to become independently self-contained. Neither is true in V1.
 
+## Billing logical concepts (candidate; commercial model now decided, schema not)
+
+> Recorded following the commercial-design pass (`01-product/commercial-model.md`,
+> `10-decisions/ADR-014-billing-bounded-module.md`). These are **candidate logical concepts**, not a
+> physical schema — fields, keys, and storage technology are an Implementation Plan concern, not
+> decided here. **Do not conflate with the `Payment` entity above** (student→teacher fee tracking);
+> these are the Teacher↔Madar commercial relationship, owned by the `billing` module.
+
+- **Plan** — one of the three fixed paid tiers (price, 30-day period, student cap or none, feature
+  set). Global/catalog data, not teacher-scoped.
+- **Subscription** — the Teacher Account/Environment's current commercial state (trial or one of the
+  three Plans), its current billing period, and its renewal/cancellation status. Scoped to the single
+  Teacher Environment permanently owned by its Teacher Account (INV-9).
+- **BillingPeriod** — a 30-elapsed-day cycle instance of a Subscription; never a calendar month.
+- **Invoice / line items** — the record of what was owed for a BillingPeriod, where required.
+- **PaymentAttempt** — one attempt to charge the Teacher for a BillingPeriod/Invoice, with an outcome
+  (succeeded/failed/pending); distinct from, and may be many-to-one against, an Invoice.
+- **Saved-payment-method / recurring-agreement reference** — a reference to the token/agreement Kashier
+  returns after a successful initial setup, per Kashier's merchant-owned recurring-billing model; not a
+  stored card number.
+- **Provider event record** — a durable record of each verified inbound Kashier webhook event, used for
+  provider-event deduplication (distinct from the existing client-request `idempotency_key` mechanism —
+  `10-decisions/ADR-017-payment-event-idempotency.md`).
+- **Entitlement/access decision** — the derived answer, at a point in time, to "does this Teacher
+  currently have access, and to which plan-gated capabilities" — consumed by the access-decision
+  boundary (`10-decisions/ADR-018-billing-entitlement-boundary.md`); not itself a stored ledger, though
+  it may be informed by one.
+
+**Relationships (to the extent the confirmed policies support — not further invented):** one Teacher
+Environment has at most one active Subscription at a time; a Subscription has many BillingPeriods over
+time; a BillingPeriod has zero-or-more PaymentAttempts and, where required, one Invoice; a verified
+Provider event record may transition a PaymentAttempt/Invoice/Subscription's state, per the state
+separation in ADR-017. No state-machine transition names are fixed here beyond what
+`01-product/commercial-model.md` already states (trial → active-on-a-plan; auto-renew; cancel-at-
+period-end; failed-renewal → limited retries → grace → access-not-granted, with exact numbers open).
+
 ## Negative space (referenced, not owned)
 
 - **Video blob** — external storage; Madar stores metadata + targeting + an external reference.

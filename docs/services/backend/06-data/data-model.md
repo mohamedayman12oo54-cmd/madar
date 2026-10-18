@@ -90,15 +90,36 @@ behavior, with mechanisms fenced. No physical schema, table, field, or storage t
   fenced**.
 - **Teacher ↔ Environment relationship & Environment origin.** An Environment is **established** in
   association with the Teacher and begins **empty** (TAL-2). Logically this implies a **Teacher ↔
-  Environment association** and recognition of an Environment's **established/initial** state. The
-  **provisioning trigger** and whether a Teacher may hold **one or multiple** Environments are
-  **fenced** — the Backend does **not** fix cardinality here.
+  Environment association** and recognition of an Environment's **established/initial** state.
+  **Cardinality is now resolved**: exactly one Environment per Teacher Account, permanently (INV-9,
+  `../../../10-decisions/ADR-013-permanent-environment-cardinality.md`). The **provisioning trigger**
+  mechanism remains **fenced**.
 - **Access state.** The Teacher's **trial/subscription access state** governs *whether* access is
   currently granted (TAL-5). Logically this is an **access-state attribute/association of the Teacher
-  (or Teacher↔Madar relationship)** consumed by the access-decision boundary. It is **not** a billing
-  model: pricing, plans, provider, invoicing, trial duration, renewal/cancellation, and the exact
-  access-not-granted behavior are **fenced** (`../../../10-decisions/rejected-deferred.md`). It is
-  **distinct from** student fee tracking (Payment: `Enrollment × Month`), which is unchanged.
+  (or Teacher↔Madar relationship)**, now realized concretely as the Subscription/Entitlement concepts
+  owned by the **Billing** module (`../../../10-decisions/ADR-014-billing-bounded-module.md`; see
+  DAT-5 below) and consumed by the access-decision boundary
+  (`../../../10-decisions/ADR-018-billing-entitlement-boundary.md`). Pricing, plan definitions, trial
+  parameters, and billing-cycle mechanics are decided
+  (`../../../01-product/commercial-model.md`); exact access-not-granted behavior, refunds, and
+  proration remain **fenced**. It is **distinct from** student fee tracking (Payment:
+  `Enrollment × Month`), which is unchanged.
+
+## DAT-5 — Billing logical concepts (candidate; owned by the `billing` module)
+
+Following the commercial-design pass, the **Billing** module
+(`../../../10-decisions/ADR-014-billing-bounded-module.md`) logically owns its own private persistence,
+per BND-1, for: Plan (catalog), Subscription (one per Teacher Environment, consistent with INV-9),
+BillingPeriod (30-elapsed-day cycles, never calendar-month), Invoice/line items where required,
+PaymentAttempt, saved-payment-method/recurring-agreement reference, provider event record (for
+provider-event dedup — distinct from the AI module's client-request `idempotency_key`, per
+`../../../10-decisions/ADR-017-payment-event-idempotency.md`), and the derived entitlement/access
+decision. These are **candidate logical concepts** per
+`../../../06-data/data-model.md` §Billing logical concepts — no physical schema, migration, or
+field list is fixed here; that is an Implementation Plan concern. Other modules obtain Billing-owned
+information (e.g., "is this Environment's access currently granted") only through an explicit internal
+capability exposed by Billing, consistent with BND-1 — never by reading Billing's persistence
+directly.
 
 > **No entities added by inference.** These concepts are named because an authoritative System-level
 > behavior requires them, not because they seem technically useful. Their concrete representation

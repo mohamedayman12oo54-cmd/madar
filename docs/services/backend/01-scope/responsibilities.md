@@ -20,7 +20,7 @@ V1 product/domain scope; the Backend adds no new product capability.
 
 | Capability | Backend responsibility | Upstream |
 |------------|------------------------|----------|
-| The seven modules | Server-side enforcement and execution of Identity & Enrollment, Educational Operations, Financials, Student Evaluation, Content, Learning & AI, Notifications | `../../../04-architecture/building-blocks.md` |
+| The eight modules | Server-side enforcement and execution of Identity & Enrollment, Educational Operations, Financials, Student Evaluation, Content, Learning & AI, Notifications, and Billing (added by `10-decisions/ADR-014-billing-bounded-module.md`) | `../../../04-architecture/building-blocks.md` |
 | Notification behavior & events | The bounded five-event catalog + dispatch | `../../../02-requirements/functional.md` |
 | The three AI operations | Study Assistant, AI Quiz, State recommendation (as bounded operations) | `../../../02-requirements/functional.md`, `../../../05-runtime/` |
 | Authentication / claiming / context | Server-side **Teacher account authentication** (a distinct actor path) and **student claiming orchestration**; session/context establishment; environment switching | `../../../08-cross-cutting/security-authz.md`, `../../../03-domain/actor-lifecycles.md`, `teacher-access-lifecycle.md` (TAL-1) |
@@ -86,13 +86,17 @@ implementation.
   (`../../../06-data/lifecycle-retention.md`, `../../../08-cross-cutting/security-authz.md`).
 - **Homework** — **fenced** from the V1 Definition-of-Done. The Backend builds nothing for it unless
   the feasibility gate passes (`../../../01-product/scope.md`).
-- **Commercial / billing mechanics** — pricing, plans, billing provider/gateway, invoicing, trial
-  duration, renewal, cancellation, payment processing → deferred to a commercial-design pass; the
-  Backend represents only an **abstract access-state input**, not a billing architecture
-  (`teacher-access-lifecycle.md`, TAL-5).
+- **Commercial / billing mechanics** — pricing, plans, trial duration, 30-day billing cycle, and the
+  failed-payment policy direction are **now decided** by the commercial-design pass
+  (`../../../01-product/commercial-model.md`); the Backend represents them through the **Billing**
+  module (`../../../10-decisions/ADR-014-billing-bounded-module.md`) and the entitlement-decision
+  boundary (`teacher-access-lifecycle.md`, TAL-5; ADR-018) — not folded into general authorization.
+  Exact retry/grace numbers, refunds, and proration remain deferred — see `commercial-model.md` §Open
+  items.
 - **Lifecycle mechanisms left unresolved upstream** — Teacher authentication mechanism; Environment
-  provisioning trigger & per-Teacher cardinality; the secure Teacher→Student invitation mechanism; the
-  exact access-not-granted behavior (suspension/grace/read-only) → all **fenced**
+  provisioning **trigger** mechanism (cardinality itself is resolved — ADR-013/INV-9); the secure
+  Teacher→Student invitation mechanism; the exact access-not-granted behavior
+  (student-facing/read-only specifics) → all **fenced**
   (`teacher-access-lifecycle.md`; `../../../10-decisions/rejected-deferred.md`).
 
 ## Scope closure

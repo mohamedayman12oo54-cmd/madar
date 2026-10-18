@@ -48,7 +48,31 @@ storage architecture and delivery mechanism for video; OTP/SMS provider mechanic
 (claiming is an auth concern, not a notification channel). These are implementation/Operations
 concerns and are intentionally not fixed here.
 
+## Fourth interface: Payment Provider (Kashier) — a distinct trust boundary
+
+Following the commercial-design pass (`01-product/commercial-model.md`), Madar consumes a payment
+provider (Kashier) through a **fourth** Madar-owned interface, extending the ADR-009 pattern but
+designed as its own shape because it is **not outbound-only** like the first three (see Negative space,
+below, and `10-decisions/ADR-015-payment-provider-interface.md`).
+
+- **Consumed by:** the **Billing** module (`10-decisions/ADR-014-billing-bounded-module.md`).
+- **Purpose:** checkout initiation, recurring-agreement/token management, and payment-result
+  processing for the Teacher↔Madar Subscription.
+- **Boundary — outbound:** Madar calls Kashier to initiate a checkout or query status, same shape as
+  the other three interfaces.
+- **Boundary — inbound (the exception):** Kashier calls **into** Madar to report a payment result via a
+  signature-verified webhook. This is the system's **only** approved inbound external integration — see
+  `10-decisions/ADR-016-inbound-webhook-exception.md` for the narrow scope and required prerequisites
+  (signature verification, event correlation, idempotent processing).
+- **Boundary — browser redirect (not a trust boundary at all):** a browser return/redirect URL after
+  checkout is **not** proof of payment and must never independently transition Subscription state —
+  only the verified inbound webhook (or an internal reconciliation job polling Kashier's own
+  status-lookup API) may do so.
+
 ## Negative space
 
-The three external dependencies are **outbound only**. None of them calls **into** Madar — there are
-no inbound external integrations in V1 (see `00-overview/system-overview.md`).
+The LLM, Push, and Video dependencies remain **outbound only**; none of them calls into Madar. The
+**sole exception** in the system is the narrowly-scoped Kashier payment-result webhook described
+above and in ADR-016 — it is the system's only approved inbound external integration. No other inbound
+external integration exists, and this exception is not precedent for adding another without its own
+dedicated ADR.

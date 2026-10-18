@@ -328,6 +328,63 @@ class AuthenticationHardeningTests(_Fixture):
             self.assertIn(r.status_code, (400, 403, 404), bogus)
 
 
+class EntitlementBypassTests(_Fixture):
+    """BILL-WU-034: a gated AI submission (billing's `RequiresCapability`,
+    BILL-WU-011) cannot be smuggled through an UNGATED route, on either
+    the teacher or the student path, by supplying `kind` in the body.
+    Worker-side re-check parity for the same category is covered by
+    `ai.tests.WorkerEntitlementRecheckTests`, not duplicated here."""
+
+    def test_the_teacher_assistant_endpoint_ignores_a_client_supplied_kind(self):
+        r = self.client_a.post(
+            "/api/v1/ai/operations/", {"prompt": "سؤال", "kind": "state_recommendation"}, format="json",
+            **self.with_env(self.env_a.id),
+        )
+        self.assertEqual(r.status_code, 202, r.content)
+        op = AIOperation.objects.get(pk=r.json()["id"])
+        self.assertEqual(op.kind, AIOperation.Kind.ASSISTANT)
+
+    def test_the_student_assistant_endpoint_ignores_a_client_supplied_kind(self):
+        self.student.set_password(PASSWORD)
+        self.student.is_active = True
+        self.student.is_verified = True
+        self.student.save()
+        sc = APIClient()
+        tok = sc.post(
+            "/api/v1/auth/student/login/", {"phone": self.student.phone, "password": PASSWORD}
+        ).data["access"]
+        sc.credentials(HTTP_AUTHORIZATION="Bearer " + tok)
+
+        r = sc.post(
+            "/api/v1/student/assistant/", {"prompt": "سؤال", "kind": "quiz_generation"}, format="json",
+            **self.with_env(self.env_a.id),
+        )
+        self.assertEqual(r.status_code, 202, r.content)
+        op = AIOperation.objects.get(pk=r.json()["id"])
+        self.assertEqual(op.kind, AIOperation.Kind.ASSISTANT)
+
+    def test_the_quiz_endpoint_has_no_kind_field_to_smuggle_through(self):
+        self.student.set_password(PASSWORD)
+        self.student.is_active = True
+        self.student.is_verified = True
+        self.student.save()
+        self.video.target_grades.add(self.grade)
+        sc = APIClient()
+        tok = sc.post(
+            "/api/v1/auth/student/login/", {"phone": self.student.phone, "password": PASSWORD}
+        ).data["access"]
+        sc.credentials(HTTP_AUTHORIZATION="Bearer " + tok)
+
+        # No Subscription/trial at all for env_a — confirms the entitlement
+        # check itself refuses this, not merely a missing/unknown field.
+        r = sc.post(
+            "/api/v1/student/quizzes/", {"content_id": self.video.id, "kind": "state_recommendation"},
+            format="json", **self.with_env(self.env_a.id),
+        )
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()["code"], "capability_not_in_plan")
+
+
 class ProductionConfigTests(TenantTestCase):
     """The settings that only matter once DEBUG is off."""
 

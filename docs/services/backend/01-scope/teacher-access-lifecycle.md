@@ -24,11 +24,11 @@ mechanism, the Backend defers it too — the responsibility is named; the mechan
 | Product entry point | None (acquisition channel/UI is out of scope; not a Backend concern) | Unaffected |
 | Teacher becomes a **Madar account holder** | Represent the Teacher as an **authenticatable actor/account** (see TAL-1) | Newly required (responsibility only) |
 | Teacher **authenticates** | Server-side Teacher **authentication responsibility** producing the authenticated actor context the capability docs already assume (see TAL-1) | Newly required; **mechanism deferred** |
-| Teacher **Environment established** (empty) | Represent Environment **establishment/origin** and **initial empty state** as a Backend lifecycle point (see TAL-2) | Newly required (responsibility only); **provisioning trigger & cardinality deferred** |
+| Teacher **Environment established** (empty) | Represent Environment **establishment/origin** and **initial empty state** as a Backend lifecycle point (see TAL-2) | Newly required (responsibility only); **cardinality resolved (ADR-013/INV-9); provisioning trigger mechanism still deferred** |
 | Empty → usable (initial use) | No new capability — the existing creation capabilities populate the Environment (see TAL-3) | Contextually affected (framing only) |
 | Teacher **introduces a Student** | Represent the **introduction/association** entry point into the **existing** Student claiming model (see TAL-4) | Newly required (connection only); **invitation mechanism deferred** |
 | Existing Student lifecycle | **Unchanged** — teacher-created → unclaimed → phone-based claim → authenticated (see TAL-4) | Preserved |
-| **Free Trial → Subscription** access state | Treat **access state** as an input to the authorization/access decision boundary (see TAL-5) | Newly required (abstract boundary only); **commercial mechanics deferred** |
+| **Free Trial → Subscription** access state | Treat **access state** as an input to the authorization/access decision boundary (see TAL-5) | Newly required; **commercial parameters decided (commercial-model.md); Billing module owns enforcement (ADR-014/018); exact retry/grace/read-only mechanics still open** |
 
 ## TAL-1 — Teacher account & authentication responsibility
 
@@ -71,15 +71,22 @@ its **origin**: an Environment is **established as part of the Teacher's journey
   server-derived context, or two-layer enforcement work; it only explains **when/why** an Environment
   first exists.
 
-> **Fenced — trigger & cardinality not decided.** The System Documentation deliberately leaves
-> unresolved **(a)** the provisioning **trigger/mechanics** (automatic on account creation vs. an
-> explicit action vs. background job vs. service call) and **(b)** whether a Teacher may hold **one or
-> multiple** Environments. The Backend documentation therefore does **not** choose a provisioning
-> mechanism and does **not** fix cardinality. Note the inherited tenant model already permits an actor
-> to be authorized for **one or more** environments (`ADR-008` speaks of "authorized environments,"
-> plural), and the API contract already establishes **one *active* environment per student-facing
-> context** (`../07-contracts/external-api-alignment.md`) — these remain as-is; total cardinality per
-> Teacher stays open (`../../../10-decisions/rejected-deferred.md`).
+> **Cardinality resolved — fenced only on provisioning trigger.** Per
+> `../../../10-decisions/ADR-013-permanent-environment-cardinality.md` and INV-9
+> (`../../../03-domain/invariants.md`), a Teacher Account owns **exactly one** Teacher Environment,
+> permanently. The Backend documentation records this as settled. What remains **fenced** is only the
+> provisioning **trigger/mechanics** (automatic on account creation vs. an explicit action vs.
+> background job vs. service call) — not decided here. Note the inherited tenant model's "authorized
+> environments" (plural) language (`ADR-008`) describes the general context-resolution mechanism and
+> is unaffected; for the Teacher actor type specifically, the resolved set now has exactly one member.
+> The API contract's "one *active* environment per student-facing context" rule
+> (`../07-contracts/external-api-alignment.md`) is unchanged and, for Teachers, is now simply the only
+> environment they have.
+>
+> **Implementation follow-up (not performed by this documentation pass):** DB-level enforcement
+> (`OneToOneField` on `Environment.owner`), a check for pre-existing violating data in any live
+> database (not performed), and reconciling `environments/tests.py`'s existing multi-environment
+> fixture with the new invariant. See ADR-013 §Consequences.
 
 ## TAL-3 — Initial use (empty → usable) is existing capability, not a new workflow
 
@@ -125,13 +132,16 @@ consequence, and its strict boundary:
   **whether access is currently granted at all**.
 - This is an **abstract boundary only**. It is deliberately **not** a billing architecture.
 
-> **Fenced — commercial mechanics not decided.** The Backend does **not** invent pricing, plans/tiers,
-> billing provider/gateway, invoicing, trial **duration**, renewal, cancellation, proration, payment
-> processing, grace periods, read-only mode, or suspension implementation. The **exact behavior when
-> access is not granted** (suspend / read-only / grace / other) and any data-retention consequence are
-> **unresolved** at the System level and remain unresolved here; the only documented retention rule is
-> unchanged (`../../../06-data/lifecycle-retention.md`: indefinite retention, no deletion workflow in
-> V1). See `../../../10-decisions/rejected-deferred.md`.
+> **Commercial mechanics now decided at the System level; Backend ownership boundary now concrete.**
+> Pricing, plans/tiers, trial duration, billing cycle, and the failed-payment policy **direction** are
+> decided (`../../../01-product/commercial-model.md`). A dedicated **Billing** Backend module now owns
+> this responsibility (`../../../10-decisions/ADR-014-billing-bounded-module.md`), via a Madar-owned
+> payment-provider interface (`ADR-015`) and a narrow, ADR-approved inbound-webhook exception
+> (`ADR-016`). What remains **fenced/open**: exact retry count/grace-period duration, exact
+> student-facing restricted-access behavior, the complete teacher read-only ruleset, refunds,
+> proration, and upgrade/downgrade timing (`../../../01-product/commercial-model.md` §Open items). Any
+> data-retention consequence of an access-not-granted state is unchanged
+> (`../../../06-data/lifecycle-retention.md`: indefinite retention, no deletion workflow in V1).
 
 ### Do not conflate with student fee tracking
 
@@ -148,8 +158,11 @@ introduction as the entry to the existing claiming model (TAL-4); an abstract ac
 access-decision boundary (TAL-5).
 
 **Fenced / unresolved (not invented here):** Teacher authentication mechanism; Environment provisioning
-trigger & per-Teacher cardinality; secure Teacher→Student invitation mechanism; all commercial
-mechanics; access-not-granted behavior (suspension/grace/read-only) and its retention consequence.
+**trigger** (cardinality itself is resolved — ADR-013/INV-9); secure Teacher→Student invitation
+mechanism; the exact numeric/behavioral sub-decisions of commercial mechanics (retry count, grace
+duration, refunds, proration — see `../../../01-product/commercial-model.md` §Open items);
+access-not-granted exact behavior (student-facing restrictions, teacher read-only ruleset) and its
+retention consequence.
 
 **Preserved unchanged:** the entire Student identity/claiming architecture; the composite authorization
 model; tenant isolation and `teacher_environment_id` semantics; all inherited ADRs; student fee

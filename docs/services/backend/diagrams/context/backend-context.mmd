@@ -1,7 +1,9 @@
 %% Backend Context View - the five neighbor classes
 %% Descriptive. Specializes system 00-overview/system-overview.
 %% NOTE: infrastructure/data dependencies are NOT peer external systems.
-%% No vendor or deployment topology is implied. No inbound external integrations in V1.
+%% No vendor or deployment topology is implied.
+%% Sole exception to "no inbound external integrations": Kashier's signature-verified payment
+%% webhook (ADR-016) - narrow, not a general opening.
 
 flowchart LR
     subgraph INBOUND["Inbound clients (one unified REST API)"]
@@ -25,6 +27,7 @@ flowchart LR
         LLM["LLM"]
         PUSH["Push"]
         VID["Video"]
+        PAY["Payment (Kashier)"]
     end
 
     OTP["OTP / Identity-Verification\nTBD / deferred\n(form undecided)"]
@@ -39,6 +42,9 @@ flowchart LR
     BE --> LLM
     BE --> PUSH
     BE --> VID
+    BE -->|outbound: checkout/status| PAY
+    PAY -.->|inbound: signature-verified webhook\n(sole exception, ADR-016)| BE
     BE -. conditional: claiming .-> OTP
 
-    %% Negative space: no inbound external integrations in V1
+    %% Negative space: no inbound external integrations in V1, EXCEPT the one
+    %% ADR-016-approved Kashier payment-result webhook shown above.

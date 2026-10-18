@@ -48,6 +48,9 @@ guarantees for operational convenience. This includes, as applicable:
 - The **Worker** does not receive a weaker trust, tenant-isolation, authorization, or
   invariant-enforcement model merely because it executes asynchronously. Its trusted context is
   reconstructed from server-created operation/job state (`../04-architecture/execution-model.md`, EX-1).
+  This applies equally to any future Billing renewal/reconciliation job
+  (`../../../10-decisions/ADR-014-billing-bounded-module.md`): it gets the same tenant/trust/integrity
+  guarantees as the synchronous Web paths, never weaker ones because it runs on the Worker role.
 - **Development and staging** do not imply relaxed isolation semantics merely because they are
   non-production.
 
@@ -68,6 +71,14 @@ These are explicitly deferred to the Operations stage and are **not** resolved h
 - concrete backup verification procedures;
 - numeric RPO/RTO — only if a later business requirement establishes the need;
 - retention/deletion/privacy/legal operational policy where still explicitly deferred
-  (`../../../06-data/lifecycle-retention.md`, `../08-cross-cutting/security-authz.md`).
+  (`../../../06-data/lifecycle-retention.md`, `../08-cross-cutting/security-authz.md`);
+- **concrete production scheduling and monitoring for any Billing renewal/reconciliation job** — the
+  existing `--loop`-mode management-command mechanism (`process_ai_operations.py`,
+  `process_notifications.py`) is a plausible template, but no concrete scheduler (cron/systemd timer/
+  managed scheduler) is deployed anywhere in this repository today for *any* job, and none is decided
+  here for Billing specifically (`../../../01-product/commercial-model.md` §Open items);
+- **Kashier go-live/production-activation verification** (merchant activation, live webhook
+  configuration, smoke-testing) — external, operational, not performed here
+  (`../../../01-product/commercial-model.md` §External verification context).
 
 See the consolidated list in `../11-validation/open-items.md`.

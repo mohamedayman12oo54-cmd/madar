@@ -1,8 +1,14 @@
+from datetime import timedelta
+from unittest import mock
+
 from accounts.testing import TestCase, ensure_active_enrollment
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import PendingAuth, User
+from billing.entitlements import TRIAL_DAYS, decide
+from billing.models import Subscription
 from environments.models import Environment, EnvironmentMembership
 
 VALID_PW = "Str0ng!Pass"
@@ -90,14 +96,90 @@ class TeacherSignupFlowTests(TestCase):
         user = User.objects.get(email="sara@example.com")
         self.assertTrue(user.is_active)
         self.assertTrue(user.is_verified)
+        env = Environment.objects.get(owner=user)
         self.assertEqual(Environment.objects.filter(owner=user).count(), 1)
         self.assertEqual(EnvironmentMembership.objects.filter(user=user, role="owner").count(), 1)
 
-        # pending record consumed — replay should fail
+        # BILL-WU-014 AC-1: exactly one Subscription, in trial state, 16
+        # elapsed days, trial_start within this request's own time window.
+        before = timezone.now()
+        subscription = Subscription.objects.get(environment=env)
+        self.assertEqual(Subscription.objects.filter(environment=env).count(), 1)
+        self.assertIsNotNone(subscription.trial_started_at)
+        self.assertLessEqual(subscription.trial_started_at, before)
+        self.assertEqual(subscription.trial_ends_at - subscription.trial_started_at, timedelta(days=TRIAL_DAYS))
+
+        # AC-5: entitlement reports the full Plan 3 feature set, cap 250.
+        decision = decide(env)
+        self.assertTrue(decision.access_granted)
+        self.assertEqual(decision.basis, "trial")
+        self.assertEqual(decision.student_cap, 250)
+
+        # AC-6: no payment-method reference on the trial Subscription.
+        self.assertIsNone(subscription.active_agreement_id)
+        self.assertIsNone(subscription.plan_id)
+
+        # pending record consumed — replay should fail, AC-4: no second
+        # Subscription is created by the replay attempt either.
         replay = self.client.post("/api/v1/auth/teacher/signup/environment/", {
             "pending_id": pending_id, "name": "x",
         })
         self.assertEqual(replay.status_code, 400)
+        self.assertEqual(Subscription.objects.filter(environment=env).count(), 1)
+
+    def test_request_body_cannot_influence_trial_start_or_duration(self):
+        """AC-BILL-014-2."""
+        r = self.client.post("/api/v1/auth/teacher/signup/", {
+            "name": "Nadia", "email": "nadia@example.com", "phone": "201112223366",
+            "password": VALID_PW, "password2": VALID_PW,
+        })
+        pending_id = r.data["pending_id"]
+        code = r.data["debug_otp"]
+        self.client.post("/api/v1/auth/otp/teacher-signup/verify/", {"pending_id": pending_id, "code": code})
+
+        forged_start = timezone.now() - timedelta(days=9999)
+        env_resp = self.client.post("/api/v1/auth/teacher/signup/environment/", {
+            "pending_id": pending_id, "name": "Env",
+            # None of these are declared fields on the serializer — DRF
+            # never reads them into validated_data, so there is nothing
+            # for the view to even accidentally forward.
+            "trial_started_at": forged_start.isoformat(), "trial_days": 9999,
+            "trial_ends_at": forged_start.isoformat(),
+        })
+        self.assertEqual(env_resp.status_code, 201, env_resp.data)
+
+        user = User.objects.get(email="nadia@example.com")
+        subscription = Subscription.objects.get(environment__owner=user)
+        self.assertGreater(subscription.trial_started_at, timezone.now() - timedelta(minutes=1))
+        self.assertEqual(subscription.trial_ends_at - subscription.trial_started_at, timedelta(days=TRIAL_DAYS))
+
+    def test_a_billing_failure_rolls_back_the_whole_signup_and_leaves_the_pending_flow_consumable(self):
+        """AC-BILL-014-3."""
+        r = self.client.post("/api/v1/auth/teacher/signup/", {
+            "name": "Rollback", "email": "rollback@example.com", "phone": "201112223377",
+            "password": VALID_PW, "password2": VALID_PW,
+        })
+        pending_id = r.data["pending_id"]
+        code = r.data["debug_otp"]
+        self.client.post("/api/v1/auth/otp/teacher-signup/verify/", {"pending_id": pending_id, "code": code})
+
+        with mock.patch("billing.services.start_trial", side_effect=RuntimeError("simulated billing failure")):
+            with self.assertRaises(RuntimeError):
+                self.client.post("/api/v1/auth/teacher/signup/environment/", {
+                    "pending_id": pending_id, "name": "Env",
+                })
+
+        self.assertFalse(User.objects.filter(email="rollback@example.com").exists())
+        self.assertFalse(Environment.objects.filter(owner__email="rollback@example.com").exists())
+        self.assertFalse(Subscription.objects.filter(environment__owner__email="rollback@example.com").exists())
+
+        # The pending flow's own consumption rolled back too — a genuine
+        # retry (no mock this time) with the SAME pending_id now succeeds.
+        retry = self.client.post("/api/v1/auth/teacher/signup/environment/", {
+            "pending_id": pending_id, "name": "Env",
+        })
+        self.assertEqual(retry.status_code, 201, retry.data)
+        self.assertTrue(User.objects.filter(email="rollback@example.com").exists())
 
     def test_cannot_skip_otp_step(self):
         r = self.client.post("/api/v1/auth/teacher/signup/", {

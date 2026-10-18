@@ -17,14 +17,15 @@ flowchart TB
     subgraph BACKEND["BACKEND - server-side application boundary within the Modular Monolith (one deployable, Web + Worker roles)"]
         XC["Cross-cutting execution controls\n(authn context, server-derived tenant context,\nstructural isolation, common authz infra,\ninvariant enforcement, observability)\napplied on every applicable execution path"]
 
-        subgraph MODULES["Seven modules - each: internal capabilities over owned domain responsibilities + PRIVATE persistence"]
+        subgraph MODULES["Eight modules - each: internal capabilities over owned domain responsibilities + PRIVATE persistence"]
             IE["Identity & Enrollment"]
             EO["Educational Operations"]
-            FIN["Financials"]
+            FIN["Financials\n(student fee tracking - unrelated to Billing)"]
             SE["Student Evaluation"]
             CON["Content"]
             LAI["Learning & AI\n(internal bounded module;\nsole crosser of the LLM seam)"]
             NOT["Notifications\n(async consumer of event hand-offs)"]
+            BIL["Billing\n(sole crosser of the payment-provider seam;\nowns the one approved inbound integration)"]
         end
 
         XC --> MODULES
@@ -47,6 +48,7 @@ flowchart TB
         LLM["LLM interface -> external LLM"]
         PUSH["Push Delivery interface"]
         VID["Video Storage/Delivery interface"]
+        PAY["Payment interface -> Kashier\n(outbound checkout/status +\none approved inbound webhook, ADR-016)"]
     end
 
     OTP["OTP / Identity-Verification\n(deferred; form undecided)"]
@@ -57,4 +59,6 @@ flowchart TB
     LAI --> LLM
     NOT --> PUSH
     CON --> VID
+    BIL --> PAY
+    IE -. capability .-> BIL
     XC -. claiming .-> OTP

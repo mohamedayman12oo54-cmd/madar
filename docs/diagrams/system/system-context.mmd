@@ -14,6 +14,7 @@ flowchart TB
     LLM["LLM / AI provider"]
     Push["Push-notification\ndelivery"]
     Video["Video storage /\nstreaming / delivery"]
+    Kashier["Kashier\n(payment provider)"]
 
     %% Inbound: actors act ON Madar
     Teacher -->|uses| Core
@@ -24,8 +25,12 @@ flowchart TB
     AILogic -->|consumes via Madar-owned interface| LLM
     Core -->|dispatches via Push interface| Push
     Core -->|stores/streams via Video interface| Video
+    Core -->|outbound: checkout/status via payment-provider interface| Kashier
+
+    %% Sole approved inbound external integration (ADR-016) - signature-verified webhook only
+    Kashier -.->|inbound: signature-verified payment-result webhook\n(ADR-016 - narrow exception, not a general opening)| Core
 
     %% Explicitly out of V1 context
-    OUT["Out of V1 context:\nParent · SMS · WhatsApp · Email ·\nOnline payment · inbound 3rd-parties"]:::excluded
+    OUT["Out of V1 context:\nParent · SMS · WhatsApp · Email ·\nany OTHER inbound 3rd-party\n(Kashier's webhook is the sole, ADR-016-approved exception)"]:::excluded
 
     classDef excluded fill:#f7f7f7,stroke:#bbb,stroke-dasharray:4 3,color:#666;
