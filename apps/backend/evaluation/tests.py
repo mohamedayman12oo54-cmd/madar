@@ -1,7 +1,9 @@
 """Monthly State / Rating (draft -> publish) and teacher-private notes."""
 from academics.models import Grade, Group
 from accounts.testing import make_enrollment
+from billing.models import Subscription
 from config.months import current_month
+from django.utils import timezone
 from environments.tenancy_testing import TenantTestCase
 from notifications.models import Notification
 
@@ -18,6 +20,14 @@ class EvaluationTests(TenantTestCase):
         self.group = Group.objects.create(environment=self.env_a, grade=self.grade, name="G1")
         self.s1 = self.make_student_in(self.env_a, "201012200001", name="أحمد")
         self.e1 = make_enrollment(self.env_a, self.s1, self.grade, self.group)
+        # BILL-WU-011 gates the state-recommendation submit on
+        # `ai.performance_analysis`, which an Environment only has while on
+        # an active trial or a plan that grants it. `TenantTestCase`'s base
+        # fixture predates billing and creates no Subscription at all, so
+        # give this test's teacher an active trial — the same state every
+        # real signup will have once BILL-WU-014 starts one — rather than
+        # leave this pre-existing test exercising a denied path.
+        Subscription.objects.create(environment=self.env_a, trial_started_at=timezone.now())
 
     def put(self, path, body, client=None, env=None):
         return (client or self.client_a).put(E + path, body, format="json", **self.with_env((env or self.env_a).id))

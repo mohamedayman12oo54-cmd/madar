@@ -23,14 +23,16 @@
    │                                                                             │
    │   Content         Learning & AI ───► (LLM seam)     Notifications           │
    │                                                                             │
+   │   Billing ───► (Payment-provider seam; sole inbound exception, ADR-016)     │
+   │                                                                             │
    │   Data-access boundary: tenant scope enforced (layer 2 of ADR-004/007)       │
    └────────────────────────────────────────────────────────────────────────────┘
                                         │
-                        ┌───────────────┼───────────────┐
-                        ▼               ▼               ▼
-                  Persistence     Push delivery    Video storage/
-                  (+ KB store)     (external)       streaming (external)
-                  logical tenant
+                        ┌───────────────┼───────────────┬───────────────┐
+                        ▼               ▼               ▼               ▼
+                  Persistence     Push delivery    Video storage/   Payment provider
+                  (+ KB store)     (external)       streaming       (Kashier; outbound +
+                  logical tenant                    (external)      one inbound webhook)
                   isolation
 ```
 
@@ -40,11 +42,12 @@
 |--------|------|-----------|-------|
 | **Identity & Enrollment** | Student, Enrollment, Grade, Group, Academic Year | — | Foundation; other modules reference Enrollment |
 | **Educational Operations** | Schedule, Session Instance, Attendance, Recitation | Identity & Enrollment | Emits Absent / Not-Studied events |
-| **Financials** | Grade fee, Payment | Identity & Enrollment | Fee owned by Grade (INV-5) |
+| **Financials** | Grade fee, Payment | Identity & Enrollment | Fee owned by Grade (INV-5); **unrelated to Billing** |
 | **Student Evaluation** | State, Rating, Notes | Identity & Enrollment; Learning & AI (advisory) | Teacher finalizes State |
 | **Content** | Video metadata + targeting | Identity & Enrollment; Video interface | Blob external |
 | **Learning & AI** | AI orchestration | LLM interface; KB (Assistant); Content (Quiz); evidence (State rec) | Only module crossing the LLM seam |
 | **Notifications** | Notification events + dispatch | Consumes events from other modules; Push interface | Async consumer |
+| **Billing** | Plan, Subscription, BillingPeriod, Invoice, PaymentAttempt, provider event, entitlement | Identity & Enrollment (which Environment); Payment-provider interface | Added by `10-decisions/ADR-014-billing-bounded-module.md`; only module crossing the Payment-provider seam; owns the system's one approved inbound integration (ADR-016) |
 
 ## Cross-module collaboration
 

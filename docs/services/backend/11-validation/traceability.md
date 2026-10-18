@@ -67,10 +67,10 @@ downstream additively. Mapping from System lifecycle concept → Backend home:
 | System-level concept | Backend responsibility/home | Class |
 |----------------------|-----------------------------|-------|
 | Teacher account holder + authentication | `01-scope/teacher-access-lifecycle.md` (TAL-1); `08-cross-cutting/security-authz.md` | Newly required (mechanism fenced) |
-| Teacher Environment establishment + empty initial state | `01-scope/teacher-access-lifecycle.md` (TAL-2); `06-data/data-model.md` (DAT-4) | Newly required (trigger/cardinality fenced) |
+| Teacher Environment establishment + empty initial state | `01-scope/teacher-access-lifecycle.md` (TAL-2); `06-data/data-model.md` (DAT-4) | Newly required; **cardinality resolved (ADR-013/INV-9)**, trigger mechanism still fenced |
 | Empty → usable (initial use) | `01-scope/teacher-access-lifecycle.md` (TAL-3) | Contextually affected (framing only) |
 | Teacher → Student introduction | `01-scope/teacher-access-lifecycle.md` (TAL-4) | Newly required (connection only; claiming model unchanged) |
-| Free Trial → Subscription access state | `01-scope/teacher-access-lifecycle.md` (TAL-5); `08-cross-cutting/security-authz.md`; `07-contracts/external-api-alignment.md` (AL-2); `06-data/data-model.md` (DAT-4) | Newly required (abstract boundary; commercial mechanics fenced) |
+| Free Trial → Subscription access state | `01-scope/teacher-access-lifecycle.md` (TAL-5); `08-cross-cutting/security-authz.md`; `07-contracts/external-api-alignment.md` (AL-2/AL-3); `06-data/data-model.md` (DAT-4/DAT-5) | Newly required; **commercial parameters resolved** (`01-product/commercial-model.md`); Billing module owns enforcement (ADR-014/018); exact retry/grace/read-only mechanics still fenced |
 | Contract preconditions (auth precedes; environment availability; access gating) | `07-contracts/external-api-alignment.md` (AL-2) | Contextually affected |
 | Worker context under the lifecycle | `04-architecture/execution-model.md` (EX-3) | Contextually affected (no new worker behavior) |
 
@@ -79,6 +79,23 @@ operating an established Environment" precondition the capability docs already a
 Student model exactly at its existing "teacher-created" origin. The Student identity/claiming
 architecture, composite authorization, tenant isolation, all ADRs, and student fee tracking are
 **preserved unchanged**.
+
+## Billing chain (commercial-design pass → Backend)
+
+```
+Commercial model decided (01-product/commercial-model.md)
+  → INV-9 permanent cardinality (ADR-013) — resolves TAL-2's cardinality fence, DAT-4
+  → Billing as an eighth bounded module (ADR-014 / BD-25) — 04-architecture/architecture.md, BND-4
+  → Payment-provider interface + Kashier adapter (ADR-015 / BD-26) — extends ADR-009
+  → Narrow inbound-webhook exception (ADR-016 / BD-27) — 07-contracts/external-api-alignment.md (AL-3)
+  → Payment-event integrity ≠ AI client-request idempotency (ADR-017 / BD-28) — AL-3
+  → Billing-owned entitlement boundary, not folded into auth hook (ADR-018 / BD-29) — security-authz.md
+  → DAT-5 candidate Billing persistence (BD-30) — 06-data/data-model.md
+```
+Consistent: no inherited ADR is edited in place; each new decision either specializes an inherited one
+(ADR-009/010/011) or fills a boundary the system/backend docs previously left open (cardinality,
+inbound-integration exception). Remaining open items are listed in `open-items.md`, not silently
+resolved here.
 
 ## Validation principle carried into documentation
 

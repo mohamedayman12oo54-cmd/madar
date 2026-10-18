@@ -30,7 +30,7 @@ Evidence = test results, CI result, review record, spike report, ops record.
 | WU | Acceptance-criteria seed | Method | Evidence |
 |---|---|---|---|
 | TAL-01 | Capability request refused without an authenticated Teacher actor context; actor distinct from student; **no auth mechanism assumed** | contract + integration + regression | CI |
-| TAL-02 | Established Environment begins **empty**; isolation holds from origin; **trigger/cardinality not asserted** | integration + isolation negative-test | CI |
+| TAL-02 | Established Environment begins **empty**; isolation holds from origin; exactly-one-per-account cardinality holds (ADR-013/INV-9, pending the implementation follow-up); **trigger mechanism not asserted** | integration + isolation negative-test | CI |
 | TAL-03 | Introduction enters the existing claiming model unchanged; **no new identity/account** | regression + contract | CI |
 | TAL-04 | Access-state consulted as an input, separate from & prior to composite authz; **no billing, no access-not-granted behavior asserted, no `default-open`** | contract + integration | CI |
 

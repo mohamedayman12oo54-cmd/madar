@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -189,6 +190,14 @@ class TeacherSignupEnvironmentView(APIView):
                     subject_stage=ser.validated_data.get("subject_stage", ""),
                 )
                 EnvironmentMembership.objects.create(user=user, environment=env, role=EnvironmentMembership.Role.OWNER)
+                # BILL-WU-014: the trial starts at exactly this atomic
+                # event (account activation + Environment establishment).
+                # `accounts` calls Billing's own capability rather than
+                # writing a Billing table itself (BND-1); any failure here
+                # rolls back the whole signup, same as everything above.
+                from billing.services import start_trial
+
+                start_trial(environment=env, activated_at=timezone.now())
         except IntegrityError:
             # Someone registered the same email/phone between signup step 1
             # and now. Nothing was written (rolled back).

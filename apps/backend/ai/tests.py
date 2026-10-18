@@ -292,6 +292,71 @@ class WorkerSafetyTests(TenantTestCase):
         self.assertEqual((first.status, second.status), ("completed", "pending"))
 
 
+class WorkerEntitlementRecheckTests(TenantTestCase):
+    """BILL-WU-011 AC-6: the submit-time entitlement check does not
+    guarantee the Environment is still entitled by the time the worker
+    actually picks a gated operation up. An operation submitted while
+    entitled, whose Environment loses the capability before this worker
+    claims it, ends `failed` with a stable error and creates no Quiz row
+    (ADR-006 "no partial result")."""
+
+    def setUp(self):
+        super().setUp()
+        from academics.models import Grade, Group
+        from accounts.testing import make_enrollment
+        from billing.models import AmountOwed, BillingPeriod, PaymentAttempt, Plan, Subscription
+        from content.models import ContentItem
+
+        self.Subscription = Subscription
+        self.grade = Grade.objects.create(environment=self.env_a, name="g")
+        group = Group.objects.create(environment=self.env_a, grade=self.grade, name="G1")
+        student = self.make_student_in(self.env_a, "201066622222")
+        self.enrollment = make_enrollment(self.env_a, student, self.grade, group)
+        self.item = ContentItem.objects.create(
+            environment=self.env_a, title="t", description="d" * 60, published_at=timezone.now(),
+        )
+
+        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        now = timezone.now()
+        self.subscription = Subscription.objects.create(
+            environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE,
+            current_period_start=now - timedelta(days=1), current_period_end=now + timedelta(days=29),
+        )
+        period = BillingPeriod.objects.create(
+            environment=self.env_a, subscription=self.subscription,
+            period_start=self.subscription.current_period_start, period_end=self.subscription.current_period_end,
+        )
+        AmountOwed.objects.create(
+            environment=self.env_a, billing_period=period, amount_minor_units=plan.price_minor_units,
+            currency=plan.currency, status=AmountOwed.Status.SATISFIED,
+        )
+        PaymentAttempt.objects.create(
+            environment=self.env_a, subscription=self.subscription, billing_period=period,
+            merchant_order_id="wu011-worker-recheck", amount_minor_units=plan.price_minor_units,
+            currency=plan.currency, status=PaymentAttempt.Status.SUCCEEDED,
+        )
+
+    def test_a_capability_lost_between_submit_and_processing_ends_failed_with_no_quiz(self):
+        op = AIOperation.objects.create(
+            environment=self.env_a, requested_by=self.teacher_a, kind=AIOperation.Kind.QUIZ_GENERATION,
+            enrollment=self.enrollment, content=self.item, prompt="quiz content",
+            evidence={"title": "t", "text": "x" * 60},
+        )
+
+        # The plan is removed/downgraded between submit and the worker run.
+        self.subscription.plan = None
+        self.subscription.state = self.Subscription.State.EXPIRED
+        self.subscription.save(update_fields=["plan", "state"])
+
+        run_worker()
+
+        op.refresh_from_db()
+        self.assertEqual(op.status, AIOperation.Status.FAILED)
+        from studentarea.models import Quiz
+
+        self.assertFalse(Quiz.objects.filter(operation=op).exists())
+
+
 class LoopModeTests(TenantTestCase):
     def setUp(self):
         super().setUp()

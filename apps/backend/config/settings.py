@@ -468,6 +468,62 @@ VIDEO_TRANSCODE_SYNC = False          # True = encode inside the request (tests 
 VIDEO_TRANSCODE_TIMEOUT = env_int("VIDEO_TRANSCODE_TIMEOUT", 3600)  # per rendition, seconds
 
 
+# ------------------------------------------------- payment provider -------
+# Which billing/providers.py implementation handles payments (BILL-WU-017).
+# "fake" = a deterministic in-process fake with no network/credentials,
+# default in DEBUG or under the test runner. "kashier" is the real adapter
+# (BILL-WU-018, not implemented yet); its keys are mode-specific (test vs.
+# live) and Kashier's own docs (reviewed 2026-10-15) say a key from one mode
+# can't be used in the other.
+PAYMENT_PROVIDER = env_str("PAYMENT_PROVIDER", "fake" if (DEBUG or "test" in sys.argv) else "kashier")
+KASHIER_MODE = env_str("KASHIER_MODE", "test")
+KASHIER_MERCHANT_ID = env_str("KASHIER_MERCHANT_ID", "")
+KASHIER_PAYMENT_API_KEY_TEST = env_str("KASHIER_PAYMENT_API_KEY_TEST", "")
+KASHIER_PAYMENT_API_KEY_LIVE = env_str("KASHIER_PAYMENT_API_KEY_LIVE", "")
+KASHIER_SECRET_KEY_TEST = env_str("KASHIER_SECRET_KEY_TEST", "")
+KASHIER_SECRET_KEY_LIVE = env_str("KASHIER_SECRET_KEY_LIVE", "")
+KASHIER_API_BASE_TEST = env_str("KASHIER_API_BASE_TEST", "https://test-api.kashier.io")
+KASHIER_API_BASE_LIVE = env_str("KASHIER_API_BASE_LIVE", "https://api.kashier.io")
+
+if KASHIER_MODE not in ("test", "live"):
+    raise ImproperlyConfigured("KASHIER_MODE must be 'test' or 'live'.")
+
+# The fake provider must be impossible to select in production: it is a
+# no-credentials stand-in, never a real payment path.
+if not DEBUG and PAYMENT_PROVIDER == "fake":
+    raise ImproperlyConfigured(
+        "PAYMENT_PROVIDER=fake is not allowed when DJANGO_DEBUG is off. Configure "
+        "PAYMENT_PROVIDER=kashier with the keys for the configured KASHIER_MODE."
+    )
+
+if not DEBUG and PAYMENT_PROVIDER == "kashier":
+    _kashier_api_key = KASHIER_PAYMENT_API_KEY_TEST if KASHIER_MODE == "test" else KASHIER_PAYMENT_API_KEY_LIVE
+    _kashier_secret = KASHIER_SECRET_KEY_TEST if KASHIER_MODE == "test" else KASHIER_SECRET_KEY_LIVE
+    _kashier_api_key_name = "KASHIER_PAYMENT_API_KEY_TEST" if KASHIER_MODE == "test" else "KASHIER_PAYMENT_API_KEY_LIVE"
+    _kashier_secret_name = "KASHIER_SECRET_KEY_TEST" if KASHIER_MODE == "test" else "KASHIER_SECRET_KEY_LIVE"
+    _kashier_missing = [
+        name for name, value in (
+            ("KASHIER_MERCHANT_ID", KASHIER_MERCHANT_ID),
+            (_kashier_api_key_name, _kashier_api_key),
+            (_kashier_secret_name, _kashier_secret),
+        )
+        if not value
+    ]
+    if _kashier_missing:
+        raise ImproperlyConfigured(
+            f"PAYMENT_PROVIDER=kashier (KASHIER_MODE={KASHIER_MODE!r}) is missing: "
+            f"{', '.join(_kashier_missing)}."
+        )
+
+# Live-mode kill switch for the renewal-charging worker (BILL-WU-025).
+# Madar owns the billing schedule and initiates each cycle's charge
+# itself, so this is the one setting that decides whether a real card is
+# ever actually charged. Stays False until BILL-WU-026 (the 30-day
+# compatibility gate) passes — this unit builds and verifies the
+# capability against the fake provider only; it never flips this on.
+BILLING_RENEWALS_LIVE_ENABLED = env_bool("BILLING_RENEWALS_LIVE_ENABLED", False)
+
+
 # HTTPS-only hardening — left off in DEBUG so local http:// dev keeps working.
 SECURE_SSL_REDIRECT = env_bool(
     "DJANGO_SECURE_SSL_REDIRECT",
@@ -589,6 +645,16 @@ LOGGING = {
         "django.security": {
             "handlers": ["console"],
             "level": "WARNING",
+            "propagate": False,
+        },
+
+        # BILL-WU-035: structured, redacted billing money-state lines
+        # (`billing/audit.py`'s `log()` is the only caller). INFO so a
+        # production deployment keeps every event/attempt/reconciliation/
+        # renewal line without DEBUG's unrelated noise.
+        "billing": {
+            "handlers": ["console"],
+            "level": "INFO",
             "propagate": False,
         },
     },

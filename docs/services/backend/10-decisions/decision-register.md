@@ -45,9 +45,15 @@ to their originating stage or inherited decision.
 | BD-19 | Secrets/provider-config cross-cutting principle (what); operational how deferred | Rule / Principle / Model | Cross-Cutting | `../08-cross-cutting/configuration-secrets.md` |
 | BD-20 | Guarantee-parity across environments + runtime roles (not infra parity) | Rule / Principle / Model | Operations | `../09-operations/operations.md` (OP-PARITY) |
 | BD-21 | Teacher account/actor + Teacher authentication is a Backend responsibility (distinct from student claiming); mechanism fenced | Backend Service-Level Decision | Alignment pass (upstream `03-domain/actor-lifecycles.md`, `08-cross-cutting/security-authz.md`) | `../01-scope/teacher-access-lifecycle.md` (TAL-1) |
-| BD-22 | Environment establishment + initial empty state recognized as a Backend lifecycle point; provisioning trigger & per-Teacher cardinality fenced | Backend Service-Level Decision | Alignment pass (upstream `03-domain/actor-lifecycles.md`) | `../01-scope/teacher-access-lifecycle.md` (TAL-2) |
+| BD-22 | Environment establishment + initial empty state recognized as a Backend lifecycle point; **cardinality now resolved** (exactly one Environment per Teacher Account, permanently); provisioning-trigger mechanism remains fenced | Backend Service-Level Decision | Alignment pass (upstream `03-domain/actor-lifecycles.md`); cardinality resolved by commercial-design pass | `../01-scope/teacher-access-lifecycle.md` (TAL-2); `10-decisions/ADR-013-permanent-environment-cardinality.md`; INV-9 |
 | BD-23 | Teacher→Student introduction represented only as the connection into the existing claiming model; invitation mechanism fenced; Student model unchanged | Backend Service-Level Decision | Alignment pass (upstream `03-domain/actor-lifecycles.md`) | `../01-scope/teacher-access-lifecycle.md` (TAL-4) |
-| BD-24 | Access state (Free Trial/Subscription) treated as an abstract access-decision input, separate from and prior to composite authz; not a billing architecture; commercial mechanics fenced | Backend Service-Level Decision | Alignment pass (upstream `01-product/access-lifecycle.md`) | `../01-scope/teacher-access-lifecycle.md` (TAL-5) |
+| BD-24 | Access state (Free Trial/Subscription) treated as an abstract access-decision input, separate from and prior to composite authz; not a billing architecture; **commercial parameters now decided, exact retry/grace/read-only mechanics remain fenced** | Backend Service-Level Decision | Alignment pass (upstream `01-product/access-lifecycle.md`); specialized by commercial-design pass | `../01-scope/teacher-access-lifecycle.md` (TAL-5); `../../../01-product/commercial-model.md` |
+| BD-25 | Billing is an independent, eighth bounded Backend module, not a microservice, not merged into `financials`/`accounts`/`environments` | Backend Service-Level Decision | Commercial-design pass | `../04-architecture/architecture.md`; `10-decisions/ADR-014-billing-bounded-module.md` |
+| BD-26 | Madar-owned payment-provider interface (Kashier adapter), extending ADR-009 as its own trust-boundary shape, not reusing Video/LLM interface shapes as-is | Backend Service-Level Decision | Commercial-design pass | `10-decisions/ADR-015-payment-provider-interface.md` |
+| BD-27 | Kashier payment-result webhook is the system's sole, narrowly-scoped approved inbound integration | Backend Service-Level Decision | Commercial-design pass | `../07-contracts/external-api-alignment.md` (AL-3); `10-decisions/ADR-016-inbound-webhook-exception.md` |
+| BD-28 | Payment-event integrity (provider-event dedup, signature verification, attempt/invoice/subscription/entitlement state) is a distinct mechanism from the AI module's client-request idempotency | Backend Service-Level Decision | Commercial-design pass | `../07-contracts/external-api-alignment.md` (AL-3); `10-decisions/ADR-017-payment-event-idempotency.md` |
+| BD-29 | Billing owns the entitlement-policy decision; must not be folded into `MadarJWTAuthentication.get_user()` merely because it is a per-request hook; consumed after tenant/authz context is resolved | Backend Service-Level Decision | Commercial-design pass | `../08-cross-cutting/security-authz.md`; `10-decisions/ADR-018-billing-entitlement-boundary.md` |
+| BD-30 | DAT-5: Billing's private-persistence candidate logical concepts (Plan/Subscription/BillingPeriod/Invoice/PaymentAttempt/provider-event/entitlement), distinct from Financials' `Payment` | Backend Service-Level Decision | Commercial-design pass | `../06-data/data-model.md` (DAT-5) |
 
 ## Inherited System Decisions (referenced, not restated)
 
@@ -56,7 +62,9 @@ The Backend entries above specialize or build on these accepted ADRs, which rema
 (two-layer isolation), `ADR-005` (async notification dispatch), `ADR-006` (AI async/failure-tolerant),
 `ADR-007` (two-level data scoping), `ADR-008` (server-derived tenant context), `ADR-009` (provider
 interfaces), `ADR-010` (composite authorization), `ADR-011` (selective idempotency), `ADR-012`
-(web/worker split). See `../../../10-decisions/`.
+(web/worker split), `ADR-013` (permanent environment cardinality), `ADR-014` (billing bounded module),
+`ADR-015` (payment-provider interface), `ADR-016` (inbound webhook exception), `ADR-017` (payment-event
+idempotency), `ADR-018` (billing entitlement boundary). See `../../../10-decisions/`.
 
 ## The escalation rule
 

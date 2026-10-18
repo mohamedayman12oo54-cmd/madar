@@ -28,6 +28,12 @@ SETTINGS_VARS = [
     "DJANGO_BEHIND_TLS_PROXY", "DJANGO_CACHE_BACKEND", "DJANGO_SECURE_SSL_REDIRECT",
     "DJANGO_HSTS_SECONDS", "DJANGO_HSTS_INCLUDE_SUBDOMAINS", "DJANGO_HSTS_PRELOAD",
     "EXPOSE_OTP_IN_RESPONSE", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT",
+    # BILL-WU-017: PAYMENT_PROVIDER defaults to "kashier" (not "fake") once
+    # DJANGO_DEBUG is off, so a "valid production config" now needs these
+    # too — blanked here like every other settings-read variable.
+    "PAYMENT_PROVIDER", "KASHIER_MODE", "KASHIER_MERCHANT_ID",
+    "KASHIER_PAYMENT_API_KEY_TEST", "KASHIER_PAYMENT_API_KEY_LIVE",
+    "KASHIER_SECRET_KEY_TEST", "KASHIER_SECRET_KEY_LIVE",
 ]
 
 PROD = {
@@ -36,6 +42,10 @@ PROD = {
     "DJANGO_ALLOWED_HOSTS": "api.example.com",
     "CORS_ALLOWED_ORIGINS": "https://app.example.com",
     "DJANGO_CSRF_TRUSTED_ORIGINS": "https://app.example.com",
+    # BILL-WU-017: a minimal valid Kashier config so this fixture still
+    # represents "a complete, valid production config" after that unit
+    # added its own mandatory settings.
+    "KASHIER_MERCHANT_ID": "m", "KASHIER_PAYMENT_API_KEY_TEST": "k", "KASHIER_SECRET_KEY_TEST": "s",
 }
 
 DUMP = """

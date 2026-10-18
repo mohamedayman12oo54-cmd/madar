@@ -53,9 +53,13 @@ additively and without altering already-correct areas.
 Enrollment), the educational domain/runtime/data/contracts, authorization principles, invariants, and
 all ADRs. No existing decision was reopened.
 
-**New deferred items** (in `../10-decisions/rejected-deferred.md`): Teacher auth mechanism; Environment
-provisioning trigger & cardinality; secure Teacher→Student invitation mechanism; commercial mechanics
-(pricing/plans/billing/provider); trial duration & renewal/cancellation; access-not-granted behavior.
+**Deferred items remaining open** (in `../10-decisions/rejected-deferred.md`): Teacher auth mechanism;
+Environment provisioning **trigger** mechanism (cardinality itself is now resolved by
+`ADR-013-permanent-environment-cardinality.md`/INV-9); secure Teacher→Student invitation mechanism;
+commercial-mechanics sub-items not fixed by the commercial-design pass (retry/grace numbers,
+refunds/proration, student-facing restricted-access behavior) — see `01-product/commercial-model.md`
+§Open items. Pricing/plans/trial duration/renewal/cancellation are **no longer** deferred; they are
+decided in `01-product/commercial-model.md`.
 
 **Consistency:** the new lifecycle connects to existing states without contradiction — it terminates
 exactly at the "authenticated Teacher operating an environment" precondition the capability docs

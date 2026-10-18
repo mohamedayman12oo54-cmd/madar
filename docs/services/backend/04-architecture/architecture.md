@@ -17,7 +17,8 @@ The Backend asserts three structural facts and one invariant.
 
 ### 1. Strong horizontal module boundaries
 
-- Each of the seven modules owns its domain responsibilities and its **private persistence**.
+- Each of the eight modules (including Billing, added by ADR-014) owns its domain responsibilities and
+  its **private persistence**.
 - Each module exposes explicit **internal capabilities** through its module boundary for cross-module
   collaboration.
 - No module directly accesses or mutates another module's private persistence, even though everything
@@ -48,20 +49,23 @@ execution model is detailed in `execution-model.md`.
 > persistence access is prohibited; cross-cutting guarantees apply across every applicable execution
 > path.
 
-## The seven modules within the Backend
+## The eight modules within the Backend
 
 Inherited from `../../../04-architecture/building-blocks.md` (responsibilities and dependency directions
-are authoritative there). Within the Backend they follow the boundary rules above uniformly:
+are authoritative there for the original seven; **Billing** is added by
+`../../../10-decisions/ADR-014-billing-bounded-module.md` following the commercial-design pass).
+Within the Backend they follow the boundary rules above uniformly:
 
 | Module | Owns (domain responsibility) | Notes at the Backend |
 |--------|------------------------------|----------------------|
 | Identity & Enrollment | Student (global), Enrollment, Grade, Group, Academic Year | Foundation capability provider for others |
 | Educational Operations | Schedule, Session Instance, Attendance, Recitation | Emits Absent / Not-Studied event hand-offs (BND-3) |
-| Financials | Grade fee, Payment | Resolves fee via Identity & Enrollment capability |
+| Financials | Grade fee, Payment (student→teacher fee tracking) | Resolves fee via Identity & Enrollment capability; **unrelated to Billing** |
 | Student Evaluation | State, Rating, Teacher Private Notes | Consults Learning & AI for advisory State recommendation |
 | Content | Video metadata + targeting | Uses the Video interface; blob external |
 | Learning & AI | AI orchestration (see below) | Sole crosser of the LLM seam |
 | Notifications | Notification events + dispatch | Async consumer of event hand-offs; uses Push interface |
+| **Billing** | Plan/Subscription/BillingPeriod/Invoice/PaymentAttempt/provider-event/entitlement (DAT-5) | Sole crosser of the payment-provider seam; owns the system's one approved inbound integration (ADR-016); see BND-4 |
 
 ## The transactional event hand-off pattern
 
@@ -95,7 +99,7 @@ hand-off) **and** BND-1 persistence privacy (no module writes into another's pri
 ## AI Module structural placement — no structural exception
 
 The AI Module (Learning & AI) receives **no structural exception** from the module model. It is one of
-the seven modules and follows the same rules:
+the eight modules and follows the same rules (Billing, per BND-4, likewise receives no exception):
 
 - It owns its explicitly assigned AI-related domain responsibilities and the private persistence
   assigned to those responsibilities.

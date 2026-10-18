@@ -265,3 +265,31 @@ there is logged and the person uses "resend". Reset requests for unknown account
 nothing. Resend always uses the channel originally chosen. Throttling also keys on `email`.
 
 Not changed (decision needed): guardians still have **no account** (see parents/auth.py).
+
+## Billing (Kashier payments) — 23 tests
+
+`billing/test_security.py` extends this practice to the billing attack surface
+(BILL-WU-034), built on the same `_Fixture(TenantTestCase)` pattern. Part of
+`manage.py test`.
+
+| Attack | Result |
+|---|---|
+| Teacher B points the active-environment header at Teacher A's billing endpoints (subscription, history, cancel, checkout) | 403 (`environment_forbidden`) on all; the cancel attempt never lands |
+| Guessing another tenant's, or a large random, checkout attempt id on the return endpoint | `attempt_id`/`status` both `null` — no data, no error |
+| Student or anonymous caller reaching any billing endpoint | 401/403 everywhere except the webhook |
+| Webhook: unsigned, wrong-key, tampered-after-signing, validly-signed-but-wrong-mode, oversized (>64 KB) | 400, nothing persisted |
+| Webhook: identical event replayed | 409, no second row, no double application |
+| Webhook: uncorrelated `merchantOrderId` | received (200) but `failed_to_apply` — never guessed |
+| Webhook: amount mismatch vs. the attempt's expected amount | received (200) but the attempt stays non-terminal — never silently accepted |
+| Return endpoint with `status=SUCCESS`/`paymentStatus=paid` query params | attempt/subscription state unchanged (a redirect is never proof of payment, ADR-016) |
+| Mass-assignment: `amount_minor_units`, `currency`, `status`, `environment_id`, `student_cap` in the checkout body | ignored; server-computed values stored |
+| Mass-assignment: `cancel_at_period_end=false`, `environment_id`, `reason` in the cancel body | ignored; the real cancellation still applies |
+| Subscription/history responses | never contain the card token, agreement id, or provider transaction/order ids |
+| Billing error bodies (DEBUG off) and a rejected webhook payload | no stack trace, SQL, filesystem path, or payload echo |
+| Teacher or student assistant submit with a client-supplied `kind` field | ignored — always created as `assistant`, never a gated kind |
+| Student quiz request with a client-supplied `kind` field, no Subscription at all | refused by the entitlement check itself (`capability_not_in_plan`), not merely a missing field |
+| The set of `AllowAny` views under `billing.urls` | exactly one (`KashierWebhookView`) |
+
+Worker-side entitlement re-check parity (a capability lost between an AI
+operation's submission and the worker picking it up) is covered by
+`ai.tests.WorkerEntitlementRecheckTests` (BILL-WU-011) — not duplicated here.

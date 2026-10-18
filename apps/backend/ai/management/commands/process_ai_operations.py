@@ -17,6 +17,20 @@ Safety properties:
   a failure can never leave partial state behind.
 - A worker that dies mid-call leaves a row stuck in `processing`; rows older
   than --requeue-stale-minutes are put back to `pending`.
+
+BILL-WU-011 (OP-PARITY): the submit-time entitlement check (billing's
+`RequiresCapability` permission) does not guarantee the Environment is
+still entitled by the time this worker actually picks the row up — a
+renewal can fail, or a cancellation's period can end, in between. For the
+two plan-gated kinds, this worker re-checks `billing.entitlements.decide`
+right after claiming and before any provider call; a lost capability ends
+the operation `failed` with a stable error, same as any other failure
+(ADR-006 "no partial result" — no Quiz row, no suggested_state). The
+`assistant` kind is never checked here either, mirroring the views' own
+not-gated-until-BILL-DEC-07 stance. Context is reconstructed from
+`op.environment_id` alone (server-created state), so this worker needs no
+request/session — satisfying OP-PARITY without duplicating the Web path's
+own check.
 """
 import argparse
 import time
@@ -29,7 +43,17 @@ from ai.models import AIOperation
 from django.db import transaction
 
 from ai.providers import AIProviderError, get_provider, validate_questions
+from billing import capabilities, entitlements
 from knowledge.retrieval import as_citations, as_context, select_sources
+
+# Mirrors the mapping applied in `ai/views.py` (`StateRecommendationSubmitView`)
+# and `studentarea/views.py` (`QuizListRequestView`) — kept here rather than
+# imported from either view module to avoid a worker -> web-view dependency.
+GATED_KIND_CAPABILITIES = {
+    AIOperation.Kind.QUIZ_GENERATION: capabilities.AI_QUIZ_FROM_VIDEO,
+    AIOperation.Kind.STATE_RECOMMENDATION: capabilities.AI_PERFORMANCE_ANALYSIS,
+}
+ENTITLEMENT_LOST_ERROR = "لم تعد هذه الميزة متاحة لباقتك الحالية."
 
 
 def claim(op_id: int) -> bool:
@@ -77,6 +101,21 @@ class Command(BaseCommand):
             if not claim(op_id):
                 continue  # another worker got it
             op = AIOperation.objects.get(pk=op_id)
+
+            required_capability = GATED_KIND_CAPABILITIES.get(op.kind)
+            if required_capability is not None:
+                decision = entitlements.decide(op.environment)
+                if required_capability not in decision.capabilities:
+                    op.status = AIOperation.Status.FAILED
+                    op.error = ENTITLEMENT_LOST_ERROR
+                    op.result = ""
+                    op.suggested_state = ""
+                    op.sources = []
+                    op.completed_at = timezone.now()
+                    op.save(update_fields=["status", "result", "error", "completed_at", "suggested_state", "sources"])
+                    failed += 1
+                    continue
+
             try:
                 if op.kind == AIOperation.Kind.QUIZ_GENERATION:
                     questions = validate_questions(get_provider().generate_quiz(op.evidence.get("title", ""), op.evidence.get("text", "")))

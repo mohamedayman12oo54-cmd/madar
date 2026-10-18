@@ -30,7 +30,7 @@
 | prereq → dependent | type | reason |
 |---|---|---|
 | NODE-TeacherAuth → TAL-01 | DECISION | fences the auth mechanism only |
-| NODE-EnvProvision → TAL-02 | DECISION | fences trigger + cardinality only |
+| NODE-EnvProvision → TAL-02 | DECISION | fences the provisioning **trigger** mechanism only — cardinality is resolved (ADR-013/INV-9) and no longer fenced here |
 | NODE-Invitation → TAL-03 | DECISION | fences invitation mechanism only |
 | NODE-AccessBehavior → TAL-04 | DECISION | fences access-not-granted + commercial mechanics |
 | TAL-01 → FND-05 | CONTRACT | produces the authenticated-Teacher actor context FND-05 consumes (resolves ISSUE-08-01) |

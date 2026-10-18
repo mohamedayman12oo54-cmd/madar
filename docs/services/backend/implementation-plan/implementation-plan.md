@@ -15,12 +15,13 @@ implementation outcomes. It is derived, not authored; it never becomes a second 
 ## 2. What is being built (one paragraph)
 
 The Backend is the **server-side application boundary of the Madar modular monolith** (one deployable,
-two runtime roles: web + worker; ADR-001/012), realizing seven internal modules (Identity & Enrollment,
-Educational Operations, Financials, Student Evaluation, Content, Learning & AI, Notifications) behind a
+two runtime roles: web + worker; ADR-001/012), realizing **eight** internal modules (Identity &
+Enrollment, Educational Operations, Financials, Student Evaluation, Content, Learning & AI,
+Notifications, and **Billing** — added after the commercial-design pass, ADR-014) behind a
 single versioned REST API (`/api/v1`, ADR-003), with **non-bypassable tenant isolation** on
 `teacher_environment_id` (ADR-004/007/008), **composite authorization** (ADR-010), **all-paths invariant
-enforcement** (INV-1..8), an **async operation spine** and **transactional event hand-off** (ADR-005/006/011),
-and **Madar-owned interfaces** to three external dependencies (LLM, Push, Video; ADR-009). The corrected
+enforcement** (INV-1..9), an **async operation spine** and **transactional event hand-off** (ADR-005/006/011/017),
+and **Madar-owned interfaces** to four external dependencies (LLM, Push, Video, Payment; ADR-009/015). The corrected
 upstream lifecycle (Teacher account/auth → Environment establishment → Teacher→Student introduction →
 Free-Trial/Subscription access state) is represented as **boundary responsibilities with fenced mechanisms**.
 
@@ -31,9 +32,12 @@ unless promoted through the appropriate decision path. Coverage of the full V1 s
 simultaneous implementation — dependency-aware phasing is expressed in `execution-sequence.md`.
 
 **Negative space (built = never):** Homework (fenced); no product-wide caching, audit logging, rate
-limiting, circuit-breakers, or distributed tracing; no inbound integrations; no online payment / SMS /
-WhatsApp / email; no teacher-published quiz; no cross-environment data merge; video blob external; LLM
-state not persisted.
+limiting, circuit-breakers, or distributed tracing; no inbound integrations **other than the one
+ADR-016-approved Kashier payment-result webhook**; no SMS / WhatsApp / email; no teacher-published
+quiz; no cross-environment data merge; video blob external; LLM state not persisted. Online payment is
+now in scope via the Billing module (`10-decisions/ADR-014-billing-bounded-module.md`) — it is no
+longer negative space, but this Implementation Plan document is not itself updated into a Billing
+implementation plan by this note.
 
 ## 4. Resolved technology decisions (D2)
 
@@ -70,11 +74,14 @@ Engineering Skills never become project truth. (See `verification.md`, `traceabi
 
 ## 8. What remains open (fenced) — do not invent
 
-Teacher authentication mechanism; Environment provisioning trigger & per-Teacher cardinality; secure
-Teacher→Student invitation mechanism; commercial mechanics + access-not-granted behavior; student-claiming
+Teacher authentication mechanism; Environment provisioning **trigger** mechanism (cardinality itself is
+now **resolved** — ADR-013/INV-9, exactly one Environment per Teacher Account, permanently); secure
+Teacher→Student invitation mechanism; the numeric/behavioral sub-decisions of commercial mechanics
+(retry/grace numbers, refunds, proration) and the exact access-not-granted behavior; student-claiming
 OTP/verification provider; AI product-state persistence ownership; wire-level API taxonomy/schemas/catalog;
-LLM/Push/Video vendors, cloud/hosting, secret-store mechanism. Each is an explicit Node in `decisions.md`
-and is verified as a *boundary*, never as an invented mechanism.
+LLM/Push/Video/Payment vendors, cloud/hosting, secret-store mechanism; Kashier's exact recurring-agreement
+interval compatibility with the 30-day billing period (external verification gate). Each is an explicit
+Node in `decisions.md` and is verified as a *boundary*, never as an invented mechanism.
 
 ## 9. Readiness statement
 

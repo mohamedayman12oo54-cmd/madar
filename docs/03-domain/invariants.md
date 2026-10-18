@@ -57,6 +57,20 @@ Attendance and Recitation records exist only in the context of a **Session Insta
 belongs to multiple Groups, their attendance/recitation in one Group's session is independent of
 another Group's session (`Enrollment × Session Instance`).
 
+### INV-9 — A Teacher Account owns exactly one Teacher Environment (permanent)
+A Teacher Account owns **at most, and exactly, one** Teacher Environment. This is a **permanent**
+domain invariant, not a V1-only limitation. A Teacher who wants an additional, separate environment
+must create another Teacher Account — there is no supported path for one account to own or switch
+between multiple environments. This resolves what `03-domain/actor-lifecycles.md` and
+`services/backend/01-scope/teacher-access-lifecycle.md` (TAL-2) previously left open.
+
+> **Provenance:** confirmed as a commercial/domain decision; recorded in
+> `10-decisions/ADR-013-permanent-environment-cardinality.md`. **Enforcement is pending**: the current
+> schema (`Environment.owner` as a plain `ForeignKey`) and at least one existing test
+> (`environments/tests.py:26-40`) assume plural environments per teacher and have not yet been brought
+> in line with this invariant — this is tracked as implementation follow-up, not a contradiction of the
+> decision itself (see ADR-013 §Consequences).
+
 ## Enforcement note
 
 INV-7 is enforced structurally, not by convention — see the tenant-isolation decisions

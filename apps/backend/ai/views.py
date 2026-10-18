@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsTeacher
 from accounts.throttles import AISubmitRateThrottle
+from billing import capabilities
+from billing.permissions import RequiresCapability
 from environments.tenancy import IsEnvironmentMember, TenantScopedQuerySetMixin
 
 from .models import AIOperation
@@ -31,6 +33,11 @@ class AIOperationListSubmitView(TenantScopedQuerySetMixin, generics.ListAPIView)
         return super().get_queryset().filter(requested_by=self.request.user, kind=AIOperation.Kind.ASSISTANT)
 
     def post(self, request):
+        # BILL-WU-011: the general Study Assistant (`assistant` kind) is
+        # explicitly NOT gated — whether it should be at all is BILL-DEC-07,
+        # a System-level, student-facing decision this unit does not make
+        # (its own Escalation conditions). Do not add a RequiresCapability
+        # check here until BILL-DEC-07 resolves it.
         ser = AIOperationSubmitSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         prompt = ser.validated_data["prompt"]
@@ -70,9 +77,16 @@ class AIOperationListSubmitView(TenantScopedQuerySetMixin, generics.ListAPIView)
 class StateRecommendationSubmitView(APIView):
     """Ask for an ADVISORY State suggestion for one student-month. The evidence
     (aggregate counts) is gathered HERE, inside the caller's own environment,
-    and frozen on the operation; the worker only ever reads that snapshot."""
+    and frozen on the operation; the worker only ever reads that snapshot.
 
-    permission_classes = IS_ENV_OWNER
+    BILL-WU-011: gated on `ai.performance_analysis`. `RequiresCapability`
+    is listed after `IsEnvironmentMember` (via `IS_ENV_OWNER`) so
+    `request.environment` is already resolved — the mapping to this
+    specific AIOperation kind is a CANDIDATE, not a confirmed one
+    (`billing/capabilities.py`'s own docstring; BILL-DEC-07), applied here
+    because this unit's own "Expected outcome" names it directly."""
+
+    permission_classes = IS_ENV_OWNER + [RequiresCapability(capabilities.AI_PERFORMANCE_ANALYSIS)]
     throttle_classes = [AISubmitRateThrottle]
 
     def post(self, request):

@@ -14,9 +14,10 @@ AI Module.
 The Backend is the server-side unit through which every deterministic guarantee Madar makes is
 ultimately **enforced**: tenant isolation, data correctness, domain invariants, and the teacher's
 authority over advisory AI. It exposes the single unified REST API, runs in the **web** and
-**worker** runtime roles (`../../../10-decisions/ADR-012-web-worker-split.md`), and contains the seven
+**worker** runtime roles (`../../../10-decisions/ADR-012-web-worker-split.md`), and contains the eight
 internal modules, including **Learning & AI** as an internal bounded module
-(`../../../10-decisions/ADR-002-ai-internal-module.md`).
+(`../../../10-decisions/ADR-002-ai-internal-module.md`) and **Billing** as an internal bounded module
+added by the commercial-design pass (`../../../10-decisions/ADR-014-billing-bounded-module.md`).
 
 ## Why it matters
 
@@ -33,20 +34,23 @@ The Backend boundary faces five classes of neighbor. This is the complete set fo
 | Class | Members | Nature |
 |-------|---------|--------|
 | **Inbound clients** | Teacher, Student, Content Maintainer | Consume the one unified REST API (`../../../07-contracts/api-contract.md`) |
-| **Outbound provider integrations** | LLM, Push, Video | Consumed through Madar-owned interfaces (`../../../07-contracts/external-interfaces.md`) |
+| **Outbound provider integrations** | LLM, Push, Video, **Payment (Kashier)** | Consumed through Madar-owned interfaces (`../../../07-contracts/external-interfaces.md`); Payment's outbound side follows the same shape, see Negative space below for its inbound exception |
 | **Infrastructure / data dependencies** | Persistence datastore, KB store | Depended-on infrastructure at the edge of the Backend boundary; **not** peer external systems; concrete technology **Open** |
 | **Internal seam** | AI Module (Learning & AI) | Behind the Backend-owned integration contract (`../07-contracts/backend-ai-integration-contract.md`) |
 | **Conditional / deferred** | OTP / Identity-Verification mechanism | Dependency of the Backend-orchestrated claiming flow; **whether it takes the form of an external provider is undecided** |
 
-**Negative space (inherited):** there are **no inbound external integrations in V1**. Only Teacher,
-Student, and Content Maintainer act *on* Madar; the three providers are outbound only.
+**Negative space (inherited, narrowly amended):** Teacher, Student, and Content Maintainer act *on*
+Madar; LLM/Push/Video remain outbound only. The **one** exception is the Payment provider's
+signature-verified payment-result webhook — the system's sole approved inbound external integration
+(`../../../10-decisions/ADR-016-inbound-webhook-exception.md`). No other inbound external integration
+exists in V1.
 
 See `../diagrams/context/backend-context.mmd`.
 
 ## Scope in one paragraph
 
 The Backend's V1 scope is modeled on **two axes** (full detail in `../01-scope/responsibilities.md`):
-its **Product/Domain capabilities** (the seven modules' behavior, the five notification events, the
+its **Product/Domain capabilities** (the eight modules' behavior, the five notification events, the
 three AI operations, authentication/claiming/context, KB authoring/publishing, and the
 provider-facing capabilities) **plus** its **Service/Runtime responsibilities** (API serving,
 authorization/isolation enforcement, persistence/invariant enforcement, async execution/orchestration,
