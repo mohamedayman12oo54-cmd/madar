@@ -35,6 +35,7 @@ from environments.tenancy import IsEnvironmentMember
 from .models import ContentItem, UploadSession
 from .providers import get_provider
 from .transcode import delete_renditions, schedule_renditions
+from .transcription import request_transcription
 from .uploads import (ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, safe_display_name,
                       storage_path, validate_video_upload)
 from .video_views import VideoUploadRateThrottle
@@ -244,6 +245,7 @@ class UploadSessionView(APIView):
             item.video_file.storage.delete(old)
         delete_renditions(item)               # copies of the OLD video must not outlive it
         schedule_renditions(item.id)
+        request_transcription(item.pk)          # speech -> text for the AI quiz, in the background
 
         session.refresh_from_db()
         return self._headers(Response({

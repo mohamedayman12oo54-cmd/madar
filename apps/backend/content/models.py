@@ -254,3 +254,36 @@ class UploadSession(TenantOwnedModel):
 
     def __str__(self):
         return f"upload {self.id} ({self.offset}/{self.total_bytes})"
+
+
+class Transcript(TenantOwnedModel):
+    """Speech-to-text of an uploaded lesson video (pipeline step 2).
+
+    One row per item: re-uploading the video resets it and transcribes again.
+    The text lives HERE, in Madar's own database, so later steps (validation,
+    quiz generation) never depend on the transcriber. `segments` keeps the
+    timestamps ([{"start","end","text"}], seconds) so a question can later
+    point at the exact moment of the lesson that supports it.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "قيد الانتظار"
+        PROCESSING = "processing", "جارٍ التحويل"
+        COMPLETED = "completed", "مكتمل"
+        FAILED = "failed", "فشل"
+
+    item = models.OneToOneField(ContentItem, on_delete=models.CASCADE, related_name="transcript")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    language = models.CharField(max_length=16, blank=True)
+    text = models.TextField(blank=True)
+    segments = models.JSONField(default=list, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    provider = models.CharField(max_length=40, blank=True)
+    error = models.TextField(blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"transcript of #{self.item_id} [{self.status}]"

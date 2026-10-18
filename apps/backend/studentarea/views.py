@@ -18,7 +18,8 @@ Isolation rules enforced by construction in this file:
 import datetime as dt
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models.functions import Length
 from django.utils import timezone
 from rest_framework import generics, serializers, status
 from rest_framework.response import Response
@@ -28,11 +29,12 @@ from academics.models import Enrollment
 from accounts.permissions import IsStudent
 from accounts.throttles import AISubmitRateThrottle
 from ai.models import AIOperation
+from ai.quiz_source import QuizSourceError, prepare_quiz_source, teacher_text
 from ai.views import AIOperationDetailView, AIOperationListSubmitView
 from billing import capabilities
 from billing.permissions import RequiresCapability
 from config.months import current_month, month_bounds
-from content.models import ContentItem, VideoProgress
+from content.models import ContentItem, Transcript, VideoProgress
 from content.video import describe_video
 from environments.tenancy import IsEnvironmentMember
 from evaluation.models import MonthlyRating, PrivateNote, StudentState
@@ -60,12 +62,31 @@ class StudentView(APIView):
 
 def _visible_content(enrollment):
     """Published items targeted at this student (grade AND group narrowing, or
-    picked by name). One rule, shared with the teacher-side audience."""
-    return ContentItem.visible_to(enrollment)
+    picked by name). One rule, shared with the teacher-side audience.
+
+    Annotated with the transcript's status and size (never its text, which can
+    be ~100k characters per lesson) so list screens can tell whether a quiz is
+    possible without N+1 queries or loading transcripts."""
+    transcript = Transcript.objects.filter(item=OuterRef("pk"))
+    return ContentItem.visible_to(enrollment).annotate(
+        transcript_state=Subquery(transcript.values("status")[:1]),
+        transcript_chars=Subquery(transcript.annotate(n=Length("text")).values("n")[:1]),
+    )
+
+
+def _can_quiz(item):
+    """Mirrors `ai.quiz_source.prepare_quiz_source`: an uploaded video is quizzed
+    from its (completed) transcript; anything else from the teacher's text."""
+    if item.source == ContentItem.Source.UPLOAD:
+        return (
+            getattr(item, "transcript_state", None) == Transcript.Status.COMPLETED
+            and (getattr(item, "transcript_chars", None) or 0) + len(teacher_text(item)) >= MIN_QUIZ_SOURCE_CHARS
+        )
+    source = f"{item.title}\n{item.description}\n{item.quiz_source}"
+    return len(source.strip()) >= MIN_QUIZ_SOURCE_CHARS and bool(item.quiz_source.strip() or len(item.description.strip()) >= 20)
 
 
 def _video_row(item):
-    source = f"{item.title}\n{item.description}\n{item.quiz_source}"
     return {
         "id": item.id, "title": item.title, "description": item.description,
         "video": describe_video(item.video_provider, item.video_ref), "published_at": item.published_at,
@@ -73,7 +94,7 @@ def _video_row(item):
         # ticket-protected) or embed the external player. The stored path is
         # deliberately NOT exposed.
         "source": item.source,
-        "can_quiz": len(source.strip()) >= MIN_QUIZ_SOURCE_CHARS and bool(item.quiz_source.strip() or len(item.description.strip()) >= 20),
+        "can_quiz": _can_quiz(item),
     }
 
 
@@ -318,13 +339,19 @@ class QuizListRequestView(StudentView):
                 if existing.content_id != item.id:
                     return Response({"detail": "مفتاح التكرار مستخدم مسبقًا مع طلب مختلف.", "code": "idempotency_conflict"}, status=409)
                 return Response(_op_payload(existing), status=status.HTTP_200_OK)
-        source_text = f"{item.description}\n{item.quiz_source}".strip()
+        # The COMPLETE lesson material (transcript for uploaded videos, the
+        # teacher's text otherwise) - never sliced. If it cannot be prepared the
+        # request fails explicitly here, before any operation exists.
+        try:
+            source = prepare_quiz_source(item)
+        except QuizSourceError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=status.HTTP_409_CONFLICT)
         try:
             with transaction.atomic():
                 op = AIOperation.objects.create(
                     environment=env, requested_by=request.user, kind=AIOperation.Kind.QUIZ_GENERATION,
                     enrollment=e, content=item, idempotency_key=key, prompt=f"quiz content#{item.id}",
-                    evidence={"title": item.title, "text": source_text[:6000]},  # teacher-provided material ONLY
+                    evidence=source.as_evidence(),  # lesson material ONLY (transcript and/or teacher text)
                 )
         except IntegrityError:
             op = AIOperation.objects.get(environment=env, requested_by=request.user, idempotency_key=key)

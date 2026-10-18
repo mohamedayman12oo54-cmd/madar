@@ -33,6 +33,7 @@ request/session — satisfying OP-PARITY without duplicating the Web path's
 own check.
 """
 import argparse
+import logging
 import time
 from datetime import timedelta
 
@@ -46,14 +47,7 @@ from ai.providers import AIProviderError, get_provider, validate_questions
 from billing import capabilities, entitlements
 from knowledge.retrieval import as_citations, as_context, select_sources
 
-# Mirrors the mapping applied in `ai/views.py` (`StateRecommendationSubmitView`)
-# and `studentarea/views.py` (`QuizListRequestView`) — kept here rather than
-# imported from either view module to avoid a worker -> web-view dependency.
-GATED_KIND_CAPABILITIES = {
-    AIOperation.Kind.QUIZ_GENERATION: capabilities.AI_QUIZ_FROM_VIDEO,
-    AIOperation.Kind.STATE_RECOMMENDATION: capabilities.AI_PERFORMANCE_ANALYSIS,
-}
-ENTITLEMENT_LOST_ERROR = "لم تعد هذه الميزة متاحة لباقتك الحالية."
+log = logging.getLogger(__name__)
 
 
 def claim(op_id: int) -> bool:
@@ -118,7 +112,9 @@ class Command(BaseCommand):
 
             try:
                 if op.kind == AIOperation.Kind.QUIZ_GENERATION:
-                    questions = validate_questions(get_provider().generate_quiz(op.evidence.get("title", ""), op.evidence.get("text", "")))
+                    quiz = get_provider().generate_quiz_result(op.evidence)
+                    questions = validate_questions(quiz.questions)
+                    op.metadata = quiz.metadata
                     result = "quiz-ready"
                 elif op.kind == AIOperation.Kind.STATE_RECOMMENDATION:
                     op.suggested_state, result = get_provider().recommend_state(op.evidence)
@@ -138,6 +134,12 @@ class Command(BaseCommand):
                 op.result = ""
                 op.suggested_state = ""
                 op.sources = []
+                # For operators only (never serialized to clients). Category and
+                # exception TYPE, never the message: it may carry provider text.
+                op.metadata = getattr(exc, "metadata", None) or {
+                    "validation": "failed", "failure_category": "unexpected", "exception": type(exc).__name__}
+                log.warning("ai operation failed op=%s kind=%s category=%s",
+                            op.pk, op.kind, op.metadata.get("failure_category"))
                 failed += 1
             else:
                 op.status = AIOperation.Status.COMPLETED
@@ -156,7 +158,7 @@ class Command(BaseCommand):
                         environment_id=op.environment_id, enrollment_id=op.enrollment_id, content_id=op.content_id,
                         content_title=op.evidence.get("title", "")[:200], operation=op, questions=questions,
                     )
-                op.save(update_fields=["status", "result", "error", "completed_at", "suggested_state", "sources"])
+                op.save(update_fields=["status", "result", "error", "completed_at", "suggested_state", "sources", "metadata"])
 
         self.stdout.write(self.style.SUCCESS(
             f"Processed {completed + failed} AI operation(s): {completed} completed, {failed} failed"

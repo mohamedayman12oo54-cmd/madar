@@ -13,6 +13,8 @@ a real model is one new class implementing `generate()` plus a settings
 change (`AI_PROVIDER`), with no change to models, views, or the worker.
 The stub's output says so in-band, so nobody can mistake it for real tutoring.
 """
+from dataclasses import dataclass, field
+
 from django.conf import settings
 
 # The tutor's contract, kept next to the interface a real provider will
@@ -33,6 +35,15 @@ class AIProviderError(Exception):
     """A provider failed in a way that should mark the operation `failed`."""
 
 
+@dataclass(frozen=True)
+class QuizResult:
+    """A provider's quiz plus what is worth persisting about how it was made
+    (`AIOperation.metadata`: prompt version, configuration, attempts, token
+    usage...). `metadata` must never contain secrets or lesson text."""
+    questions: list
+    metadata: dict = field(default_factory=dict)
+
+
 class AIProvider:
     def generate(self, prompt: str, context: str = "") -> str:  # pragma: no cover - interface
         """`context` is the bounded Knowledge Base excerpt set selected for
@@ -48,6 +59,13 @@ class AIProvider:
         """-> list of {"q", "options", "answer_index", "explanation"}. The input is
         ONLY teacher-provided lesson text — never any student data."""
         raise NotImplementedError
+
+    def generate_quiz_result(self, evidence: dict) -> QuizResult:
+        """What the worker calls. `evidence` is the operation's frozen input
+        snapshot ({"title", "text", "source": {...}}). The default adapts the
+        legacy `generate_quiz(title, text)` so existing providers keep working;
+        a provider that needs more (the LLM one) overrides this."""
+        return QuizResult(questions=self.generate_quiz(evidence.get("title", ""), evidence.get("text", "")))
 
 
 class StubTutorProvider(AIProvider):
@@ -129,8 +147,11 @@ def validate_questions(questions):
               and isinstance(q.get("answer_index"), int) and 0 <= q["answer_index"] < len(q["options"]))
         if not ok:
             raise AIProviderError("تعذّر توليد اختبار صالح.")
+    # `type` / `difficulty` exist only on questions made by the LLM pipeline
+    # (ai/quiz_contract.py); legacy and stub questions simply do not have them.
     return [{"q": q["q"].strip(), "options": [o.strip() for o in q["options"]], "answer_index": q["answer_index"],
-             "explanation": str(q.get("explanation", ""))[:500]} for q in questions]
+             "explanation": str(q.get("explanation", ""))[:500],
+             **{k: q[k] for k in ("type", "difficulty") if isinstance(q.get(k), str)}} for q in questions]
 
 
 _PROVIDERS = {"stub": StubTutorProvider}
@@ -138,6 +159,10 @@ _PROVIDERS = {"stub": StubTutorProvider}
 
 def get_provider() -> AIProvider:
     name = getattr(settings, "AI_PROVIDER", "stub")
+    if name == "llm":
+        # Imported lazily: ai.quiz_generation imports this module.
+        from .quiz_generation import LLMQuizProvider
+        return LLMQuizProvider.from_settings()
     try:
         return _PROVIDERS[name]()
     except KeyError:

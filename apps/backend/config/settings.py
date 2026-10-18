@@ -123,7 +123,6 @@ INSTALLED_APPS = [
     "ai",
     "knowledge",
     "parents",
-    "billing",
     "studentarea",
 ]
 
@@ -224,9 +223,42 @@ else:
     )
 
 
-# Which ai/providers.py implementation the worker uses. Only "stub" exists —
-# no LLM credentials are configured anywhere in this project.
+# Which ai/providers.py implementation the worker uses.
+#   "stub" — rule-based placeholders (default; needs no credentials).
+#   "llm"  — AI Quiz generation through the LLM client (ai/quiz_generation.py);
+#            needs GEMINI_API_KEY / GEMINI_MODEL and QUIZ_LANGUAGE below. The
+#            Study Assistant and State Recommendation still use the stub rules.
 AI_PROVIDER = env_str("AI_PROVIDER", "stub")
+
+# --- AI Quiz generation (ai/quiz_contract.py, ai/quiz_prompt.py) ---------------
+# The quiz LANGUAGE has no default: Madar has no language policy yet, so the
+# deployment must choose one explicitly. One of: ar-msa (Modern Standard
+# Arabic), ar-eg (Egyptian Arabic), en. Unset => generation fails with a clear
+# "not configured" error instead of the code picking a language.
+QUIZ_LANGUAGE = env_str("QUIZ_LANGUAGE", "")
+# Total model calls per quiz: 1 generation + (N-1) corrective regenerations. 1..3.
+QUIZ_MAX_ATTEMPTS = env_int("QUIZ_MAX_ATTEMPTS", 2)
+# Below this many characters of lesson material the quiz fails explicitly with
+# "insufficient source" instead of asking the model to invent content.
+QUIZ_MIN_SOURCE_CHARS = env_int("QUIZ_MIN_SOURCE_CHARS", 400)
+
+# --- LLM client foundation (ai/llm.py, ai/gemini.py) --------------------------
+# The low-level "send text, get text" seam a future real AIProvider will sit
+# on. Nothing in the product calls it yet; `manage.py check_llm_provider`
+# verifies it. Credentials and the model id come ONLY from the environment —
+# there is deliberately no default model (available models change), and no key
+# is ever hardcoded. Provider quotas are not assumed anywhere in the code.
+LLM_PROVIDER = env_str("LLM_PROVIDER", "gemini")
+GEMINI_API_KEY = env_str("GEMINI_API_KEY", "")
+GEMINI_MODEL = env_str("GEMINI_MODEL", "")
+# Per socket operation (connect / read), not a total deadline.
+LLM_TIMEOUT_SECONDS = env_int("LLM_TIMEOUT_SECONDS", 60)
+# 0 = do not send a limit; use the provider's own default.
+LLM_MAX_OUTPUT_TOKENS = env_int("LLM_MAX_OUTPUT_TOKENS", 0)
+# Retries apply only to transient failures (429, timeout, network, 5xx).
+LLM_MAX_RETRIES = env_int("LLM_MAX_RETRIES", 2)
+LLM_RETRY_BASE_SECONDS = env_int("LLM_RETRY_BASE_SECONDS", 1)
+LLM_RETRY_MAX_WAIT_SECONDS = env_int("LLM_RETRY_MAX_WAIT_SECONDS", 30)
 
 
 # Test runs only: PBKDF2 is deliberately slow (that is its job in production);
@@ -460,6 +492,22 @@ VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
 # When behind nginx, set this to the internal location to hand streaming off
 # to the web server (X-Accel-Redirect) instead of piping bytes through Django.
 VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
+
+# --- Lesson transcription (content/transcription.py) ------------------------
+# "faster_whisper" runs locally (pip install faster-whisper); the model is
+# downloaded once on first use. Bigger = more accurate and slower:
+# tiny / base / small / medium / large-v3.
+TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "faster_whisper")
+TRANSCRIPTION_MODEL = env_str("TRANSCRIPTION_MODEL", "small")
+# cpu works everywhere. "cuda" needs the NVIDIA CUDA/cuBLAS libraries installed; "auto" picks
+# cuda whenever a GPU is present and then fails if those libraries are missing.
+TRANSCRIPTION_DEVICE = env_str("TRANSCRIPTION_DEVICE", "cpu")
+TRANSCRIPTION_COMPUTE_TYPE = env_str("TRANSCRIPTION_COMPUTE_TYPE", "int8")
+# "" = auto-detect the spoken language; or force one, e.g. "ar".
+TRANSCRIPTION_LANGUAGE = env_str("TRANSCRIPTION_LANGUAGE", "")
+# "thread" = run inside the web process right after upload (zero setup);
+# "worker" = only `manage.py transcribe_videos` processes them (production).
+TRANSCRIPTION_BACKGROUND = env_str("TRANSCRIPTION_BACKGROUND", "thread")
 # Quality ladder (360p/480p/720p/1080p) generated with ffmpeg after an upload.
 # Needs `ffmpeg` + `ffprobe` on the server; if they are missing nothing breaks,
 # students just see "تلقائي" (the original). Off while running the test suite.

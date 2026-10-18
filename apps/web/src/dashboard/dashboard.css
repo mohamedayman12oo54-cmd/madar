@@ -424,3 +424,10 @@ textarea.inp{resize:vertical;min-height:96px;font-family:inherit}
   .guest-row .row-actions .mini-btn{min-height:42px;justify-content:center;width:100%}
   .guest-pick-row > .abtn{width:100%}
 }
+.transcript{display:grid;gap:8px}
+.transcript-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.transcript-body{max-height:280px;overflow:auto;white-space:pre-wrap;line-height:1.9;font-size:.92rem;
+  background:var(--fill);border-radius:12px;padding:12px 14px;overflow-wrap:anywhere}
+.transcript-seg{display:flex;gap:10px;align-items:baseline;white-space:normal}
+.transcript-time{flex:none;font-variant-numeric:tabular-nums;font-size:.76rem;font-weight:700;color:var(--navy);direction:ltr}
+.transcript-wait{display:flex;align-items:center;gap:12px;background:var(--fill);border-radius:12px;padding:12px 14px}

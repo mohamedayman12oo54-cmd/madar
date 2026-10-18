@@ -21,11 +21,12 @@ from accounts.permissions import IsStudent, IsTeacher
 from accounts.throttles import UserRateThrottle
 from environments.tenancy import IsEnvironmentMember
 
-from .models import ContentItem, VideoProgress
+from .models import ContentItem, Transcript, VideoProgress
 import re
 
 from .streaming import issue_ticket, resolve_ticket_full, stream_file
 from .transcode import delete_renditions, schedule_renditions
+from .transcription import request_transcription
 from .uploads import safe_display_name, validate_video_upload
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
@@ -89,6 +90,7 @@ class VideoUploadView(APIView):
             item.video_file.storage.delete(old)
         delete_renditions(item)               # copies of the OLD video must not outlive it
         schedule_renditions(item.id)
+        request_transcription(item.pk)          # speech -> text for the AI quiz, in the background
         return Response({
             "id": item.id, "source": item.source,
             "original_filename": item.original_filename,
@@ -99,6 +101,7 @@ class VideoUploadView(APIView):
         """Remove the uploaded blob; the item itself survives as a draft."""
         item = _owned_item(request, pk)
         delete_renditions(item)
+        Transcript.objects.filter(item=item).delete()   # the text of a removed video must not outlive it
         if item.video_file:
             item.video_file.delete(save=False)
         item.video_file = None
