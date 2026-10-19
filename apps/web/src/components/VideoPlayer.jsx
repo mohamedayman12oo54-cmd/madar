@@ -49,6 +49,8 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
   const overBar = useRef(false);                         // pointer is on the controls
   const menuOpen = useRef(false);
   const pending = useRef(null);                         // { time, play } restored after a quality switch
+  const shownRef = useRef(true);                         // mirror of `shown`, readable inside event handlers
+  const wasShownOnTouch = useRef(true);                  // were the controls already visible when the finger landed?
 
   const streamUrl = (d) => `${BASE_URL}/content/stream/?${new URLSearchParams({ t: d.ticket })}`;
 
@@ -75,6 +77,7 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
       setShown(false);
     }, HIDE_AFTER_MS);
   }, []);
+  useEffect(() => { shownRef.current = shown; }, [shown]);
   useEffect(() => { wake(); return () => clearTimeout(hideTimer.current); }, [wake]);
   useEffect(() => { menuOpen.current = menu !== null; if (menu === null) wake(); }, [menu, wake]);
   const sleepNow = useCallback(() => {                   // pointer left the player
@@ -130,6 +133,16 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
     return () => document.removeEventListener("fullscreenchange", on);
   }, []);
 
+  // Touch screens behave like YouTube: a tap on a video whose controls are
+  // hidden only REVEALS them; a tap while they are visible toggles play/pause.
+  // Mouse users (and tests) keep click = play/pause.
+  const onVideoTap = useCallback(() => {
+    setMenu(null);
+    const touch = typeof window !== "undefined" && window.matchMedia?.("(hover: none) and (pointer: coarse)").matches;
+    if (touch && !wasShownOnTouch.current) { wasShownOnTouch.current = true; wake(); return; }
+    toggle(); wake();
+  }, [toggle, wake]);
+
   const handleTime = useCallback((e) => {
     const el = e.currentTarget;
     setTime(el.currentTime);
@@ -179,7 +192,8 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
 
   return (
     <div className={"player-frame" + (full ? " is-full" : "") + (shown ? "" : " is-idle")} ref={frameRef} tabIndex={0}
-      onKeyDown={onKeyDown} onMouseMove={wake} onMouseEnter={wake} onMouseLeave={sleepNow} onTouchStart={wake}>
+      onKeyDown={onKeyDown} onMouseMove={wake} onMouseEnter={wake} onMouseLeave={sleepNow}
+      onTouchStart={() => { wasShownOnTouch.current = shownRef.current; wake(); }}>
       <video
         ref={videoRef}
         className="player"
@@ -187,7 +201,7 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
         poster={poster}
         playsInline
         preload="metadata"
-        onClick={() => { setMenu(null); toggle(); wake(); }}
+        onClick={onVideoTap}
         onContextMenu={(e) => e.preventDefault()}
         onLoadedMetadata={onLoaded}
         onTimeUpdate={handleTime}
@@ -268,6 +282,7 @@ export default function VideoPlayer({ itemId, ticketFor, onProgress, startAt = 0
           </div>
         </div>
       </div>
+      <div className="player-mini" aria-hidden="true" style={{ "--p": duration ? `${(time / duration) * 100}%` : "0%" }} />
     </div>
   );
 }
