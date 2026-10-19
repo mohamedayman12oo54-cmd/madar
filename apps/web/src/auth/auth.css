@@ -305,7 +305,11 @@
 
 /* country-aware phone field */
 .phone-row{display:flex;gap:8px;align-items:stretch}
-.phone-row .phone-sel{flex:0 0 46%;max-width:190px;padding-inline:10px;text-overflow:ellipsis}
+/* The row is LTR (number reads left→right) but the country name is Arabic, so the
+   select itself is RTL: text on the right, chevron on the left, with real room for
+   the chevron. Width follows its content instead of a fixed 46%. */
+.phone-row .phone-sel{flex:0 0 auto;width:134px;direction:rtl;text-align:right;font-size:.8rem;
+  padding-inline:8px 22px;background-size:12px;background-position:left 8px center;text-overflow:ellipsis;white-space:nowrap}
 .phone-row .phone-num{flex:1;min-width:0;text-align:left;letter-spacing:.04em}
 
 /* ===== FORM SYSTEM =====================================================
