@@ -1,7 +1,7 @@
 /* Student area — mobile-first. Reuses the dashboard design tokens/classes. */
 .stu{min-height:100vh;min-height:100dvh;background:var(--cream);display:flex;flex-direction:column;
   /* Nothing may force the shell wider than the viewport (no zooming out). */
-  width:100%;max-width:100%;overflow-x:hidden}
+  width:100%;max-width:100%;overflow-x:hidden;overflow-x:clip;--stu-top-h:59px}
 .stu *,.stu *::before,.stu *::after{min-width:0}
 /* Wide children (tables, pre, long records) scroll inside their own box
    instead of widening the page. */
@@ -22,6 +22,7 @@
 .stu-tab span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:360px){
   .stu-tab{font-size:.66rem;padding:6px 1px}
+  .stu{--stu-top-h:55px}
   .stu-top{padding:10px 10px;gap:6px}
   .stu-icon-btn{width:34px;height:34px}
   .stu-env .name{max-width:24vw}
@@ -212,11 +213,100 @@
 .video-msg-text h3{margin:0;font-size:.98rem}
 .video-msg-text p{margin:4px 0 0;font-size:.84rem;color:var(--soft);line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .video-msg-go{display:inline-flex;align-items:center;gap:6px;text-decoration:none;white-space:nowrap;flex-shrink:0}
-.video-detail{display:grid;grid-template-columns:3fr 1fr;gap:16px;align-items:start}
-.video-detail-player{min-width:0}
-.video-detail-info{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.video-detail{display:grid;grid-template-columns:3fr 1fr;grid-template-areas:"p i" "a a";gap:16px;align-items:start}
+.video-detail-player{grid-area:p;min-width:0}
+.video-detail-info{grid-area:i;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
 .video-detail-info h3{margin:0 0 8px;font-size:.92rem}
 .video-detail-info p{margin:0;font-size:.86rem;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}
-.video-detail-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block-start:16px}
+.video-detail-actions{grid-area:a;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.vd-chips{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .video-detail-actions .mini-btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
-@media(max-width:700px){.video-detail{grid-template-columns:1fr}}
+.vd-title,.vd-more,.player-mini{display:none}
+
+/* ===== Phone: YouTube-style watch page ===== */
+@media(max-width:700px){
+  /* top row keeps only the help "?" and the back link (title moves under the player) */
+  .vd-head .dash-section-head{margin-block-end:10px;flex-wrap:nowrap}
+  .vd-head .dash-section-head h2{font-size:0}
+  .vd-head .info-btn{margin:0;font-size:1rem}
+  .vd-head .dash-head-actions{width:auto;flex:0 0 auto}
+  .vd-head .dash-head-actions>*{flex:0 0 auto}
+  .vd-head .dash-section-head{align-items:center}
+
+  .video-detail{display:flex;flex-direction:column;align-items:stretch;gap:0}
+  /* Full-bleed player, pinned under the top bar while the page scrolls. */
+  .video-detail-player{position:sticky;top:var(--stu-top-h);z-index:15;margin-inline:-14px;background:#000}
+  .video-detail-player .player-frame,.video-detail-player .player,.video-detail-player .video-frame,.video-detail-player .player-state{border-radius:0;box-shadow:none}
+
+  .vd-title{display:block;margin:14px 2px 0;font-size:1.08rem;font-weight:700;line-height:1.65;color:var(--navy);overflow-wrap:anywhere}
+
+  /* Action chips: one horizontally scrollable pill row. */
+  .video-detail-actions{display:block;margin:12px -14px 0}
+  .vd-chips{flex-wrap:nowrap;gap:8px;overflow-x:auto;padding:2px 14px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .vd-chips::-webkit-scrollbar{display:none}
+  .vd-chips .abtn,.vd-chips .mini-btn{flex:0 0 auto;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;
+    height:36px;padding:0 14px;border-radius:999px;border:0;background:var(--fill);color:var(--navy);font-size:.84rem;font-weight:600;text-decoration:none;width:auto}
+  .vd-chips .abtn:disabled{opacity:.5}
+  .video-detail-actions .stat-sub{display:block;margin:6px 14px 0}
+
+  /* Description card: 3 lines + «المزيد», like YouTube. */
+  .video-detail-info{margin-block-start:12px;border:0;background:var(--fill);border-radius:14px;padding:12px 14px}
+  .video-detail-info h3{font-size:.84rem;margin-bottom:6px}
+  .video-detail-info p{font-size:.86rem;line-height:1.8;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .video-detail-info.is-open p{display:block;-webkit-line-clamp:unset;overflow:visible}
+  .vd-more{display:inline-flex;align-items:center;gap:4px;margin-block-start:6px;padding:0;border:0;background:none;
+    color:var(--navy);font:inherit;font-size:.84rem;font-weight:700;cursor:pointer}
+  .vd-more svg{transition:transform .2s}
+  .video-detail-info.is-open .vd-more svg{transform:rotate(180deg)}
+}
+
+
+/* ===== YouTube-style touch controls =====
+   Centre: ‹5s  ⏯  5s›  · top corners: speed / quality chips · bottom: time,
+   fullscreen and an edge-to-edge seek bar. Same buttons and behaviour as
+   the desktop bar — only the layout changes. */
+@media (max-width:700px), (hover:none) and (pointer:coarse){
+  .player-frame{border-radius:0}
+  .player-frame .player{border-radius:0}
+  .player-controls{inset:0;padding:0;border-radius:0;background:rgba(0,0,0,.38);direction:ltr;pointer-events:none}
+  .player-controls.is-shown{pointer-events:none}
+  .player-controls .pc-btn,.player-controls .player-seekrow,.player-controls .pc-popup{pointer-events:auto}
+  .player-row,.pc-group,.pc-skips{display:contents}
+
+  /* centre cluster */
+  .pc-start>.pc-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:50%;background:rgba(0,0,0,.45)}
+  .pc-start>.pc-btn svg{width:28px;height:28px}
+  .pc-skip{position:absolute;top:50%;width:46px;height:46px;border-radius:50%;background:transparent}
+  .pc-skips .pc-skip:first-child{left:calc(50% - 98px);transform:translate(-50%,-50%)}
+  .pc-skips .pc-skip:last-child{left:calc(50% + 98px);transform:translate(-50%,-50%)}
+  .pc-skip svg{width:26px;height:26px}
+  .pc-skip span{font-size:.6rem}
+
+  /* bottom: time (start) + fullscreen (end) above a full-width seek bar */
+  .pc-time{position:absolute;inset-inline-start:12px;bottom:22px;margin:0;font-size:.76rem;direction:ltr}
+  .pc-end>.pc-btn.pc-icon{position:absolute;inset-inline-end:6px;bottom:12px;width:38px;height:38px}
+  .player-seekrow{position:absolute;inset-inline:0;bottom:-6px;padding:0}
+  .player-seek{height:24px}
+  .player-seek::-webkit-slider-runnable-track{height:3px;border-radius:0;
+    background:linear-gradient(to right,var(--accent,#b4442f) var(--p,0%),rgba(255,255,255,.35) var(--p,0%))}
+  .player-seek::-moz-range-track{height:3px;border-radius:0;background:rgba(255,255,255,.35)}
+  .player-seek::-moz-range-progress{height:3px;border-radius:0;background:var(--accent,#b4442f)}
+  .player-seek::-webkit-slider-thumb{width:13px;height:13px;margin-top:-5px;background:var(--accent,#b4442f)}
+  .player-seek::-moz-range-thumb{width:13px;height:13px;background:var(--accent,#b4442f)}
+
+  /* top corners: speed (start) and quality (end) as small chips, popups open downward */
+  .pc-end>.pc-menu-wrap{position:absolute;top:8px}
+  .pc-end>.pc-menu-wrap:first-child{inset-inline-start:8px}
+  .pc-end>.pc-menu-wrap:nth-child(2){inset-inline-end:8px}
+  .pc-end .pc-text{height:30px;padding:0 10px;background:rgba(0,0,0,.45);border-radius:999px;font-size:.74rem;pointer-events:auto}
+  .pc-end .pc-popup{direction:rtl;inset-block-end:auto;inset-block-start:calc(100% + 6px)}
+  .pc-end>.pc-menu-wrap:first-child .pc-popup{inset-inline-end:auto;inset-inline-start:0}
+
+  .player-notice{inset-block-start:44px}
+  .player-bigplay{width:58px;height:58px}
+
+  /* thin progress line that stays visible while the controls are hidden */
+  .player-mini{display:block;position:absolute;inset-inline:0;bottom:0;height:3px;z-index:2;pointer-events:none;
+    background:linear-gradient(to right,var(--accent,#b4442f) var(--p,0%),rgba(255,255,255,.3) var(--p,0%));transition:opacity .18s}
+  .player-controls.is-shown ~ .player-mini{opacity:0}
+}
