@@ -14,5 +14,8 @@ test("every dashboard nav entry has a unique path, a label, and an icon componen
 
 test("only the overview entry is an exact-match (end) route", () => {
   const ends = dashboardNav.filter((n) => n.end);
-  assert.deepEqual(ends.map((n) => n.to), ["/app"]);
+  assert.deepEqual(
+    ends.map((n) => n.to),
+    ["/app"]
+  );
 });
