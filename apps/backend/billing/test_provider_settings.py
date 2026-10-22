@@ -79,8 +79,31 @@ class PaymentProviderGuardRailTests(SimpleTestCase):
                 "PAYMENT_PROVIDER": "kashier", "KASHIER_MODE": "test",
                 "KASHIER_MERCHANT_ID": "m", "KASHIER_PAYMENT_API_KEY_TEST": "k",
                 "KASHIER_SECRET_KEY_TEST": "s",
+                "KASHIER_WEBHOOK_URL": "https://api.example.com/api/v1/billing/webhooks/kashier/",
+                "BILLING_CHECKOUT_RETURN_URL": "https://app.example.com/app/billing",
             }
         )
+
+    def test_kashier_without_a_webhook_url_is_refused(self):
+        self.assertRefuses(
+            {
+                "PAYMENT_PROVIDER": "kashier", "KASHIER_MODE": "test", "KASHIER_MERCHANT_ID": "m",
+                "KASHIER_PAYMENT_API_KEY_TEST": "k", "KASHIER_SECRET_KEY_TEST": "s",
+                "KASHIER_WEBHOOK_URL": "",     # PROD fixture supplies one; blank it to prove it is required
+                "BILLING_CHECKOUT_RETURN_URL": "https://app.example.com/app/billing",
+            },
+            "KASHIER_WEBHOOK_URL",
+        )
+
+    def test_a_non_https_webhook_or_return_url_is_refused_in_production(self):
+        base = {
+            "PAYMENT_PROVIDER": "kashier", "KASHIER_MODE": "test", "KASHIER_MERCHANT_ID": "m",
+            "KASHIER_PAYMENT_API_KEY_TEST": "k", "KASHIER_SECRET_KEY_TEST": "s",
+            "KASHIER_WEBHOOK_URL": "https://api.example.com/hook",
+            "BILLING_CHECKOUT_RETURN_URL": "https://app.example.com/app/billing",
+        }
+        self.assertRefuses({**base, "KASHIER_WEBHOOK_URL": "http://api.example.com/hook"}, "KASHIER_WEBHOOK_URL")
+        self.assertRefuses({**base, "BILLING_CHECKOUT_RETURN_URL": "http://app.example.com"}, "BILLING_CHECKOUT_RETURN_URL")
 
     def test_invalid_kashier_mode_refused(self):
         self.assertRefuses({"KASHIER_MODE": "sandbox"}, "KASHIER_MODE")
