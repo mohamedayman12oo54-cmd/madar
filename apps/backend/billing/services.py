@@ -101,11 +101,19 @@ def start_checkout(environment, plan_key, return_url):
             .order_by("-created_at")
             .first()
         )
+        if attempt is not None and attempt.plan_id not in (None, plan.pk):
+            # A live checkout for a DIFFERENT plan exists. Silently re-using it would charge the
+            # old plan's amount; silently voiding it could orphan a payment the customer is
+            # completing right now. Refuse; the reconciler frees it, or the teacher resumes it.
+            raise CheckoutError(
+                "checkout_in_progress",
+                "لديك عملية دفع قيد الإتمام لباقة أخرى. أكملها أو انتظر انتهاءها قبل اختيار باقة مختلفة.",
+            )
         if attempt is None:
-            subscription.plan = plan
-            subscription.save(update_fields=["plan"])
+            # NOTE: `subscription.plan` is deliberately NOT touched here. It changes only when a
+            # payment for the plan is verified (events.apply_success).
             attempt = PaymentAttempt.objects.create(
-                environment=environment, subscription=subscription,
+                environment=environment, subscription=subscription, plan=plan,
                 merchant_order_id=_generate_merchant_order_id(),
                 amount_minor_units=plan.price_minor_units, currency=plan.currency,
                 status=PaymentAttempt.Status.INITIATED,
@@ -119,7 +127,9 @@ def start_checkout(environment, plan_key, return_url):
     # Outside the transaction above: the lock is released before this call.
     provider = get_payment_provider()
     try:
-        session = provider.create_recurring_setup_session(attempt, plan, return_url)
+        session = provider.create_recurring_setup_session(
+            attempt, plan, return_url(attempt) if callable(return_url) else return_url
+        )
     except ProviderError:
         PaymentAttempt.objects.filter(pk=attempt.pk).update(status=PaymentAttempt.Status.FAILED)
         raise CheckoutError("provider_unavailable", "Could not start checkout right now. Please try again.")
@@ -193,9 +203,15 @@ def get_checkout_status(environment, attempt_id):
     writes anything. Returns `None` if no such attempt exists for this
     environment (never raises, so a missing/forged id is just "nothing to
     show", not an error)."""
-    if not attempt_id:
+    # The id comes straight from a query string: anything that is not a plain positive integer that fits
+    # a BigAutoField is "nothing to show" — never a ValueError/DataError (which would surface as a 500).
+    text = str(attempt_id or "").strip()
+    if not text.isascii() or not text.isdigit() or len(text) > 18:
         return None
-    return PaymentAttempt.objects.filter(pk=attempt_id, environment=environment).first()
+    attempt_pk = int(text)
+    if attempt_pk <= 0:
+        return None
+    return PaymentAttempt.objects.filter(pk=attempt_pk, environment=environment).first()
 
 
 def start_trial(*, environment, activated_at):
