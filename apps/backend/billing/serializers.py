@@ -64,6 +64,9 @@ class SubscriptionStatusSerializer(serializers.Serializer):
     trial_end = serializers.DateTimeField(allow_null=True)
     current_period_end = serializers.DateTimeField(allow_null=True)
     cancel_at_period_end = serializers.BooleanField()
+    # A checkout the teacher started and has not finished/abandoned: lets the UI offer "resume"
+    # instead of a dead-end 409 when they pick a different plan. Never exposes provider ids.
+    pending_checkout = serializers.DictField(allow_null=True)
     entitlement = EntitlementSummarySerializer()
 
 
