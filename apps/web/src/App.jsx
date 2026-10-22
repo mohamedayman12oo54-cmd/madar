@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 
@@ -17,19 +17,51 @@ import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 
 import AuthEntry from "./auth/screens/AuthEntry.jsx";
-import { TeacherLogin, TeacherSignup, TeacherForgot, TeacherEnvSelect, TeacherWelcome } from "./auth/screens/TeacherAuth.jsx";
-import { StudentLogin, StudentClaim, StudentForgot, StudentEnvSelect } from "./auth/screens/StudentAuth.jsx";
+import {
+  TeacherLogin,
+  TeacherSignup,
+  TeacherForgot,
+  TeacherEnvSelect,
+  TeacherWelcome,
+} from "./auth/screens/TeacherAuth.jsx";
+import {
+  StudentLogin,
+  StudentClaim,
+  StudentForgot,
+  StudentEnvSelect,
+} from "./auth/screens/StudentAuth.jsx";
 import { ParentLogin } from "./auth/screens/ParentAuth.jsx";
+import { CheckinPage } from "./auth/screens/Checkin.jsx";
 import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
-import { AuthGallery, AuthStateScreen, LogoutConfirm, LoadingDemo } from "./auth/screens/AuthStates.jsx";
+import {
+  AuthGallery,
+  AuthStateScreen,
+  LogoutConfirm,
+  LoadingDemo,
+} from "./auth/screens/AuthStates.jsx";
 
-import AppRoutes from "./dashboard/AppRoutes.jsx";
-import StudentRoutes from "./student/StudentRoutes.jsx";
-import ParentPortal from "./parent/ParentPortal.jsx";
+import { OrbitBig } from "./auth/ui.jsx";
+
+// The signed-in areas are large and most visitors only ever use one of them (or none: the marketing pages),
+// so each loads on demand instead of shipping inside the first download.
+const AppRoutes = lazy(() => import("./dashboard/AppRoutes.jsx"));
+const StudentRoutes = lazy(() => import("./student/StudentRoutes.jsx"));
+const ParentPortal = lazy(() => import("./parent/ParentPortal.jsx"));
+const TeamRoutes = lazy(() => import("./team/TeamRoutes.jsx"));
+
+function AreaFallback() {
+  return (
+    <div className="dash-boot" role="status" aria-label="جارٍ التحميل">
+      <OrbitBig />
+    </div>
+  );
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [pathname]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [pathname]);
   return null;
 }
 
@@ -64,6 +96,8 @@ function AnimatedRoutes({ ready }) {
         <Route path="/auth/student/forgot" element={<StudentForgot />} />
         <Route path="/auth/student/environments" element={<StudentEnvSelect />} />
         <Route path="/auth/parent" element={<ParentLogin />} />
+        {/* public self check-in (opened from the teacher's QR) */}
+        <Route path="/checkin/:token" element={<CheckinPage />} />
         <Route path="/auth/team/login" element={<TeamLogin />} />
         <Route path="/auth/state/:key" element={<AuthStateScreen />} />
 
@@ -75,12 +109,13 @@ function AnimatedRoutes({ ready }) {
 
 export default function App() {
   const location = useLocation();
-  const isAuth = location.pathname.startsWith("/auth");
+  const isAuth = location.pathname.startsWith("/auth") || location.pathname.startsWith("/checkin/");
   const isApp = location.pathname.startsWith("/app");
   // NOT startsWith("/learn"): keep the match exact so no marketing path can collide with it.
   const isLearn = location.pathname === "/learn" || location.pathname.startsWith("/learn/");
 
   const isParent = location.pathname === "/parent";
+  const isTeam = location.pathname === "/team" || location.pathname.startsWith("/team/");
 
   const prefersReduced =
     typeof window !== "undefined" &&
@@ -95,7 +130,10 @@ export default function App() {
     if (prefersReduced || !onLanding) return;
     const r = setTimeout(() => setReady(true), 2500);
     const l = setTimeout(() => setLoading(false), 2700);
-    return () => { clearTimeout(r); clearTimeout(l); };
+    return () => {
+      clearTimeout(r);
+      clearTimeout(l);
+    };
   }, [prefersReduced, onLanding]);
 
   // /app has its own shell (topbar/sidebar) — no marketing Navbar/Footer or
@@ -105,7 +143,19 @@ export default function App() {
   if (isApp) {
     return (
       <MotionConfig reducedMotion="user">
-        <AppRoutes />
+        <Suspense fallback={<AreaFallback />}>
+          <AppRoutes />
+        </Suspense>
+      </MotionConfig>
+    );
+  }
+
+  if (isTeam) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <Suspense fallback={<AreaFallback />}>
+          <TeamRoutes />
+        </Suspense>
       </MotionConfig>
     );
   }
@@ -113,7 +163,9 @@ export default function App() {
   if (isParent) {
     return (
       <MotionConfig reducedMotion="user">
-        <ParentPortal />
+        <Suspense fallback={<AreaFallback />}>
+          <ParentPortal />
+        </Suspense>
       </MotionConfig>
     );
   }
@@ -121,7 +173,9 @@ export default function App() {
   if (isLearn) {
     return (
       <MotionConfig reducedMotion="user">
-        <StudentRoutes />
+        <Suspense fallback={<AreaFallback />}>
+          <StudentRoutes />
+        </Suspense>
       </MotionConfig>
     );
   }
