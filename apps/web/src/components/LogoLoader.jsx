@@ -6,7 +6,12 @@ import logo from "../assets/madar-logo.png";
 export default function LogoLoader() {
   const travel = typeof window !== "undefined" ? window.innerWidth * 0.32 : 320;
   return (
-    <motion.div className="loader" initial={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+    <motion.div
+      className="loader"
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.5 }}
+    >
       <motion.div
         className="loader-logo"
         initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
