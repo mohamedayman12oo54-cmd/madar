@@ -114,6 +114,30 @@ class StudentAddRateThrottle(UserRateThrottle):
     scope = "student-add"
 
 
+class BillingCheckoutRateThrottle(UserRateThrottle):
+    """Each checkout creates a PaymentAttempt and an outbound call to the payment provider: cap per user
+    so a stolen/abusive session cannot spray the provider (or fill the table) with sessions."""
+
+    scope = "billing-checkout"
+
+
+class BillingCancelRateThrottle(UserRateThrottle):
+    scope = "billing-cancel"
+
+
+class BillingStatusRateThrottle(UserRateThrottle):
+    """Read endpoints incl. the post-checkout poll (the UI polls every 3 s for up to 3 min)."""
+
+    scope = "billing-status"
+
+
+class BillingWebhookRateThrottle(IPRateThrottle):
+    """Bounds the CPU an unauthenticated caller can burn on HMAC checks. Deliberately generous: the
+    provider retries from a handful of IPs, and a throttled (429) delivery is simply retried later."""
+
+    scope = "billing-webhook"
+
+
 class AISubmitRateThrottle(UserRateThrottle):
     """AI submissions cost real compute/money once a real provider is wired
     in — cap them per teacher."""
@@ -172,4 +196,33 @@ class GuardianCodeRateThrottle(SimpleRateThrottle):
         if not code:
             return None
         digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:32]
+        return self.cache_format % {"scope": self.scope, "ident": digest}
+
+
+# ---- session self check-in (public, unauthenticated) -------------------------
+class CheckinIPRateThrottle(IPRateThrottle):
+    """A whole class may share one NAT address, so this is generous; the
+    per-phone and per-link caps below are what stop guessing."""
+
+    scope = "checkin-ip"
+
+
+class CheckinPhoneRateThrottle(TargetRateThrottle):
+    """Caps attempts on ONE phone number (someone trying to check a classmate in)."""
+
+    scope = "checkin-phone"
+    target_fields = ("phone",)
+
+
+class CheckinLinkRateThrottle(SimpleRateThrottle):
+    """Caps ALL attempts on one check-in link, whoever sends them - this is what makes the
+    6-digit code unguessable within the link's lifetime."""
+
+    scope = "checkin-link"
+
+    def get_cache_key(self, request, view):
+        token = getattr(view, "kwargs", {}).get("token", "")
+        if not token:
+            return None
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
         return self.cache_format % {"scope": self.scope, "ident": digest}
