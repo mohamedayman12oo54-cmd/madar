@@ -182,16 +182,35 @@ class UploadSessionView(APIView):
             raise serializers.ValidationError(
                 {"detail": "البيانات تتجاوز الحجم المعلن لعملية الرفع."})
 
-        path = session.storage_path or storage_path(session, session.filename)
-        full = os.path.join(settings.MEDIA_ROOT, path)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "ab") as fh:
-            fh.write(chunk)
-
+        # Everything from here to the offset update runs under the session's row lock, so two overlapping
+        # PATCHes for one session (a client retrying while the first request is still writing) are
+        # serialised: the second one re-checks the offset under the lock and gets a 409 instead of
+        # appending the same chunk again.
         with transaction.atomic():
             locked = UploadSession.objects.select_for_update().get(pk=session.pk)
+            if locked.status != UploadSession.Status.ACTIVE:
+                raise serializers.ValidationError({"detail": "عملية الرفع لم تعد نشطة."})
+            if declared != locked.offset or locked.offset + len(chunk) > locked.total_bytes:
+                return self._headers(
+                    Response({"detail": "موضع الرفع غير متطابق.", "offset": locked.offset},
+                             status=status.HTTP_409_CONFLICT), locked)
+
+            path = locked.storage_path or storage_path(locked, locked.filename)
+            full = os.path.join(settings.MEDIA_ROOT, path)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            # Write AT the recorded offset and drop anything after it. The recorded offset is the truth: a
+            # previous request that died after writing part of a chunk (but before recording it) leaves a
+            # stray tail, which must never be kept as if it were video data. Appending and then reading the
+            # offset back from the file size would have turned that tail into "valid" bytes.
+            with open(full, "r+b" if os.path.exists(full) else "wb") as fh:
+                fh.seek(locked.offset)
+                fh.truncate()
+                fh.write(chunk)
+                fh.flush()
+                os.fsync(fh.fileno())
+
             locked.storage_path = path
-            locked.offset = os.path.getsize(full)
+            locked.offset = locked.offset + len(chunk)
             locked.save(update_fields=["storage_path", "offset", "updated_at"])
             session = locked
 
