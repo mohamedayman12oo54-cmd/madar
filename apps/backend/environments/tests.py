@@ -24,10 +24,8 @@ class TeacherEnvironmentTests(TestCase):
             password=VALID_PW, is_active=True,
         )
         self.env1 = Environment.objects.create(owner=self.teacher, name="الصف الثالث")
-        self.env2 = Environment.objects.create(owner=self.teacher, name="الصف الثاني")
         self.other_env = Environment.objects.create(owner=self.other_teacher, name="بيئة أخرى")
         EnvironmentMembership.objects.create(user=self.teacher, environment=self.env1, role="owner")
-        EnvironmentMembership.objects.create(user=self.teacher, environment=self.env2, role="owner")
         EnvironmentMembership.objects.create(user=self.other_teacher, environment=self.other_env, role="owner")
 
         login = self.client.post("/api/v1/auth/teacher/login/", {"identifier": "t1@example.com", "password": VALID_PW})
@@ -37,7 +35,8 @@ class TeacherEnvironmentTests(TestCase):
         r = self.client.get("/api/v1/environments/teacher/")
         self.assertEqual(r.status_code, 200)
         names = {e["name"] for e in r.data}
-        self.assertEqual(names, {"الصف الثالث", "الصف الثاني"})
+        self.assertEqual(names, {"الصف الثالث"})            # INV-9: exactly one, and never another teacher's
+        self.assertNotIn(self.other_env.name, names)
 
     def test_cannot_enter_another_teachers_environment(self):
         r = self.client.post(f"/api/v1/environments/teacher/{self.other_env.id}/enter/")
