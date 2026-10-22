@@ -11,3 +11,5 @@ staticfiles/
 media/
 *.log
 .DS_Store
+private-media/
+node_modules/
