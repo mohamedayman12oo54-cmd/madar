@@ -54,8 +54,11 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put(OFFLINE_URL, copy)).catch(() => {});
+          // Cache only a healthy, same-origin page: never an error page or a redirect to somewhere else.
+          if (res.ok && res.type === "basic" && !res.redirected) {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put(OFFLINE_URL, copy)).catch(() => {});
+          }
           return res;
         })
         .catch(() => caches.match(OFFLINE_URL).then((r) => r || Response.error())),
