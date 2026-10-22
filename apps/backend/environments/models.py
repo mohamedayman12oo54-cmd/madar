@@ -12,12 +12,13 @@ def current_academic_year() -> str:
 
 
 class Environment(models.Model):
-    """One teacher's teaching space ("بيئة تعليمية") — e.g. a class or a
-    subject/stage grouping. A teacher may own several. Students are linked
-    to the environments they belong to via EnvironmentMembership."""
+    """One teacher's teaching space ("بيئة تعليمية"). INV-9 / ADR-013: one Teacher Account owns
+    exactly ONE Environment, permanently — enforced by the database (OneToOne => unique index on
+    owner_id), because Billing's "one Subscription per Environment" is only "one per account" if this
+    holds. Students are linked to the environment via EnvironmentMembership."""
 
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_environments",
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_environment",
         limit_choices_to={"role": "teacher"},
     )
     name = models.CharField(max_length=150)
