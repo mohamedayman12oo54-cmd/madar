@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
@@ -21,7 +22,6 @@ handler404 = "config.urls.not_found"
 handler500 = "config.urls.server_error"
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("api/v1/health/", health),
     path("api/v1/auth/", include("accounts.urls")),
     path("api/v1/environments/", include("environments.urls")),
@@ -37,3 +37,6 @@ urlpatterns = [
     path("api/v1/parent/", include("parents.urls")),
     path("api/v1/student/", include("studentarea.urls")),
 ]
+
+if settings.ENABLE_ADMIN:
+    urlpatterns.insert(0, path(settings.ADMIN_URL, admin.site.urls))
