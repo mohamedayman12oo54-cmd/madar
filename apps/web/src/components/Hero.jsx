@@ -21,15 +21,24 @@ export default function Hero({ ready }) {
   return (
     <header className="hero" id="top">
       <div className="hero-visual">
-        <div className="hero-bg" style={{ backgroundImage: "url('/main.png')" }} aria-hidden="true" />
+        <div
+          className="hero-bg"
+          style={{ backgroundImage: "url('/main.png')" }}
+          aria-hidden="true"
+        />
         <div className="hero-veil" aria-hidden="true" />
       </div>
       <div className="hero-inner">
         <div className="hero-flank">
           <motion.div className="hero-side hero-side-a" {...t(0.1)}>
-            <h1>حيث يدور التعليم<br />حول الطالب.</h1>
+            <h1>
+              حيث يدور التعليم
+              <br />
+              حول الطالب.
+            </h1>
             <p className="hero-sub">
-              بيئة تعليمية واحدة تجمع المعلّم والطالب والحضور والتسميع والمدفوعات والتقييم — بوضوح، وبالعربية أولًا.
+              بيئة تعليمية واحدة تجمع المعلّم والطالب والحضور والتسميع والمدفوعات والتقييم — بوضوح،
+              وبالعربية أولًا.
             </p>
           </motion.div>
           <motion.div className="hero-side hero-side-b" {...t(0.28)}>
@@ -42,8 +51,12 @@ export default function Hero({ ready }) {
               ))}
             </div>
             <div className="hero-cta">
-              <a className="btn btn-primary" href="#intro">اكتشف مدار <ArrowLeft className="arw" size={18} /></a>
-              <a className="btn btn-ghost" href="#how">كيف يعمل مدار؟</a>
+              <a className="btn btn-primary" href="#intro">
+                اكتشف مدار <ArrowLeft className="arw" size={18} />
+              </a>
+              <a className="btn btn-ghost" href="#how">
+                كيف يعمل مدار؟
+              </a>
             </div>
           </motion.div>
         </div>
