@@ -12,8 +12,15 @@ import { OrbitBig } from "../auth/ui.jsx";
 import { useEnvironment } from "../state/environment.jsx";
 import { useSession } from "../state/session.jsx";
 
-const LOGIN_PATH = { teacher: "/auth/teacher/login", student: "/auth/student", team: "/auth/team/login" };
-const ENV_SELECT_PATH = { teacher: "/auth/teacher/environments", student: "/auth/student/environments" };
+const LOGIN_PATH = {
+  teacher: "/auth/teacher/login",
+  student: "/auth/student",
+  team: "/auth/team/login",
+};
+const ENV_SELECT_PATH = {
+  teacher: "/auth/teacher/environments",
+  student: "/auth/student/environments",
+};
 
 function Boot() {
   return (
