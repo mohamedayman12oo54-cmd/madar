@@ -10,7 +10,9 @@ export default function VideoCard({ video }) {
         <h3>{video.title}</h3>
         {video.description && <p>{video.description}</p>}
       </div>
-      <Link to={`/learn/videos/${video.id}`} className="mini-btn is-primary video-msg-go"><Play size={13} /> زيارة</Link>
+      <Link to={`/learn/videos/${video.id}`} className="mini-btn is-primary video-msg-go">
+        <Play size={13} /> زيارة
+      </Link>
     </article>
   );
 }
