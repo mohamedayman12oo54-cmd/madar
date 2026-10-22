@@ -2,8 +2,18 @@
 // sections plug their real pages in at these same paths — adding a working
 // page later needs no change here.
 import {
-  LayoutDashboard, Users, UsersRound, CalendarClock, ClipboardCheck,
-  GraduationCap, Wallet, BookOpen, Bell, Settings, ScanLine,
+  LayoutDashboard,
+  Users,
+  UsersRound,
+  CalendarClock,
+  ClipboardCheck,
+  GraduationCap,
+  Wallet,
+  BookOpen,
+  Bell,
+  Settings,
+  ScanLine,
+  CreditCard,
 } from "lucide-react";
 
 export const dashboardNav = [
@@ -17,5 +27,6 @@ export const dashboardNav = [
   { to: "/app/financials", label: "المدفوعات", icon: Wallet },
   { to: "/app/content", label: "المحتوى التعليمي", icon: BookOpen },
   { to: "/app/notifications", label: "الإشعارات", icon: Bell },
+  { to: "/app/billing", label: "الاشتراك والباقات", icon: CreditCard },
   { to: "/app/settings", label: "الإعدادات", icon: Settings },
 ];
