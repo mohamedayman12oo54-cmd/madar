@@ -293,3 +293,48 @@ Not changed (decision needed): guardians still have **no account** (see parents/
 Worker-side entitlement re-check parity (a capability lost between an AI
 operation's submission and the worker picking it up) is covered by
 `ai.tests.WorkerEntitlementRecheckTests` (BILL-WU-011) — not duplicated here.
+
+## Billing / payments (Kashier) — what was tested
+
+`billing/` carries ~290 tests, including `test_security.py` (adversarial), `test_kashier_adapter.py`
+(official vendor test vectors), `test_money_safety.py` (end-to-end through the real adapter) and the
+`test_scope_guards.py` static guards. Properties under test:
+
+| Control | Test |
+|---|---|
+| The webhook is the ONLY new unauthenticated route; it is authenticated by an HMAC over the raw body, constant-time compared, using the mode-specific key | `test_webhooks`, `test_kashier_adapter.WebhookVerificationTests` |
+| Signing code matches Kashier's own published digests (not just itself) | `OfficialVectorTests` |
+| An event whose `signatureKeys` omits amount / status / order / currency / transaction id is rejected (otherwise a replayed signed event could be edited in the unsigned fields) | `test_an_event_that_does_not_sign_the_fields_we_act_on_is_rejected` |
+| Tampered, unsigned, other-mode-key, malformed and non-exact-amount events change nothing | `WebhookVerificationTests`, `EndToEndThroughTheRealAdapterTests` |
+| Replay / duplicate delivery never double-applies (dedup key + terminal-state checks + unique ids) | `test_money_safety`, `test_events`, `test_webhooks` |
+| Money is credited only when the paid amount and currency are PROVEN equal to the attempt's (a success with no amount is refused) | `test_underpaying_is_never_credited`, `test_wrong_currency_is_never_credited` |
+| **Starting a checkout never changes the plan or its capabilities/student cap.** (Found and fixed: `start_checkout` used to write `Subscription.plan` before payment, so a past-due Plan 1 teacher could get Plan 3 features by pressing the button.) The plan changes only when a payment for it is verified | `StartingCheckoutNeverGrantsAPlanTests` |
+| The recurring-agreement token is stored un-masked for renewals, but never in the stored event payload/logs, and is scrubbed from the event once applied. (Found and fixed: the old flow only had the REDACTED value available.) | `test_the_stored_event_never_keeps_the_token_and_is_scrubbed_after_applying`, `test_redaction` |
+| A transport error, timeout or any HTTP error on a charge is `unknown` (reconciled), never `failed` | `OutboundCallTests` |
+| No outbound payment call inside a DB transaction; https only; checkout URL host allow-listed | `SafetyRailTests`, `OutboundCallTests` |
+| Redirect back from the payment page changes no state; the UI shows success only from server status | `test_checkout`, `src/dashboard/render.smoke.test.mjs` |
+| Production refuses to boot with the fake provider, missing keys, or non-HTTPS webhook/return URLs | `test_provider_settings` |
+| One Environment per teacher is enforced by the database (INV-9) and a read-only, PII-free check gates the migration | `environments/test_cardinality.py` |
+| Tests are hermetic: a developer `.env` can no longer point the suite at a real LLM or payment provider | `config/settings.py` |
+
+Open (needs a human decision, deliberately NOT defaulted): BILL-EXT-01 (Kashier's answer on exact 30-day
+cadence — the agreement parameters are configuration and checkout is refused while unset), BILL-DEC-05
+(retry/grace numbers: a failed renewal currently keeps access until policy exists), BILL-DEC-02 (restricted
+access ruleset), BILL-DEC-06 (teacher notifications), BILL-EXT-05 (consent wording).
+
+## Second pass — abuse limits, exposure and tooling
+
+| Check | Result |
+|---|---|
+| `bandit -ll` (medium+) over the whole backend | 1 finding (`urlopen` scheme in the payment adapter) — fixed: https is now enforced inside the transport itself |
+| `pip-audit -r requirements.txt` | no known vulnerabilities |
+| `check --deploy` with a production-like environment | no issues apart from `SECURE_SSL_REDIRECT`, which is only off because the shipped dev `.env` sets it; the production default is on |
+| Hard-coded secrets scan (Google/OpenAI/AWS/GitHub/Slack key shapes, private keys) | clean; the only hits are obviously fake test fixtures |
+| Payment endpoints had no rate limit | per-user: checkout 10/h, cancel 10/h, status/history 120/min; per-IP on the unauthenticated webhook 600/min (bounds HMAC CPU, generous for provider retries). Tests: `billing/test_throttles.py` |
+| Django admin was always mounted at `/admin/` with an un-throttled login | now OFF in production unless `DJANGO_ENABLE_ADMIN=True`; path configurable with `DJANGO_ADMIN_PATH`. Tests: `config.tests.AdminExposureTests` |
+| `private-media/` (uploaded lesson videos) was not git-ignored | added to `.gitignore` |
+| Committed secret in `.env.example` (an e-mail app password) | removed; MUST be revoked at the provider (see BILLING-CHANGES.md) |
+
+Still outside the code, needs an operator: rotate the leaked e-mail password and the Gemini key that sat in the shipped
+`.env`; put the admin (if enabled) behind a VPN/IP allow-list; IP allow-list the webhook path to Kashier's
+addresses at the proxy as an EXTRA layer (never instead of the signature); schedule the three billing workers.
