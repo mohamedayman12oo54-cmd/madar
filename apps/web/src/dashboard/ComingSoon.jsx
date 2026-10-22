@@ -6,9 +6,14 @@ import { Construction } from "lucide-react";
 export default function ComingSoon({ title, text }) {
   return (
     <div className="dash-empty">
-      <div className="ic"><Construction size={26} /></div>
+      <div className="ic">
+        <Construction size={26} />
+      </div>
       <h2>{title}</h2>
-      <p>{text || "سيتم ربط هذا القسم بالبيانات الحقيقية عند اكتمال الجزء الخاص به من الواجهة الخلفية."}</p>
+      <p>
+        {text ||
+          "سيتم ربط هذا القسم بالبيانات الحقيقية عند اكتمال الجزء الخاص به من الواجهة الخلفية."}
+      </p>
     </div>
   );
 }
