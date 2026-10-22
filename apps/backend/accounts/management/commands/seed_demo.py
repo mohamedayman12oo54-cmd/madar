@@ -39,11 +39,7 @@ class Command(BaseCommand):
         env_a, _ = Environment.objects.get_or_create(
             owner=teacher, name="مجموعات الصف الثالث الثانوي", defaults={"subject_stage": "الرياضيات"}
         )
-        env_b, _ = Environment.objects.get_or_create(
-            owner=teacher, name="مجموعات الصف الثاني الثانوي", defaults={"subject_stage": "الرياضيات"}
-        )
         EnvironmentMembership.objects.get_or_create(user=teacher, environment=env_a, defaults={"role": "owner"})
-        EnvironmentMembership.objects.get_or_create(user=teacher, environment=env_b, defaults={"role": "owner"})
 
         claimed, _ = User.objects.update_or_create(
             phone="201119998888",
