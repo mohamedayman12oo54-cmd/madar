@@ -32,8 +32,8 @@ const normalize = (p) =>
   ("/" + p.replace(/^\/+/, ""))
     // `${qs(...)}` builds a QUERY STRING, not a path segment — drop it.
     .replace(/\$\{\s*qs\([\s\S]*?\)\s*\}/g, "")
-    .replace(/<[^>]+>/g, ":p")       // Django converters
-    .replace(/\$\{[^}]*\}/g, ":p")   // JS template holes (real path params)
+    .replace(/<[^>]+>/g, ":p") // Django converters
+    .replace(/\$\{[^}]*\}/g, ":p") // JS template holes (real path params)
     .split("?")[0]
     .replace(/\/+$/, "") + "/";
 
@@ -54,9 +54,11 @@ function frontendCalls() {
   const calls = [];
   for (const file of readdirSync(LIB).filter((f) => f.endsWith(".js") && !f.includes(".test."))) {
     const src = readFileSync(join(LIB, file), "utf8");
-    for (const m of src.matchAll(/\b(?:api\.(?:get|post|put|patch|delete)|api[A-Z]\w*)\(\s*(["'`])([^"'`]*)\1/g)) {
+    for (const m of src.matchAll(
+      /\b(?:api\.(?:get|post|put|patch|delete)|api[A-Z]\w*)\(\s*(["'`])([^"'`]*)\1/g
+    )) {
       const raw = m[2];
-      if (!raw.startsWith("/")) continue;          // not a path literal
+      if (!raw.startsWith("/")) continue; // not a path literal
       calls.push({ file, raw, path: normalize(raw) });
     }
   }
@@ -68,21 +70,27 @@ function frontendCalls() {
 // silently: the skip reason names exactly what is missing.
 const BACKEND_PRESENT = existsSync(join(BACKEND, "config", "urls.py"));
 
-test("every frontend API path resolves to a backend route",
-  { skip: BACKEND_PRESENT ? false : `backend not found at ${BACKEND} — run this from the full checkout` },
+test(
+  "every frontend API path resolves to a backend route",
+  {
+    skip: BACKEND_PRESENT
+      ? false
+      : `backend not found at ${BACKEND} — run this from the full checkout`,
+  },
   () => {
-  const routes = backendRoutes();
-  assert.ok(routes.size > 20, `sanity: parsed ${routes.size} backend routes`);
-  const calls = frontendCalls();
-  assert.ok(calls.length > 20, `sanity: found ${calls.length} frontend calls`);
+    const routes = backendRoutes();
+    assert.ok(routes.size > 20, `sanity: parsed ${routes.size} backend routes`);
+    const calls = frontendCalls();
+    assert.ok(calls.length > 20, `sanity: found ${calls.length} frontend calls`);
 
-  const orphans = calls.filter((c) => !routes.has(c.path));
-  assert.deepEqual(
-    orphans.map((o) => `${o.file}: ${o.raw}`),
-    [],
-    "frontend calls an endpoint the backend does not serve"
-  );
-});
+    const orphans = calls.filter((c) => !routes.has(c.path));
+    assert.deepEqual(
+      orphans.map((o) => `${o.file}: ${o.raw}`),
+      [],
+      "frontend calls an endpoint the backend does not serve"
+    );
+  }
+);
 
 test("no API module in src/lib is dead code", () => {
   const modules = readdirSync(LIB).filter((f) => f.endsWith("Api.js"));
@@ -93,7 +101,10 @@ test("no API module in src/lib is dead code", () => {
   const walk = (dir) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
-      if (e.isDirectory()) { walk(p); continue; }
+      if (e.isDirectory()) {
+        walk(p);
+        continue;
+      }
       if (!/\.(jsx?|mjs)$/.test(e.name)) continue;
       for (const m of readFileSync(p, "utf8").matchAll(/from\s+["']([^"']+)["']/g)) {
         imported.add(m[1].split("/").pop());
