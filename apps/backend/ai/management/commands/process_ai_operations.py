@@ -49,6 +49,15 @@ from knowledge.retrieval import as_citations, as_context, select_sources
 
 log = logging.getLogger(__name__)
 
+# BILL-WU-011 / OP-PARITY: the two plan-gated kinds and the capability each one
+# needs. `assistant` is deliberately absent (BILL-DEC-07: not gated until decided).
+GATED_KIND_CAPABILITIES = {
+    AIOperation.Kind.STATE_RECOMMENDATION: capabilities.AI_PERFORMANCE_ANALYSIS,
+    AIOperation.Kind.QUIZ_GENERATION: capabilities.AI_QUIZ_FROM_VIDEO,
+}
+# Stable, client-safe error stored when the capability was lost between submit and processing.
+ENTITLEMENT_LOST_ERROR = "انتهت صلاحية الباقة المطلوبة لهذه الميزة قبل تنفيذ الطلب."
+
 
 def claim(op_id: int) -> bool:
     """Atomically move ONE operation pending -> processing. A single
