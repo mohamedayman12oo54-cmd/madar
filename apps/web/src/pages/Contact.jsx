@@ -22,11 +22,43 @@ export default function Contact() {
               <p style={{ color: "var(--muted)" }}>شكرًا لتواصلك — سنعود إليك قريبًا.</p>
             </div>
           ) : (
-            <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} style={{ display: "grid", gap: "14px" }}>
-              <input required placeholder="الاسم الكامل" value={form.name} onChange={on("name")} style={inp} />
-              <input required type="email" placeholder="البريد الإلكتروني" value={form.email} onChange={on("email")} style={inp} />
-              <textarea required placeholder="رسالتك" rows={5} value={form.message} onChange={on("message")} style={{ ...inp, resize: "vertical" }} />
-              <button className="btn btn-primary btn-lg" type="submit" style={{ justifyContent: "center" }}>إرسال الرسالة</button>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSent(true);
+              }}
+              style={{ display: "grid", gap: "14px" }}
+            >
+              <input
+                required
+                placeholder="الاسم الكامل"
+                value={form.name}
+                onChange={on("name")}
+                style={inp}
+              />
+              <input
+                required
+                type="email"
+                placeholder="البريد الإلكتروني"
+                value={form.email}
+                onChange={on("email")}
+                style={inp}
+              />
+              <textarea
+                required
+                placeholder="رسالتك"
+                rows={5}
+                value={form.message}
+                onChange={on("message")}
+                style={{ ...inp, resize: "vertical" }}
+              />
+              <button
+                className="btn btn-primary btn-lg"
+                type="submit"
+                style={{ justifyContent: "center" }}
+              >
+                إرسال الرسالة
+              </button>
             </form>
           )}
         </div>
