@@ -14,8 +14,16 @@ const PUBLIC = join(ROOT, "public");
 const manifest = JSON.parse(readFileSync(join(PUBLIC, "manifest.webmanifest"), "utf8"));
 
 test("manifest carries everything a browser needs to offer installation", () => {
-  for (const key of ["name", "short_name", "start_url", "scope", "display", "icons",
-    "background_color", "theme_color"]) {
+  for (const key of [
+    "name",
+    "short_name",
+    "start_url",
+    "scope",
+    "display",
+    "icons",
+    "background_color",
+    "theme_color",
+  ]) {
     assert.ok(manifest[key], `manifest is missing ${key}`);
   }
   assert.equal(manifest.display, "standalone", "must open without browser chrome");
@@ -65,7 +73,11 @@ test("navigations are network-first so a deploy is never masked by cache", () =>
 
 test("the service worker is only registered in production builds", () => {
   const main = readFileSync(join(ROOT, "src", "main.jsx"), "utf8");
-  assert.match(main, /import\.meta\.env\?\.PROD/, "registering in dev would cache the module graph");
+  assert.match(
+    main,
+    /import\.meta\.env\?\.PROD/,
+    "registering in dev would cache the module graph"
+  );
   assert.match(main, /serviceWorker/);
 });
 
