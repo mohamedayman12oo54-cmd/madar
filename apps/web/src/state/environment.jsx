@@ -16,7 +16,11 @@
 // validate ownership server-side) — never with a value the UI invented.
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { envApi } from "../auth/api.js";
-import { clearActiveEnvironmentId, getActiveEnvironmentId, setActiveEnvironmentId } from "../lib/api.js";
+import {
+  clearActiveEnvironmentId,
+  getActiveEnvironmentId,
+  setActiveEnvironmentId,
+} from "../lib/api.js";
 import { useSession } from "./session.jsx";
 
 const EnvironmentContext = createContext(null);
@@ -62,7 +66,10 @@ export function EnvironmentProvider({ children }) {
   const select = useCallback((env, role = "owner") => {
     epoch.current++;
     setActiveEnvironmentId(env.id);
-    setState({ status: "ready", environment: { id: env.id, name: env.name, initials: env.initials, role } });
+    setState({
+      status: "ready",
+      environment: { id: env.id, name: env.name, initials: env.initials, role },
+    });
   }, []);
 
   const clear = useCallback(() => {

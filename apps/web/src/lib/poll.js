@@ -18,7 +18,15 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function pollUntilDone(
   getOp,
-  { isDone, intervalMs = 2000, maxAttempts = 60, maxConsecutiveErrors = 3, onUpdate, signal, sleep = defaultSleep } = {},
+  {
+    isDone,
+    intervalMs = 2000,
+    maxAttempts = 60,
+    maxConsecutiveErrors = 3,
+    onUpdate,
+    signal,
+    sleep = defaultSleep,
+  } = {}
 ) {
   let consecutiveErrors = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {

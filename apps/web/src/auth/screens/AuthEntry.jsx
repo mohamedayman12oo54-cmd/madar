@@ -8,26 +8,46 @@ export default function AuthEntry() {
   return (
     <AuthShell>
       <AuthCard>
-        <Head title="أهلاً بيك في مدار" sub="منصّة بسيطة تساعد المدرّسين والطلاب على إدارة رحلتهم التعليمية." />
+        <Head
+          title="أهلاً بيك في مدار"
+          sub="منصّة بسيطة تساعد المدرّسين والطلاب على إدارة رحلتهم التعليمية."
+        />
         <div className="choices">
           <button className="choice" onClick={go("/auth/teacher/login")}>
-            <span className="ci"><Users size={24} /></span>
-            <span className="choice-txt"><span className="ct">أنا مدرّس</span><span className="cd">إدارة طلابك ومتابعة رحلتهم التعليمية</span></span>
+            <span className="ci">
+              <Users size={24} />
+            </span>
+            <span className="choice-txt">
+              <span className="ct">أنا مدرّس</span>
+              <span className="cd">إدارة طلابك ومتابعة رحلتهم التعليمية</span>
+            </span>
             <ArrowRight className="cg" size={18} style={{ transform: "scaleX(-1)" }} />
           </button>
           <button className="choice" onClick={go("/auth/student")}>
-            <span className="ci"><User size={24} /></span>
-            <span className="choice-txt"><span className="ct">أنا طالب</span><span className="cd">تابع تقدّمك وتعلّم بذكاء</span></span>
+            <span className="ci">
+              <User size={24} />
+            </span>
+            <span className="choice-txt">
+              <span className="ct">أنا طالب</span>
+              <span className="cd">تابع تقدّمك وتعلّم بذكاء</span>
+            </span>
             <ArrowRight className="cg" size={18} style={{ transform: "scaleX(-1)" }} />
           </button>
           <button className="choice" onClick={go("/auth/parent")}>
-            <span className="ci"><HeartHandshake size={24} /></span>
-            <span className="choice-txt"><span className="ct">أنا ولي أمر</span><span className="cd">تابع حضور ابنك وتسميعه ومدفوعاته وتقييمه</span></span>
+            <span className="ci">
+              <HeartHandshake size={24} />
+            </span>
+            <span className="choice-txt">
+              <span className="ct">أنا ولي أمر</span>
+              <span className="cd">تابع حضور ابنك وتسميعه ومدفوعاته وتقييمه</span>
+            </span>
             <ArrowRight className="cg" size={18} style={{ transform: "scaleX(-1)" }} />
           </button>
         </div>
         <div className="auth-foot" style={{ textAlign: "center" }}>
-          <button className="link" onClick={go("/auth/team/login")}>دخول فريق مدار</button>
+          <button className="link" onClick={go("/auth/team/login")}>
+            دخول فريق مدار
+          </button>
         </div>
       </AuthCard>
     </AuthShell>

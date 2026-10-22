@@ -20,6 +20,7 @@ Domain rules (docs: domain-model, invariants INV-4/INV-8, lifecycles, functional
 - Records can only be written while the session is OPEN (docs: lifecycles);
   corrections go through reopen -> edit -> close.
 """
+import secrets
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
@@ -242,3 +243,45 @@ class GuestVisit(TenantOwnedModel):
             raise ValidationError("الزيارة يجب أن تنتمي لنفس بيئة تسجيل الطالب.")
         if self.session_id and self.enrollment_id and self.enrollment.groups.filter(pk=self.session.group_id).exists():
             raise ValidationError("الطالب من مجموعة هذه الجلسة أصلًا، وليس ضيفًا.")
+
+
+def new_checkin_token():
+    """Opaque, unguessable handle carried by the QR (128 bits)."""
+    return secrets.token_urlsafe(16)
+
+
+def new_checkin_code():
+    """The short code the teacher tells the class (NOT part of the QR)."""
+    return f"{secrets.randbelow(10 ** 6):06d}"
+
+
+class CheckinLink(TenantOwnedModel):
+    """A teacher-generated self check-in for ONE open session.
+
+    Two secrets are needed to use it, and they travel by different routes:
+      * `token`  - inside the QR (a link). Anyone who can see the screen has it.
+      * `code`   - six digits the teacher says out loud / writes on the board.
+    A photo of the QR alone therefore cannot mark anyone present.
+
+    What it can do is deliberately tiny: mark an ACTIVE member of THIS
+    session's group present, while the session is open and the link unexpired.
+    Nothing else (no absence, no recitation, no payment, no data is read).
+    Generating a new link revokes the previous one for the session.
+    """
+
+    session = models.ForeignKey(SessionInstance, on_delete=models.CASCADE, related_name="checkin_links")
+    token = models.CharField(max_length=32, unique=True, default=new_checkin_token, editable=False)
+    code = models.CharField(max_length=6, default=new_checkin_code, editable=False)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    checked_in_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    VALID_FOR = timedelta(hours=3)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def is_usable(self, now=None):
+        now = now or timezone.now()
+        return self.revoked_at is None and self.expires_at > now and self.session.status == SessionInstance.Status.OPEN

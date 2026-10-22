@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COUNTRIES, canonicalPhone, cleanNational, formatPhone, phoneError, parseInternational } from "./phone.js";
+import {
+  COUNTRIES,
+  canonicalPhone,
+  cleanNational,
+  formatPhone,
+  phoneError,
+  parseInternational,
+} from "./phone.js";
 
 // Same samples as madar-backend/accounts/test_phones.py
 const VALID = {
@@ -17,9 +24,20 @@ const VALID = {
   "+212 612 345 678": "212612345678",
 };
 const INVALID = [
-  "", "   ", "abc", "+20abc", "+20 1301234567", "+20 100123456", "+20 10012345678",
-  "+966 4 123 4567", "+966 5123456", "+971 51 234 5678",
-  "+999 123456789", "+1 202 555 0123", "+20 100 123 4567; DROP TABLE", "<script>",
+  "",
+  "   ",
+  "abc",
+  "+20abc",
+  "+20 1301234567",
+  "+20 100123456",
+  "+20 10012345678",
+  "+966 4 123 4567",
+  "+966 5123456",
+  "+971 51 234 5678",
+  "+999 123456789",
+  "+1 202 555 0123",
+  "+20 100 123 4567; DROP TABLE",
+  "<script>",
 ];
 
 test("valid numbers normalise to one canonical form", () => {
@@ -45,9 +63,10 @@ test("every country accepts its own example and rejects an extra digit", () => {
 });
 
 test("dial codes are prefix-free", () => {
-  for (const a of COUNTRIES) for (const b of COUNTRIES) {
-    if (a !== b) assert.ok(!b.dial.startsWith(a.dial), `${a.iso}/${b.iso}`);
-  }
+  for (const a of COUNTRIES)
+    for (const b of COUNTRIES) {
+      if (a !== b) assert.ok(!b.dial.startsWith(a.dial), `${a.iso}/${b.iso}`);
+    }
 });
 
 test("optional fields may be empty", () => {

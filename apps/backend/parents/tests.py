@@ -51,6 +51,18 @@ class _Base(TenantTestCase):
         return c
 
 
+    def _assert_no_session_possible(self):
+        """The request answers 200 either way, but the flow it opens carries no enrolment."""
+        r = self.anon.post(REQ, {"phone": GUARDIAN})
+        self.assertEqual(r.status_code, 200)
+        pending = PendingAuth.objects.get(pk=r.json()["pending_id"])
+        self.assertEqual(pending.payload["enrollment_ids"], [])
+        pending.verified = True
+        pending.save(update_fields=["verified"])
+        v = self.anon.post(VERIFY, {"pending_id": str(pending.pk)})
+        self.assertEqual(v.status_code, 400)
+
+
 class GuardianLoginTests(_Base):
     def test_a_recorded_guardian_number_receives_a_code_and_gets_a_session(self):
         r = self.anon.post(REQ, {"phone": GUARDIAN})
@@ -63,13 +75,26 @@ class GuardianLoginTests(_Base):
         self.assertIn("token", v.json())
         self.assertEqual(v.json()["student_name"], "ابن")
 
-    def test_an_unknown_number_is_refused_with_a_generic_message(self):
+    def test_the_code_request_does_not_reveal_whether_a_number_is_a_guardian(self):
+        known = self.anon.post(REQ, {"phone": GUARDIAN})
         unknown = self.anon.post(REQ, {"phone": "201111999888"})
-        self.assertEqual(unknown.status_code, 400)
         # A teacher's own number must look exactly the same — no oracle.
         teacher = self.anon.post(REQ, {"phone": self.teacher_a.phone})
-        self.assertEqual(teacher.status_code, 400)
-        self.assertEqual(unknown.json()["detail"], teacher.json()["detail"])
+        self.assertEqual({known.status_code, unknown.status_code, teacher.status_code}, {200})
+        self.assertEqual(set(known.json()), set(unknown.json()))
+        self.assertEqual(known.json()["message"], unknown.json()["message"])
+        self.assertEqual(unknown.json()["message"], teacher.json()["message"])
+
+    def test_an_unknown_number_gets_an_inert_flow_that_can_never_become_a_session(self):
+        r = self.anon.post(REQ, {"phone": "201111999888"})
+        pending = PendingAuth.objects.get(pk=r.json()["pending_id"])
+        self.assertEqual(pending.payload["enrollment_ids"], [])
+        # Even if the flow were somehow marked verified, there is nothing to exchange it for.
+        pending.verified = True
+        pending.save(update_fields=["verified"])
+        v = self.anon.post(VERIFY, {"pending_id": str(pending.pk)})
+        self.assertEqual(v.status_code, 400)
+        self.assertNotIn("token", v.json())
 
     def test_an_unverified_flow_cannot_be_exchanged_for_a_session(self):
         pending_id = self.anon.post(REQ, {"phone": GUARDIAN}).json()["pending_id"]
@@ -78,7 +103,7 @@ class GuardianLoginTests(_Base):
     def test_a_guardian_of_an_inactive_enrolment_loses_access(self):
         self.enr.is_active = False
         self.enr.save()
-        self.assertEqual(self.anon.post(REQ, {"phone": GUARDIAN}).status_code, 400)
+        self._assert_no_session_possible()
         self.assertEqual(self.portal().get(OVERVIEW).status_code, 401)
 
     def test_changing_the_recorded_number_revokes_an_existing_session(self):
@@ -128,20 +153,22 @@ class GuardianNeedsNoAccountTests(_Base):
     def test_a_child_who_has_not_activated_gives_the_guardian_no_access(self):
         self.student.is_active = False
         self.student.save()
+        # ...and the answer is indistinguishable from an unknown number (200), but nothing can be exchanged.
         r = self.anon.post(REQ, {"phone": GUARDIAN})
-        self.assertEqual(r.status_code, 400)
-        # ...and the refusal is indistinguishable from an unknown number.
         unknown = self.anon.post(REQ, {"phone": "201111999888"})
-        self.assertEqual(r.json()["detail"], unknown.json()["detail"])
-        self.assertEqual(PendingAuth.objects.filter(purpose="parent_access").count(), 0)
+        self.assertEqual(r.status_code, unknown.status_code)
+        self.assertEqual(set(r.json()), set(unknown.json()))
+        self.assertEqual(PendingAuth.objects.get(pk=r.json()["pending_id"]).payload["enrollment_ids"], [])
 
     def test_access_starts_the_moment_the_child_activates(self):
         self.student.is_active = False
         self.student.save()
-        self.assertEqual(self.anon.post(REQ, {"phone": GUARDIAN}).status_code, 400)
+        self._assert_no_session_possible()
         self.student.is_active = True
         self.student.save()
-        self.assertEqual(self.anon.post(REQ, {"phone": GUARDIAN}).status_code, 200)
+        r = self.anon.post(REQ, {"phone": GUARDIAN})
+        self.assertEqual(r.status_code, 200)
+        self.assertNotEqual(PendingAuth.objects.get(pk=r.json()["pending_id"]).payload["enrollment_ids"], [])
 
     def test_deactivating_the_child_ends_an_existing_guardian_session(self):
         c = self.portal()

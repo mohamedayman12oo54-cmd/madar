@@ -20,17 +20,17 @@ const DISMISSED_KEY = "madar.install.dismissed";
 const DISMISS_DAYS = 14;
 
 const isStandalone = () =>
-  window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+  window.matchMedia?.("(display-mode: standalone)")?.matches ||
+  window.navigator.standalone === true;
 
-const isIOS = () =>
-  /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
+const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
 
 function recentlyDismissed() {
   try {
     const at = Number(localStorage.getItem(DISMISSED_KEY) || 0);
     return at > 0 && Date.now() - at < DISMISS_DAYS * 864e5;
   } catch {
-    return false;   // private mode: just show it
+    return false; // private mode: just show it
   }
 }
 
@@ -43,7 +43,7 @@ export default function InstallPrompt() {
     if (isStandalone() || recentlyDismissed()) return undefined;
 
     const onBeforeInstall = (e) => {
-      e.preventDefault();          // suppress the browser's own bar
+      e.preventDefault(); // suppress the browser's own bar
       setDeferred(e);
       setShow(true);
     };
@@ -53,10 +53,16 @@ export default function InstallPrompt() {
     // long enough not to interrupt the first paint.
     let timer;
     if (isIOS()) {
-      timer = setTimeout(() => { setIosHelp(true); setShow(true); }, 2500);
+      timer = setTimeout(() => {
+        setIosHelp(true);
+        setShow(true);
+      }, 2500);
     }
 
-    const onInstalled = () => { setShow(false); setDeferred(null); };
+    const onInstalled = () => {
+      setShow(false);
+      setDeferred(null);
+    };
     window.addEventListener("appinstalled", onInstalled);
 
     return () => {
@@ -68,7 +74,11 @@ export default function InstallPrompt() {
 
   const dismiss = useCallback(() => {
     setShow(false);
-    try { localStorage.setItem(DISMISSED_KEY, String(Date.now())); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(DISMISSED_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const install = useCallback(async () => {
@@ -78,7 +88,11 @@ export default function InstallPrompt() {
     setDeferred(null);
     setShow(false);
     if (outcome === "dismissed") {
-      try { localStorage.setItem(DISMISSED_KEY, String(Date.now())); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(DISMISSED_KEY, String(Date.now()));
+      } catch {
+        /* ignore */
+      }
     }
   }, [deferred]);
 
@@ -86,20 +100,26 @@ export default function InstallPrompt() {
 
   return (
     <div className="install-card" role="dialog" aria-label="تثبيت تطبيق مدار">
-      <span className="install-icon"><Download size={20} /></span>
+      <span className="install-icon">
+        <Download size={20} />
+      </span>
       <div className="install-main">
         <strong>ثبّت مدار على جهازك</strong>
         {iosHelp ? (
           <p>
-            من قائمة المشاركة <Share size={13} className="inline-ico" /> اختر
-            {" "}«إضافة إلى الشاشة الرئيسية» <Plus size={13} className="inline-ico" />.
+            من قائمة المشاركة <Share size={13} className="inline-ico" /> اختر «إضافة إلى الشاشة
+            الرئيسية» <Plus size={13} className="inline-ico" />.
           </p>
         ) : (
           <p>افتح مدار مباشرة من شاشتك، بدون متصفح وبسرعة أكبر.</p>
         )}
       </div>
       <div className="install-actions">
-        {!iosHelp && <button type="button" className="install-btn" onClick={install}>تثبيت</button>}
+        {!iosHelp && (
+          <button type="button" className="install-btn" onClick={install}>
+            تثبيت
+          </button>
+        )}
         <button type="button" className="install-close" aria-label="إغلاق" onClick={dismiss}>
           <X size={16} />
         </button>

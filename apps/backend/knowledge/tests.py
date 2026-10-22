@@ -59,6 +59,25 @@ class KBAuthoringTests(TestCase):
         self.assertEqual(self.c.post(f"{URL}{doc_id}/unpublish/").json()["status"], "draft")
         self.assertEqual(KBDocument.published.count(), 0)
 
+    def test_editing_a_published_document_bumps_the_version_so_answers_can_cite_exactly_what_they_used(self):
+        doc_id = self.c.post(URL, BODY).json()["id"]
+        self.c.post(f"{URL}{doc_id}/publish/")
+        edited = self.c.patch(f"{URL}{doc_id}/", {"body": BODY["body"] + " وتُسمّى أيضًا قانون القصور الذاتي."})
+        self.assertEqual(edited.status_code, 200, edited.content)
+        self.assertEqual(edited.json()["version"], 2, "live source text changed, so its version must change")
+        self.assertEqual(edited.json()["status"], "published")
+
+    def test_a_save_that_changes_nothing_does_not_bump_the_version(self):
+        doc_id = self.c.post(URL, BODY).json()["id"]
+        self.c.post(f"{URL}{doc_id}/publish/")
+        same = self.c.patch(f"{URL}{doc_id}/", {"title": BODY["title"]})
+        self.assertEqual(same.json()["version"], 1)
+
+    def test_editing_a_draft_does_not_bump_the_version(self):
+        doc_id = self.c.post(URL, BODY).json()["id"]
+        edited = self.c.patch(f"{URL}{doc_id}/", {"title": "عنوان جديد واضح"})
+        self.assertEqual(edited.json()["version"], 1)
+
     def test_republishing_bumps_the_lightweight_version(self):
         doc_id = self.c.post(URL, BODY).json()["id"]
         self.assertEqual(self.c.post(f"{URL}{doc_id}/publish/").json()["version"], 1)

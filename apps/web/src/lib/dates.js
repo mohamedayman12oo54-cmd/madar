@@ -15,8 +15,13 @@ const AR = "ar-EG";
 export const WEEK_ORDER = [6, 0, 1, 2, 3, 4, 5];
 
 export const DAY_NAMES = {
-  6: "السبت", 0: "الأحد", 1: "الاثنين", 2: "الثلاثاء",
-  3: "الأربعاء", 4: "الخميس", 5: "الجمعة",
+  6: "السبت",
+  0: "الأحد",
+  1: "الاثنين",
+  2: "الثلاثاء",
+  3: "الأربعاء",
+  4: "الخميس",
+  5: "الجمعة",
 };
 
 /** Python weekday (Mon=0 .. Sun=6, what the Schedule model stores) → JS getDay(). */
@@ -147,12 +152,16 @@ const valid = (value) => {
 
 export const fmtDate = (value) => {
   const d = valid(value);
-  return d ? new Intl.DateTimeFormat(AR, { day: "numeric", month: "long", year: "numeric" }).format(d) : "—";
+  return d
+    ? new Intl.DateTimeFormat(AR, { day: "numeric", month: "long", year: "numeric" }).format(d)
+    : "—";
 };
 
 export const fmtTime = (value) => {
   const d = valid(value);
-  return d ? new Intl.DateTimeFormat(AR, { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
+  return d
+    ? new Intl.DateTimeFormat(AR, { hour: "numeric", minute: "2-digit", hour12: true }).format(d)
+    : "—";
 };
 
 export const fmtDateTime = (value) => {
@@ -164,7 +173,9 @@ export const fmtDateTime = (value) => {
 export const fmtMonth = (ym) => {
   const m = /^(\d{4})-(\d{2})/.exec(String(ym || ""));
   if (!m) return ym ? String(ym) : "—";
-  return new Intl.DateTimeFormat(AR, { month: "long", year: "numeric" }).format(new Date(Number(m[1]), Number(m[2]) - 1, 1));
+  return new Intl.DateTimeFormat(AR, { month: "long", year: "numeric" }).format(
+    new Date(Number(m[1]), Number(m[2]) - 1, 1)
+  );
 };
 
 /** "HH:mm" or "HH:mm:ss" (what the backend sends for a weekly slot) → "٤:٠٠ م". */

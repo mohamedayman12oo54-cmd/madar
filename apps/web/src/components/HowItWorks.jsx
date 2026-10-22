@@ -14,7 +14,10 @@ export default function HowItWorks() {
             <Reveal key={i} delay={i * 0.06}>
               <div className="stp">
                 <span className="sn">{s.n}</span>
-                <div><h3>{s.t}</h3><p>{s.d}</p></div>
+                <div>
+                  <h3>{s.t}</h3>
+                  <p>{s.d}</p>
+                </div>
               </div>
             </Reveal>
           ))}

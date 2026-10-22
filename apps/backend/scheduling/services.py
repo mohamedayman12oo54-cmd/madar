@@ -5,13 +5,13 @@ import datetime as dt
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from notifications.services import notify_absent, notify_not_studied
 
 from academics.models import Enrollment
-from .models import AttendanceRecord, GuestVisit, RecitationRecord, Schedule, SessionInstance
+from .models import AttendanceRecord, CheckinLink, GuestVisit, RecitationRecord, Schedule, SessionInstance
 
 MAX_GENERATE_WEEKS = 8
 
@@ -271,3 +271,62 @@ def apply_guest_visits(session):
               .select_related("enrollment", "session").order_by("session__scheduled_at", "id").distinct())
     for visit in visits:
         _carry(visit, session, overwrite=False)
+
+
+# ------------------------------------------------------------ self check-in --
+def issue_checkin_link(session):
+    """Create the session's check-in link, revoking any earlier one. Only an
+    OPEN session can have one (it is the only state attendance can be written in)."""
+    if session.is_overdue():
+        session.close(auto=True)
+    if session.status != SessionInstance.Status.OPEN:
+        raise ValidationError("افتح الجلسة أولًا لإنشاء رمز تسجيل الحضور.")
+    with transaction.atomic():
+        now = timezone.now()
+        CheckinLink.objects.filter(session=session, revoked_at__isnull=True).update(revoked_at=now)
+        return CheckinLink.objects.create(
+            environment_id=session.environment_id, session=session, expires_at=now + CheckinLink.VALID_FOR)
+
+
+def active_checkin_link(session):
+    link = CheckinLink.objects.filter(session=session, revoked_at__isnull=True).order_by("-created_at").first()
+    return link if link and link.is_usable() else None
+
+
+def revoke_checkin_links(session):
+    return CheckinLink.objects.filter(session=session, revoked_at__isnull=True).update(revoked_at=timezone.now())
+
+
+def self_check_in(link, phone):
+    """Mark the student who owns `phone` PRESENT in the link's session.
+
+    Returns ("recorded" | "already", enrollment). Raises ValidationError with a
+    generic message for every identity failure, so the endpoint cannot be used to
+    learn which phone numbers belong to this teacher's students.
+    """
+    from accounts.models import User
+
+    session = link.session
+    if session.is_overdue():
+        session.close(auto=True)
+    if not link.is_usable():
+        raise ValidationError("انتهت صلاحية هذا الرمز أو أُغلقت الجلسة. اطلب من المعلّم رمزًا جديدًا.")
+    enrollment = (Enrollment.objects
+                  .filter(environment_id=session.environment_id, is_active=True,
+                          student__role=User.Role.STUDENT, student__phone=phone, groups=session.group_id)
+                  .select_related("student").first())
+    if enrollment is None:
+        raise ValidationError(GENERIC_CHECKIN_FAILURE)
+    with transaction.atomic():
+        existing = AttendanceRecord.objects.select_for_update().filter(session=session, enrollment=enrollment).first()
+        if existing and existing.status == AttendanceRecord.Status.PRESENT:
+            return "already", enrollment
+        if existing and not existing.auto_marked:
+            # The teacher explicitly marked this student absent: a self check-in must never overturn that.
+            raise ValidationError("سجّل لك المعلّم غيابًا في هذه الجلسة. تواصل معه مباشرة.")
+        mark_attendance(session, enrollment, AttendanceRecord.Status.PRESENT)
+        CheckinLink.objects.filter(pk=link.pk).update(checked_in_count=F("checked_in_count") + 1)
+    return "recorded", enrollment
+
+
+GENERIC_CHECKIN_FAILURE = "تعذّر تسجيل الحضور. تأكد من رقم هاتفك المسجّل في المنصة ومن الكود الذي أعطاك إياه المعلّم."

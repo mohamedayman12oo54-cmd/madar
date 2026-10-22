@@ -6,7 +6,9 @@
 import { api } from "./api.js";
 
 function qs(params) {
-  const entries = Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  const entries = Object.entries(params || {}).filter(
+    ([, v]) => v !== undefined && v !== null && v !== ""
+  );
   return entries.length ? `?${new URLSearchParams(entries).toString()}` : "";
 }
 

@@ -63,11 +63,13 @@ class GuardianRequestView(APIView):
         phone = ser.validated_data["phone"]
 
         enrollments = list(guardian_enrollments(phone))
-        if not enrollments:
-            raise serializers.ValidationError({"detail": NOT_FOUND, "code": "not_found"})
 
-        # Only one live guardian code per number.
-        supersede_pending(PendingAuth.Purpose.PARENT_ACCESS, phone)
+        # The answer must not reveal whether this number is a registered guardian phone (nor whether
+        # the child has activated): a registered and an unregistered number get the SAME 200 and the
+        # same body shape. An unregistered number gets an inert flow — it carries no enrollment ids
+        # and no code is sent — so verify can never turn it into a session. The legitimate guardian
+        # who mistyped finds out because no code arrives; the sign-in-by-code path is the primary one.
+        supersede_pending(PendingAuth.Purpose.PARENT_ACCESS, phone)  # only one live guardian code per number
         pending = PendingAuth(
             purpose=PendingAuth.Purpose.PARENT_ACCESS,
             payload={"enrollment_ids": [e.id for e in enrollments]},
@@ -75,10 +77,11 @@ class GuardianRequestView(APIView):
         )
         code = pending.set_new_otp()
         pending.save()
-        send_pending_code(pending, code, strict=False)
+        if enrollments:
+            send_pending_code(pending, code, strict=False)
         return Response(
             {"pending_id": pending.id, "target": pending.target,
-             "message": "تم إرسال رمز التحقق إلى رقمك.", **otp_debug_field(code)},
+             "message": "إن كان الرقم مسجّلًا لدينا فسيصلك رمز التحقق.", **otp_debug_field(code)},
             status=status.HTTP_200_OK,
         )
 

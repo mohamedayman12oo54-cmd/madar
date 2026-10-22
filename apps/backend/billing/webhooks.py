@@ -14,7 +14,9 @@ processed"). This is the only `AllowAny` route `billing` adds.
 import hashlib
 
 from django.conf import settings
+from django.core.exceptions import RequestDataTooBig
 from django.db import IntegrityError, transaction
+from accounts.throttles import BillingWebhookRateThrottle
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -55,13 +57,36 @@ class KashierWebhookView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [BillingWebhookRateThrottle]
 
     def post(self, request):
-        raw_body = request.body
+        # This route is unauthenticated, so the size is judged from the DECLARED length BEFORE a single
+        # byte of the body is read: reading first would let anyone make the server buffer up to
+        # DATA_UPLOAD_MAX_MEMORY_SIZE (20 MiB) per request, and past that Django's RequestDataTooBig
+        # would escape as a 500.
+        try:
+            declared = int(request.META.get("CONTENT_LENGTH") or 0)
+        except (TypeError, ValueError):
+            audit.log("webhook_rejected", reason="bad_content_length")
+            return Response(status=400)
+        if declared < 0 or declared > MAX_BODY_BYTES:
+            audit.log("webhook_rejected", reason="body_too_large")
+            return Response(status=400)
+        try:
+            raw_body = request.body
+        except RequestDataTooBig:
+            audit.log("webhook_rejected", reason="body_too_large")
+            return Response(status=400)
         if len(raw_body) > MAX_BODY_BYTES:
+            audit.log("webhook_rejected", reason="body_too_large")
             return Response(status=400)
 
         provider = get_payment_provider()
+        if not provider.ready_for_webhooks():
+            # Madar itself cannot verify signatures right now (keys not configured). That is OUR fault, not
+            # a forged request: answer 503 so the provider retries later, and store nothing.
+            audit.log("webhook_rejected", reason="provider_not_configured")
+            return Response(status=503)
         try:
             event = provider.verify_and_parse_webhook(raw_body, request.headers)
         except InvalidSignature:
@@ -81,6 +106,12 @@ class KashierWebhookView(APIView):
 
         audit.log("webhook_verified", kind=event.kind, mode=event.mode)
 
+        if event.kind == "idempotency":
+            # Kashier's replay notification: a duplicate signal, never a new event (docs: "Reconcile
+            # against the order you already have"). Acknowledge so it stops retrying.
+            audit.log("webhook_duplicate", dedup_key="idempotency-replay")
+            return Response(status=409)
+
         dedup_key = _dedup_key(event)
         try:
             with transaction.atomic():
@@ -93,6 +124,7 @@ class KashierWebhookView(APIView):
                     provider_order_id=event.provider_order_id,
                     signature_valid=True,
                     redacted_payload=_redact(event.raw),
+                    agreement_token=event.card_token, agreement_id=event.agreement_ref,
                 )
         except IntegrityError:
             # The same event delivered again (ADR-017 dedup, not the AI
@@ -102,6 +134,16 @@ class KashierWebhookView(APIView):
             return Response(status=409)
 
         audit.log("webhook_received", dedup_key=dedup_key, kind=event.kind)
+
+        # Best-effort, AFTER the receipt committed: apply now so the teacher is activated without
+        # waiting for the worker. Never changes the response (Kashier must get its 200 either way);
+        # on any failure the event stays `received` and `process_billing_events` recovers it.
+        try:
+            from . import events as billing_events
+
+            billing_events.apply(ProviderEvent.objects.get(dedup_key=dedup_key))
+        except Exception:  # noqa: BLE001 - deliberately broad; the worker is the guarantee
+            audit.log("webhook_apply_deferred", dedup_key=dedup_key)
 
         # Acknowledge fast: respond only after the receipt commits. No
         # application attempt happens here (explicitly out of scope;

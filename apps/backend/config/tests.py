@@ -33,7 +33,7 @@ SETTINGS_VARS = [
     # too — blanked here like every other settings-read variable.
     "PAYMENT_PROVIDER", "KASHIER_MODE", "KASHIER_MERCHANT_ID",
     "KASHIER_PAYMENT_API_KEY_TEST", "KASHIER_PAYMENT_API_KEY_LIVE",
-    "KASHIER_SECRET_KEY_TEST", "KASHIER_SECRET_KEY_LIVE",
+    "KASHIER_SECRET_KEY_TEST", "KASHIER_SECRET_KEY_LIVE", "KASHIER_WEBHOOK_URL", "BILLING_CHECKOUT_RETURN_URL",
 ]
 
 PROD = {
@@ -46,6 +46,8 @@ PROD = {
     # represents "a complete, valid production config" after that unit
     # added its own mandatory settings.
     "KASHIER_MERCHANT_ID": "m", "KASHIER_PAYMENT_API_KEY_TEST": "k", "KASHIER_SECRET_KEY_TEST": "s",
+    "KASHIER_WEBHOOK_URL": "https://api.example.com/api/v1/billing/webhooks/kashier/",
+    "BILLING_CHECKOUT_RETURN_URL": "https://app.example.com/app/billing",
 }
 
 DUMP = """
@@ -241,3 +243,29 @@ class SafeErrorOutputTests(TestCase):
         self.assertEqual(APIClient().get("/api/v1/auth/me/").status_code, 401)
         self.assertEqual(APIClient().get("/api/v1/environments/teacher/").status_code, 401)
         self.assertEqual(APIClient().get("/api/v1/environments/student/").status_code, 401)
+
+
+class AdminExposureTests(SimpleTestCase):
+    """The Django admin has an un-throttled password form: it must be OFF in production by default."""
+
+    CODE = ("import django;django.setup();from django.urls import resolve, Resolver404\n"
+            "from django.conf import settings\n"
+            "def has(p):\n"
+            "    try: return resolve(p).app_names == ['admin'] or 'admin' in resolve(p).view_name\n"
+            "    except Resolver404: return False\n"
+            "print(settings.ENABLE_ADMIN, has('/admin/login/'), has('/' + settings.ADMIN_URL + 'login/'))")
+
+    def run_it(self, overrides):
+        r = run_python(self.CODE, overrides)
+        self.assertEqual(r.returncode, 0, r.stderr[-600:])
+        return r.stdout.strip().splitlines()[-1]
+
+    def test_off_by_default_in_production(self):
+        self.assertEqual(self.run_it(PROD), "False False False")
+
+    def test_can_be_enabled_on_a_custom_path_and_the_default_path_then_404s(self):
+        out = self.run_it({**PROD, "DJANGO_ENABLE_ADMIN": "True", "DJANGO_ADMIN_PATH": "ops-9f3a/"})
+        self.assertEqual(out, "True False True")
+
+    def test_on_by_default_in_development(self):
+        self.assertEqual(self.run_it({"DJANGO_DEBUG": "True"}).split()[0], "True")

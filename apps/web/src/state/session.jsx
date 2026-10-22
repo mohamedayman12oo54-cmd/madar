@@ -10,7 +10,8 @@
 // sitting in browser storage.
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { authApi, saveSession as persistTokens } from "../auth/api.js";
-import { isAuthenticated, ApiError } from "../lib/api.js";
+import { isAuthenticated } from "../lib/api.js";
+import { clearAllDrafts } from "../lib/quizDraft.js";
 
 const SessionContext = createContext(null);
 
@@ -33,7 +34,9 @@ export function SessionProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => { bootstrap(); }, [bootstrap]);
+  useEffect(() => {
+    bootstrap();
+  }, [bootstrap]);
 
   // Call after a successful login/signup/claim response (which already has
   // { access, refresh, user }) — stores the tokens and updates state in one
@@ -45,6 +48,7 @@ export function SessionProvider({ children }) {
 
   const logout = useCallback(async () => {
     await authApi.logout();
+    clearAllDrafts();
     setState({ status: "anonymous", user: null });
   }, []);
 

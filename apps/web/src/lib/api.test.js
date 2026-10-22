@@ -12,15 +12,25 @@ globalThis.localStorage = {
 };
 
 const {
-  apiFetch, api, getTokens, setTokens, refreshAccessToken,
-  getActiveEnvironmentId, setActiveEnvironmentId, clearActiveEnvironmentId,
+  apiFetch,
+  api,
+  getTokens,
+  setTokens,
+  refreshAccessToken,
+  getActiveEnvironmentId,
+  setActiveEnvironmentId,
+  clearActiveEnvironmentId,
 } = await import("./api.js");
 
 const json = (status, body) => ({
-  status, ok: status >= 200 && status < 300, json: async () => body,
+  status,
+  ok: status >= 200 && status < 300,
+  json: async () => body,
 });
 
-beforeEach(() => { store.clear(); });
+beforeEach(() => {
+  store.clear();
+});
 
 test("rotated refresh token is stored (not discarded) after a refresh", async () => {
   setTokens({ access: "A0", refresh: "R0" });
@@ -65,7 +75,9 @@ test("concurrent 401s trigger exactly one refresh call", async () => {
     return auth === "Bearer A1" ? json(200, { ok: true }) : json(401, { detail: "expired" });
   };
   const results = await Promise.all([
-    apiFetch("/x/", { auth: true }), apiFetch("/y/", { auth: true }), apiFetch("/z/", { auth: true }),
+    apiFetch("/x/", { auth: true }),
+    apiFetch("/y/", { auth: true }),
+    apiFetch("/z/", { auth: true }),
   ]);
   assert.equal(refreshCalls, 1);
   assert.deepEqual(results, [{ ok: true }, { ok: true }, { ok: true }]);
@@ -81,7 +93,9 @@ test("a rejected refresh token clears the session", async () => {
 
 test("a network error or 5xx during refresh does NOT log the user out", async () => {
   setTokens({ access: "A0", refresh: "R0" });
-  globalThis.fetch = async () => { throw new TypeError("network down"); };
+  globalThis.fetch = async () => {
+    throw new TypeError("network down");
+  };
   assert.equal(await refreshAccessToken(), null);
   assert.deepEqual(getTokens(), { access: "A0", refresh: "R0" });
 
@@ -94,17 +108,26 @@ test("a network error or 5xx during refresh does NOT log the user out", async ()
 test("api.patch and api.delete send the right HTTP method", async () => {
   setTokens({ access: "A0", refresh: "R0" });
   const seen = [];
-  globalThis.fetch = async (url, init) => { seen.push({ url, method: init.method }); return json(200, { ok: true }); };
+  globalThis.fetch = async (url, init) => {
+    seen.push({ url, method: init.method });
+    return json(200, { ok: true });
+  };
   await api.patch("/x/1/", { name: "n" }, { auth: true });
   await api.delete("/x/1/", { auth: true });
-  assert.deepEqual(seen.map((s) => s.method), ["PATCH", "DELETE"]);
+  assert.deepEqual(
+    seen.map((s) => s.method),
+    ["PATCH", "DELETE"]
+  );
 });
 
 test("tenant:true attaches X-Madar-Environment when an active environment is set", async () => {
   setTokens({ access: "A0", refresh: "R0" });
   setActiveEnvironmentId(42);
   let seenHeader;
-  globalThis.fetch = async (url, init) => { seenHeader = init.headers["X-Madar-Environment"]; return json(200, {}); };
+  globalThis.fetch = async (url, init) => {
+    seenHeader = init.headers["X-Madar-Environment"];
+    return json(200, {});
+  };
   await apiFetch("/groups/", { tenant: true });
   assert.equal(seenHeader, "42");
 });
@@ -113,7 +136,10 @@ test("tenant:true sends no X-Madar-Environment header when none is set", async (
   setTokens({ access: "A0", refresh: "R0" });
   clearActiveEnvironmentId();
   let seenHeader = "unset";
-  globalThis.fetch = async (url, init) => { seenHeader = init.headers["X-Madar-Environment"]; return json(200, {}); };
+  globalThis.fetch = async (url, init) => {
+    seenHeader = init.headers["X-Madar-Environment"];
+    return json(200, {});
+  };
   await apiFetch("/groups/", { tenant: true });
   assert.equal(seenHeader, undefined);
 });
@@ -123,7 +149,11 @@ test("tenant:true also authenticates (implies auth) and survives a 401 refresh",
   setActiveEnvironmentId(7);
   globalThis.fetch = async (url, init) => {
     if (url.endsWith("/auth/token/refresh/")) return json(200, { access: "fresh", refresh: "R1" });
-    if (init.headers.Authorization === "Bearer fresh" && init.headers["X-Madar-Environment"] === "7") return json(200, { ok: true });
+    if (
+      init.headers.Authorization === "Bearer fresh" &&
+      init.headers["X-Madar-Environment"] === "7"
+    )
+      return json(200, { ok: true });
     return json(401, {});
   };
   const result = await apiFetch("/groups/", { tenant: true });
@@ -141,8 +171,15 @@ test("getActiveEnvironmentId / setActiveEnvironmentId / clearActiveEnvironmentId
 
 test("a form-level error shows its own message instead of the generic one", async () => {
   const { ApiError } = await import("./api.js");
-  const e = new ApiError(400, { detail: "تحقق من البيانات المدخلة.", code: "validation_error", fields: { non_field_errors: ["بيانات الدخول غير صحيحة، حاول مرة أخرى."] } });
+  const e = new ApiError(400, {
+    detail: "تحقق من البيانات المدخلة.",
+    code: "validation_error",
+    fields: { non_field_errors: ["بيانات الدخول غير صحيحة، حاول مرة أخرى."] },
+  });
   assert.equal(e.message, "بيانات الدخول غير صحيحة، حاول مرة أخرى.");
-  const plain = new ApiError(400, { detail: "تحقق من البيانات المدخلة.", fields: { phone: ["x"] } });
+  const plain = new ApiError(400, {
+    detail: "تحقق من البيانات المدخلة.",
+    fields: { phone: ["x"] },
+  });
   assert.equal(plain.message, "تحقق من البيانات المدخلة.");
 });

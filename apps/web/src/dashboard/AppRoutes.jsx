@@ -12,6 +12,7 @@ import FinancialsPage from "./FinancialsPage.jsx";
 import ContentPage from "./ContentPage.jsx";
 import NotificationsPage from "./NotificationsPage.jsx";
 import SettingsPage from "./SettingsPage.jsx";
+import BillingPage from "./BillingPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -28,6 +29,7 @@ export default function AppRoutes() {
           <Route path="financials" element={<FinancialsPage />} />
           <Route path="content" element={<ContentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="billing" element={<BillingPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

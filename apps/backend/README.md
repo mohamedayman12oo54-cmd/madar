@@ -22,7 +22,7 @@ python manage.py runserver
 The API is now at `http://127.0.0.1:8000/api/v1/`. Point the frontend at it via
 `madar-frontend/.env` → `VITE_API_URL=http://127.0.0.1:8000/api/v1`.
 
-Run the test suite (36 tests covering every flow, including negative/security cases):
+Run the test suite (1,150+ tests covering every flow, including negative, permission and tenant-isolation cases):
 ```bash
 python manage.py test
 ```
@@ -130,7 +130,7 @@ the teacher one, and pointed the link at it.
   `debug_otp`.
 
 ## Testing
-- `python manage.py test` — 36 unit/integration tests (Django's test client),
+- `python manage.py test` — the full unit/integration suite (1,152 tests at the last full run) (Django's test client),
   covering every flow's happy path plus the security-relevant edge cases
   above (wrong password, replayed/cross-purpose OTP, attempt lockout,
   enumeration, cross-tenant access, weak passwords, mismatched passwords,
@@ -180,7 +180,7 @@ with `DEBUG=False` and the placeholder secret key, on purpose.
   python manage.py process_ai_operations     # المساعد + اقتراح الحالة
   python manage.py purge_pending_auth        # يوميًا: حذف تدفقات OTP المنتهية
   ```
-- نقاط جديدة (كلها داخل بيئة المعلم النشطة `X-Environment-ID` ومحصورة بها):
+- نقاط جديدة (كلها داخل بيئة المعلم النشطة `X-Madar-Environment` ومحصورة بها):
   `scheduling/{schedules,sessions/generate,sessions/<id>/roster,attendance/mark,recitation/mark}` •
   `financials/monthly` • `evaluation/{monthly,ratings,ratings/publish,states,notes}` •
   `ai/state-recommendations` • `content/<id>/publish` • `notifications/{broadcast,summary,retry-failed}` •
@@ -192,7 +192,7 @@ with `DEBUG=False` and the placeholder secret key, on purpose.
 
 
 ## لوحة الطالب
-- نقاط `/api/v1/student/*` (تتطلب دور طالب + `X-Environment-ID` لبيئة هو نشط فيها): `overview` • `attendance` • `recitation` • `payments` • `evaluation` • `videos` • `notifications` (+`read-all`, `<id>/read`) • `quizzes` (+`operations/<id>`, `<id>`, `<id>/submit`) • `assistant`.
+- نقاط `/api/v1/student/*` (تتطلب دور طالب + `X-Madar-Environment` لبيئة هو نشط فيها): `overview` • `attendance` • `recitation` • `payments` • `evaluation` • `videos` • `notifications` (+`read-all`, `<id>/read`) • `quizzes` (+`operations/<id>`, `<id>`, `<id>/submit`) • `assistant`.
 - `python manage.py migrate` (يضيف `studentarea` و`ContentItem.quiz_source` وأنواع جديدة في `ai`).
 - الـ worker `process_ai_operations` يولّد الآن الاختبارات أيضًا — شغّله بجانب الخادم.
 - الاختبارات: `python manage.py test` (312).

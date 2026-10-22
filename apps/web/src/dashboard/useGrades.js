@@ -12,7 +12,8 @@ export function useGrades() {
 
   const reload = useCallback(() => {
     setStatus((s) => (s === "ready" ? "ready" : "loading")); // don't flash a spinner on a silent refresh
-    gradesApi.list()
+    gradesApi
+      .list()
       .then((data) => {
         setGrades(Array.isArray(data) ? data : data.results || []);
         setStatus("ready");
@@ -23,7 +24,9 @@ export function useGrades() {
       });
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   return { grades, status, error, reload };
 }

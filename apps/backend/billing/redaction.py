@@ -20,7 +20,7 @@ field never slips through.
 
 _FULL_REDACT_KEYS = frozenset({
     "card", "cardinfo", "cardnumber", "cardholdername", "maskedcard", "maskedpan",
-    "cvv", "cvc", "pan", "token", "cardtoken", "secret", "secretkey", "apikey", "password", "signature",
+    "cvv", "cvc", "pan", "token", "cardtoken", "carddatatoken", "ccvtoken", "agreementtoken", "secret", "secretkey", "apikey", "password", "signature",
 })
 
 _LAST4_ONLY_KEYS = frozenset({

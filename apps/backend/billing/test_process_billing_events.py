@@ -168,7 +168,11 @@ class PoisonEventTests(TenantTestCase):
         poison_attempt = _make_attempt(self.env_a, subscription, plan, "wrk-poison")
         poison_event = _make_event("dk-poison", "wrk-poison", "txn-poison", plan.price_minor_units, plan.currency)
 
-        good_attempt = _make_attempt(self.env_a, subscription, plan, "wrk-good")
+        # A second LIVE checkout on the same subscription is now structurally impossible
+        # (unique_non_terminal_checkout_per_subscription), so the "good" event belongs to
+        # another environment's subscription.
+        subscription_b = Subscription.objects.create(environment=self.env_b, plan=plan, state=Subscription.State.TRIAL)
+        good_attempt = _make_attempt(self.env_b, subscription_b, plan, "wrk-good")
         good_event = _make_event("dk-good", "wrk-good", "txn-good", plan.price_minor_units, plan.currency)
 
         real_apply = events.apply  # captured before patching: `mock.patch`

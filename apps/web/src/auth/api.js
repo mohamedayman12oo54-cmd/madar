@@ -6,7 +6,8 @@ import { api, setTokens, clearTokens, getTokens } from "../lib/api.js";
 
 export const authApi = {
   teamLogin: (identifier, password) => api.post("/auth/team/login/", { identifier, password }),
-  teacherLogin: (identifier, password) => api.post("/auth/teacher/login/", { identifier, password }),
+  teacherLogin: (identifier, password) =>
+    api.post("/auth/teacher/login/", { identifier, password }),
   studentLogin: (phone, password) => api.post("/auth/student/login/", { phone, password }),
 
   teacherSignupStart: (payload) => api.post("/auth/teacher/signup/", payload),
@@ -22,7 +23,8 @@ export const authApi = {
   studentForgotRequest: (phone) => api.post("/auth/student/forgot/", { phone }),
   studentForgotReset: (payload) => api.post("/auth/student/forgot/reset/", payload),
 
-  otpVerify: (flow, pending_id, code) => api.post(`/auth/otp/${flow}/verify/`, { pending_id, code }),
+  otpVerify: (flow, pending_id, code) =>
+    api.post(`/auth/otp/${flow}/verify/`, { pending_id, code }),
   otpResend: (flow, pending_id) => api.post(`/auth/otp/${flow}/resend/`, { pending_id }),
 
   me: () => api.get("/auth/me/", { auth: true }),
@@ -31,7 +33,11 @@ export const authApi = {
     if (tokens?.refresh) {
       // The refresh token is the credential for logout (no access token
       // needed), so this still revokes it when the access token has expired.
-      try { await api.post("/auth/logout/", { refresh: tokens.refresh }); } catch { /* best-effort */ }
+      try {
+        await api.post("/auth/logout/", { refresh: tokens.refresh });
+      } catch {
+        /* best-effort */
+      }
     }
     clearTokens();
   },

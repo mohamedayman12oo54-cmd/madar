@@ -7,16 +7,22 @@ the stored filename is random, so the only way to obtain bytes is:
     1. ask for a ticket  ->  the server checks you are allowed to watch THIS
        item right now (role, environment, active enrolment, targeting, and that
        the item is published);
-    2. play the ticket   ->  the server re-checks the signature, the expiry,
-       and that the ticket belongs to the caller, then streams.
+    2. play the ticket   ->  the server re-checks the signature and the expiry,
+       then re-checks the named viewer's access to the item, then streams.
 
 The ticket is a signed payload (Django's `TimestampSigner`, keyed on
-SECRET_KEY), so it cannot be forged or edited, and it carries the viewer id —
-copying a link to a friend does not work, because the ticket is re-checked
-against whoever presents it. Tickets expire in minutes, and because the check
-is repeated at stream time, revoking access (unpublishing, un-targeting,
+SECRET_KEY), so it cannot be forged or edited. It names ONE item, the viewer
+it was issued to and (optionally) one rendition, and it expires in minutes.
+
+A `<video>` element cannot send an Authorization header, so the stream
+endpoint accepts the ticket ALONE: it is a short-lived BEARER credential.
+Anyone who holds a LIVE ticket URL can stream that one item until it expires;
+the URL must therefore never be logged or shared. What still protects the content
+is that the stream view re-checks the named viewer's authorisation against live
+data on every request, so revoking access (unpublishing, un-targeting,
 deactivating an enrolment, deleting the item) takes effect immediately even
-for a ticket that has not yet expired.
+for a ticket that has not yet expired. See SECURITY-AUDIT.md, "Playback URLs
+are now bearer credentials".
 
 Range requests are honoured so the player can seek without downloading the
 whole file, and `X-Accel-Redirect` can hand the actual byte-pushing to nginx
@@ -43,43 +49,6 @@ def issue_ticket(item_id: int, viewer_id: int, height: int | None = None) -> str
     """
     payload = f"{item_id}:{viewer_id}" if not height else f"{item_id}:{viewer_id}:{int(height)}"
     return TimestampSigner(salt=SIGNER_SALT).sign(payload)
-
-
-def read_ticket(ticket: str, viewer_id: int) -> int:
-    """Return the item id a valid ticket authorises, or raise Http404.
-
-    A tampered signature, an expired ticket, or a ticket issued to a different
-    viewer are all indistinguishable to the caller — no oracle.
-    """
-    ttl = getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300)
-    try:
-        raw = TimestampSigner(salt=SIGNER_SALT).unsign(ticket or "", max_age=ttl)
-    except (BadSignature, SignatureExpired):
-        raise Http404
-    try:
-        item_id, signed_viewer, *_ = (int(part) for part in raw.split(":"))
-    except (ValueError, TypeError):
-        raise Http404
-    if viewer_id is not None and signed_viewer != viewer_id:
-        raise Http404  # a shared/stolen link is useless to anyone else
-    return item_id
-
-
-def resolve_ticket(ticket: str):
-    """`(item_id, viewer_id)` for a valid ticket, else Http404.
-
-    A `<video src>` cannot carry an Authorization header, so the ticket itself
-    is the credential for the stream endpoint. That is sound because the
-    ticket is signed (unforgeable), short-lived, and names BOTH the item and
-    the viewer — and the stream view still re-checks that viewer's
-    authorisation against the live data before sending a byte."""
-    ttl = getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300)
-    try:
-        raw = TimestampSigner(salt=SIGNER_SALT).unsign(ticket or "", max_age=ttl)
-        item_id, viewer_id = (int(part) for part in raw.split(":"))
-    except (BadSignature, SignatureExpired, ValueError, TypeError):
-        raise Http404
-    return item_id, viewer_id
 
 
 def resolve_ticket_full(ticket: str):

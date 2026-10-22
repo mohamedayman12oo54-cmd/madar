@@ -56,3 +56,19 @@
 - **لا مسار يقرأ الملاحظات الخاصة** في كل واجهة الطالب؛ والمبالغ المالية لا تُرسل للطالب إطلاقًا.
 - حدّ معدّل لتوليد الاختبارات وأسئلة المساعد (30/ساعة).
 - ⚠️ ما زال صحيحًا: التوكنات في `localStorage`، والإنتاج يحتاج CSP على الـ proxy، ومزوّد OTP/SMS لم يُربط.
+
+## Notes added by the 2026-10 hardening pass
+
+- **Guardian OTP request is now uniform.** `POST /parent/request/` answers `200` with the same body shape
+  for a registered guardian phone, an unknown number, a teacher's number and a not-yet-activated child.
+  An unregistered number receives an inert flow (empty `enrollment_ids`, no code sent) that `verify` can
+  never exchange for a session. The sign-in-by-code endpoint (`/parent/login/`) was already uniform and is
+  the path the app uses.
+- **Playback tickets are short-lived bearer credentials** (a `<video>` element cannot send a header). See
+  `SECURITY-AUDIT.md`. Anyone holding a LIVE ticket URL can stream that one item until it expires.
+- **Webhook intake** caps the body by `Content-Length` before reading it, and answers `503` while the
+  payment provider is not configured for webhooks.
+- **Uploads:** each resumable-upload PATCH takes the row lock first and writes at the server-held offset,
+  so bytes left by a crashed write can never become part of the video.
+- **Secrets:** a development `.env` was present in the archive that was reviewed. Treat every value in it
+  as exposed, rotate them, and never ship `.env`, the virtualenv, `ai.zip` or `.qodo` in a deliverable.

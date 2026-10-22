@@ -7,7 +7,9 @@ export default function Footer() {
       <div className="wrap">
         <div className="fgr">
           <div className="fbrand">
-            <Link to="/"><img src={logo} alt="مدار Madar" /></Link>
+            <Link to="/">
+              <img src={logo} alt="مدار Madar" />
+            </Link>
             <p>عالمك التعليمي، منظّمًا. بيئة تعليمية موحّدة — عربيّة أولًا.</p>
           </div>
           <div className="fcol">
@@ -29,7 +31,9 @@ export default function Footer() {
           </div>
         </div>
         <div className="fbar">
-          <span>© <span className="num">2026</span> مدار</span>
+          <span>
+            © <span className="num">2026</span> مدار
+          </span>
           <span>صُمّم بالعربية أولًا · RTL</span>
         </div>
       </div>

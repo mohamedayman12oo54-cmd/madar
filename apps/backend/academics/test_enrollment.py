@@ -64,13 +64,14 @@ class EnrollmentCreateTests(TenantTestCase):
         r = self.enroll_a()
         self.assertEqual(r.json()["academic_year"], current_academic_year())
 
-    def test_same_student_reused_across_two_of_the_same_teachers_environments(self):
-        env_a2 = _second_environment_for(self.teacher_a, "بيئة أ الثانية")
-        grade_a2 = Grade.objects.create(environment=env_a2, name="ابتدائي")
+    def test_same_student_reused_across_two_teachers_environments(self):
+        """INV-9: a teacher has exactly one Environment, so a student who studies with two teachers is
+        reused across two teachers' environments (same account, two memberships)."""
+        grade_b2 = Grade.objects.create(environment=self.env_b, name="ابتدائي")
         self.enroll_a()
-        r2 = self.client_a.post(
-            ENROLL_URL, {"name": "طالب جديد", "phone": "201060000001", "grade_id": grade_a2.id, "parent_phone": "201111000001"},
-            **self.with_env(env_a2.id),
+        r2 = self.client_b.post(
+            ENROLL_URL, {"name": "طالب جديد", "phone": "201060000001", "grade_id": grade_b2.id, "parent_phone": "201111000001"},
+            **self.with_env(self.env_b.id),
         )
         self.assertEqual(r2.status_code, 201)
         self.assertEqual(User.objects.filter(phone="201060000001").count(), 1)

@@ -141,12 +141,15 @@ class StandardPaginationTests(TestCase):
     endpoints will use via DEFAULT_PAGINATION_CLASS."""
 
     def setUp(self):
-        teacher = User.objects.create_user(
-            role=User.Role.TEACHER, name="t", email="pg@example.com", phone="201040000001",
-            password="x", is_active=True,
-        )
-        Environment.objects.bulk_create([Environment(owner=teacher, name=f"E{i}") for i in range(25)])
-        self.qs = Environment.objects.filter(owner=teacher).order_by("id")
+        # INV-9: one Environment per teacher, so paginate 25 teachers' environments (the test is about
+        # pagination, not about environments).
+        teachers = [
+            User.objects.create_user(role=User.Role.TEACHER, name=f"t{i}", email=f"pg{i}@example.com",
+                                     phone=f"2010400{i:05d}", password="x", is_active=True)
+            for i in range(25)
+        ]
+        Environment.objects.bulk_create([Environment(owner=t, name=f"E{i}") for i, t in enumerate(teachers)])
+        self.qs = Environment.objects.filter(owner__in=teachers).order_by("id")
         self.factory = APIRequestFactory()
 
     def test_default_page_size_is_20(self):

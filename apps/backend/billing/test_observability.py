@@ -247,6 +247,12 @@ class RunbookExistsTests(SimpleTestCase):
             "09-operations", "billing-runbook.md",
         )
         path = os.path.normpath(path)
+        # The runbook lives in the repository's docs tree, which is not shipped with the backend alone.
+        # Skip loudly (with the missing path) rather than fail on a checkout that has no docs; when the
+        # docs tree IS present, a missing runbook is a real failure.
+        docs_root = os.path.dirname(os.path.dirname(path))
+        if not os.path.isdir(docs_root):
+            self.skipTest(f"docs tree not present at {docs_root} — run from the full repository checkout")
         self.assertTrue(os.path.isfile(path), path)
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
