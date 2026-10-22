@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DAY_NAMES, dayKey, dayName, daysFromToday, groupByDay, isToday,
-  pyToJsDay, relativeHint, scheduleSummary, sessionDayLabel,
+  DAY_NAMES,
+  dayKey,
+  dayName,
+  daysFromToday,
+  groupByDay,
+  isToday,
+  pyToJsDay,
+  relativeHint,
+  scheduleSummary,
+  sessionDayLabel,
 } from "./dates.js";
 
 // Sunday 12 October 2026, 16:00 local.
@@ -38,7 +46,7 @@ test("today and tomorrow are called out by name", () => {
 });
 
 test("a day later this week is named without a prefix", () => {
-  const label = sessionDayLabel(at(13), SUN);   // Tuesday, 2 days out
+  const label = sessionDayLabel(at(13), SUN); // Tuesday, 2 days out
   assert.match(label, /^الثلاثاء /);
   assert.ok(!label.includes("القادم"));
 });
@@ -78,7 +86,10 @@ test("groupByDay buckets, orders and labels sessions", () => {
   assert.equal(days[0].key, "2026-10-11");
   assert.ok(days[0].isToday);
   assert.match(days[0].label, /^اليوم · الأحد/);
-  assert.deepEqual(days[0].sessions.map((s) => s.id), [2, 1]);  // earliest first
+  assert.deepEqual(
+    days[0].sessions.map((s) => s.id),
+    [2, 1]
+  ); // earliest first
   assert.equal(days[1].name, "الثلاثاء");
   assert.ok(!days[1].isToday);
 });
@@ -92,7 +103,7 @@ test("schedule summary lists meeting days Saturday-first, de-duplicated", () => 
   // Thursday(3), Saturday(5), Tuesday(1), Saturday again
   assert.equal(
     scheduleSummary([{ weekday: 3 }, { weekday: 5 }, { weekday: 1 }, { weekday: 5 }]),
-    "السبت، الثلاثاء، الخميس",
+    "السبت، الثلاثاء، الخميس"
   );
   assert.equal(scheduleSummary([]), "");
 });
