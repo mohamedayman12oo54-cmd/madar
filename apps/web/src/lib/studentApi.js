@@ -14,7 +14,8 @@ export const studentApi = {
   evaluation: () => api.get("/student/evaluation/", T),
   videos: () => api.get("/student/videos/", T),
   video: (id) => api.get(`/student/videos/${id}/`, T),
-  playbackTicket: (id, quality) => api.post(`/content/${id}/playback-ticket/`, quality ? { quality } : {}, T),
+  playbackTicket: (id, quality) =>
+    api.post(`/content/${id}/playback-ticket/`, quality ? { quality } : {}, T),
   videoProgress: (id, position_seconds, duration_seconds) =>
     api.put(`/content/${id}/progress/`, { position_seconds, duration_seconds }, T),
   notifications: {
@@ -24,14 +25,16 @@ export const studentApi = {
   },
   quizzes: {
     list: () => api.get("/student/quizzes/", T),
-    request: (content_id, idempotency_key) => api.post("/student/quizzes/", { content_id, idempotency_key }, T),
+    request: (content_id, idempotency_key) =>
+      api.post("/student/quizzes/", { content_id, idempotency_key }, T),
     operation: (id) => api.get(`/student/quizzes/operations/${id}/`, T),
     get: (id) => api.get(`/student/quizzes/${id}/`, T),
     submit: (id, answers) => api.post(`/student/quizzes/${id}/submit/`, { answers }, T),
   },
   // same shape as aiApi so the assistant page is shared with the teacher
   assistant: {
-    submit: (prompt, idempotencyKey) => api.post("/student/assistant/", { prompt, idempotency_key: idempotencyKey }, T),
+    submit: (prompt, idempotencyKey) =>
+      api.post("/student/assistant/", { prompt, idempotency_key: idempotencyKey }, T),
     get: (id) => api.get(`/student/assistant/${id}/`, T),
     list: () => api.get("/student/assistant/", T),
   },
