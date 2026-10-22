@@ -20,6 +20,16 @@ if (import.meta.env?.PROD && !/^https:\/\//i.test(BASE_URL)) {
 
 const TOKEN_KEY = "madar.tokens";
 
+// Every request to the API uses these options. Auth is a bearer header only, so the browser must
+// never attach ambient credentials (cookies) — that is what makes CSRF a non-issue here. Responses
+// that carry personal data must not sit in the HTTP cache, and the page URL must not leak to the API
+// through the Referer header.
+const FETCH_HARDENING = {
+  credentials: "omit",
+  cache: "no-store",
+  referrerPolicy: "no-referrer",
+};
+
 export function getTokens() {
   try {
     return JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
@@ -29,7 +39,10 @@ export function getTokens() {
 }
 
 export function setTokens(tokens) {
-  if (!tokens) { localStorage.removeItem(TOKEN_KEY); return; }
+  if (!tokens) {
+    localStorage.removeItem(TOKEN_KEY);
+    return;
+  }
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }
 
@@ -58,7 +71,10 @@ export function getActiveEnvironmentId() {
 }
 
 export function setActiveEnvironmentId(id) {
-  if (id === null || id === undefined) { localStorage.removeItem(ACTIVE_ENV_KEY); return; }
+  if (id === null || id === undefined) {
+    localStorage.removeItem(ACTIVE_ENV_KEY);
+    return;
+  }
   localStorage.setItem(ACTIVE_ENV_KEY, String(id));
 }
 
@@ -71,7 +87,11 @@ export class ApiError extends Error {
     // A form-level failure (e.g. wrong login) arrives as fields.non_field_errors;
     // show THAT sentence instead of the generic "check your input".
     const formLevel = data?.fields?.non_field_errors;
-    super((Array.isArray(formLevel) && typeof formLevel[0] === "string" && formLevel[0]) || data?.detail || "حدث خطأ غير متوقع.");
+    super(
+      (Array.isArray(formLevel) && typeof formLevel[0] === "string" && formLevel[0]) ||
+        data?.detail ||
+        "حدث خطأ غير متوقع."
+    );
     this.status = status;
     this.data = data || {};
     this.code = data?.code;
@@ -87,6 +107,7 @@ async function performRefresh() {
   let res;
   try {
     res = await fetch(`${BASE_URL}/auth/token/refresh/`, {
+      ...FETCH_HARDENING,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: tokens.refresh }),
@@ -115,7 +136,9 @@ let refreshInFlight = null;
 
 export function refreshAccessToken() {
   if (!refreshInFlight) {
-    refreshInFlight = performRefresh().finally(() => { refreshInFlight = null; });
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
   }
   return refreshInFlight;
 }
@@ -126,7 +149,10 @@ export function refreshAccessToken() {
  *   `tenant`: attach X-Madar-Environment (the currently active environment,
  *   if one is set) — for calls to tenant-scoped endpoints. Implies `auth`.
  */
-export async function apiFetch(path, { method = "GET", body, auth = false, tenant = false, raw = false, authorization = null } = {}) {
+export async function apiFetch(
+  path,
+  { method = "GET", body, auth = false, tenant = false, raw = false, authorization = null } = {}
+) {
   const doFetch = async () => {
     // `raw` sends a FormData body (file upload): the browser must set its own
     // multipart Content-Type WITH the boundary, so we must not set one.
@@ -143,9 +169,10 @@ export async function apiFetch(path, { method = "GET", body, auth = false, tenan
       if (envId) headers["X-Madar-Environment"] = String(envId);
     }
     return fetch(`${BASE_URL}${path}`, {
+      ...FETCH_HARDENING,
       method,
       headers,
-      body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)),
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     });
   };
 
@@ -159,7 +186,11 @@ export async function apiFetch(path, { method = "GET", body, auth = false, tenan
   if (res.status === 204 || res.status === 205) return null;
 
   let data = null;
-  try { data = await res.json(); } catch { /* empty body */ }
+  try {
+    data = await res.json();
+  } catch {
+    /* empty body */
+  }
 
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
@@ -172,3 +203,27 @@ export const api = {
   put: (path, body, opts) => apiFetch(path, { ...opts, method: "PUT", body }),
   delete: (path, opts) => apiFetch(path, { ...opts, method: "DELETE" }),
 };
+
+/**
+ * Low-level authenticated, tenant-scoped fetch for callers that need the raw Response (the resumable
+ * video upload sends binary chunks and reads status codes itself). It adds the bearer token and the
+ * active-environment header, applies the same hardening as apiFetch, and — like apiFetch — refreshes
+ * an expired access token ONCE and retries. Without that, a long upload outlives the 30-minute access
+ * token and dies on the first chunk after it expires.
+ */
+export async function authFetch(url, init = {}) {
+  const send = () => {
+    const headers = { ...(init.headers || {}) };
+    const tokens = getTokens();
+    if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;
+    const envId = getActiveEnvironmentId();
+    if (envId) headers["X-Madar-Environment"] = String(envId);
+    return fetch(url, { ...init, ...FETCH_HARDENING, headers });
+  };
+  let res = await send();
+  if (res.status === 401) {
+    const newAccess = await refreshAccessToken();
+    if (newAccess) res = await send();
+  }
+  return res;
+}
