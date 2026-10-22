@@ -39,7 +39,10 @@ class WebhookReceiptTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(ProviderEvent.objects.count(), 1)
         event = ProviderEvent.objects.get()
-        self.assertEqual(event.processing_status, ProviderEvent.ProcessingStatus.RECEIVED)
+        # The fixture names no known attempt, so the best-effort in-request application records it
+        # as uncorrelated (changes no state) — the receipt itself is what this test pins.
+        self.assertEqual(event.processing_status, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY)
+        self.assertTrue(event.last_error.startswith("uncorrelated"))
         self.assertTrue(event.signature_valid)
         self.assertEqual(event.provider_transaction_id, "txn-1")
         self.assertEqual(event.transaction_status, "SUCCESS")
@@ -66,9 +69,10 @@ class WebhookDedupTests(TestCase):
         r1 = _post_raw(self.client, raw_body, headers)
         r2 = _post_raw(self.client, raw_body, headers)
 
-        self.assertEqual(r1.status_code, 200, r1.content)
-        self.assertEqual(r2.status_code, 409, r2.content)
-        self.assertEqual(ProviderEvent.objects.count(), 1)
+        # Kashier's `event="idempotency"` is a REPLAY notification: a duplicate signal, never a new
+        # event. Acknowledge with 409 (so Kashier stops retrying) and store/apply nothing.
+        self.assertEqual((r1.status_code, r2.status_code), (409, 409))
+        self.assertEqual(ProviderEvent.objects.count(), 0)
 
 
 class WebhookRejectionTests(TestCase):
@@ -216,6 +220,9 @@ class AllowAnyRouteEnumerationTests(SimpleTestCase):
         "parents.views.GuardianVerifyView",
         "content.video_views.VideoStreamView",
         "billing.webhooks.KashierWebhookView",
+        # Student self check-in (QR token + phone + announced code); attendance-only, throttled.
+        "scheduling.checkin.CheckinInfoView",
+        "scheduling.checkin.CheckinSubmitView",
     })
 
     def test_the_allow_any_route_set_is_exactly_the_expected_one(self):
@@ -254,7 +261,12 @@ class WebhookReceiptCommitOrderingTests(TestCase):
         provider = FakePaymentProvider()
         raw_body, headers = provider.sign_fake_webhook(_payload())
 
-        r = _post_raw(self.client, raw_body, headers)
+        from unittest import mock
+
+        # AC-BILL-020-7: a forced application failure still answers 200 and leaves the event
+        # `received`, so `process_billing_events` can recover it.
+        with mock.patch("billing.events.apply", side_effect=RuntimeError("boom")):
+            r = _post_raw(self.client, raw_body, headers)
 
         self.assertEqual(r.status_code, 200, r.content)
         event = ProviderEvent.objects.get()
