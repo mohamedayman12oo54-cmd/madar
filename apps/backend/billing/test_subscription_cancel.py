@@ -194,8 +194,12 @@ class NoDeadlockNoDoubleAttemptTests(_Fixture):
     OneToOneField) so the two orderings don't interfere with each other."""
 
     def test_both_orderings_run_cleanly_with_no_deadlock_and_at_most_one_attempt(self):
-        env_2 = Environment.objects.create(owner=self.teacher, name="env-2")
-        EnvironmentMembership.objects.create(user=self.teacher, environment=env_2, role=EnvironmentMembership.Role.OWNER)
+        teacher_2 = User.objects.create_user(
+            role=User.Role.TEACHER, name="t2", email="t2-028@example.com", phone="201020000223",
+            password="Str0ng!Pass", is_active=True,
+        )  # INV-9: one Environment per teacher
+        env_2 = Environment.objects.create(owner=teacher_2, name="env-2")
+        EnvironmentMembership.objects.create(user=teacher_2, environment=env_2, role=EnvironmentMembership.Role.OWNER)
 
         sub_1 = self.make_due_subscription(self.env)
         sub_2 = self.make_due_subscription(env_2)
