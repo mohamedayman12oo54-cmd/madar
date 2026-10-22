@@ -90,7 +90,8 @@ def _mark(event_record, processing_status, last_error=""):
     event_record.attempts_count += 1
 
 
-def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", agreement_ref="", mode="test"):
+def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", agreement_ref="", mode="test",
+                  card_token=""):
     """Shared success-application logic (BILL-WU-021 and BILL-WU-023 both
     call this — "no second state machine"). Self-contained: claims the
     attempt with its own atomic conditional UPDATE, so it is safe to call
@@ -124,7 +125,7 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
         # card-token reference): fall back to the provider transaction id
         # as the opaque token reference when no dedicated agreement_ref is
         # present, so a real agreement reference is never fabricated.
-        card_token = agreement_ref or provider_transaction_id or attempt.merchant_order_id
+        card_token = card_token or agreement_ref or provider_transaction_id or attempt.merchant_order_id
         previous_sub_state = subscription.state
 
         if attempt.billing_period_id is None:
@@ -147,9 +148,15 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
                 status=AmountOwed.Status.SATISFIED,
             )
             PaymentAttempt.objects.filter(pk=attempt.pk).update(billing_period=period)
+            # The plan changes HERE, on a verified payment, to the plan this attempt bought.
+            # A verified checkout is an explicit (re)subscription, so any earlier "cancel at period end"
+            # no longer applies: leaving it set would stop the renewal of a plan the teacher just paid for.
+            # (Renewal success below deliberately does NOT clear it — a cancel requested while a renewal
+            # was in flight must stay in force.)
             Subscription.objects.filter(pk=subscription.pk).update(
                 state=Subscription.State.ACTIVE, current_period_start=start, current_period_end=end,
-                active_agreement=agreement,
+                active_agreement=agreement, plan_id=attempt.plan_id or subscription.plan_id,
+                cancel_at_period_end=False,
             )
         else:
             # Renewal success: the period was pre-created by BILL-WU-025
@@ -199,6 +206,12 @@ def apply(event_record):
     payload = event_record.redacted_payload or {}
     expected_amount = payload.get("amount_minor_units")
     expected_currency = payload.get("currency")
+    if (event_record.transaction_status in SUCCESS_LIKE_STATUSES and expected_amount is None):
+        # Fail closed: money is only credited when the paid amount is PROVEN to match.
+        audit.log("event_mismatched", event_id=event_record.pk, reason="amount_missing")
+        _mark(event_record, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
+              "rejected-mismatch: a success event carried no amount to verify")
+        return
     if expected_amount is not None and expected_amount != attempt.amount_minor_units:
         audit.log("event_mismatched", event_id=event_record.pk, reason="amount_minor_units")
         _mark(event_record, ProviderEvent.ProcessingStatus.FAILED_TO_APPLY,
@@ -232,12 +245,14 @@ def apply(event_record):
 
         status = event_record.transaction_status
         if status in SUCCESS_LIKE_STATUSES:
-            agreement_ref = (event_record.redacted_payload or {}).get("agreement_ref") or ""
+            agreement_ref = event_record.agreement_id or (event_record.redacted_payload or {}).get("agreement_ref") or ""
             apply_success(
                 attempt, provider_transaction_id=event_record.provider_transaction_id,
                 provider_order_id=event_record.provider_order_id, agreement_ref=agreement_ref,
-                mode=event_record.mode,
+                mode=event_record.mode, card_token=event_record.agreement_token,
             )
+            # Scrub the opaque references: the RecurringAgreement now owns them.
+            ProviderEvent.objects.filter(pk=locked_event.pk).update(agreement_token="", agreement_id="")
         elif status == "FAILURE":
             record_confirmed_failure(attempt)
         elif status == "PENDING":
