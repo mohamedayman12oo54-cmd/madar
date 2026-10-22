@@ -396,6 +396,27 @@ class ResumableUploadTests(_Base):
             self.assertEqual(r.status_code, 409, f"offset {bad}")
             self.assertEqual(r.json()["offset"], 100, "server states the true offset")
 
+    def test_bytes_left_by_a_crashed_write_never_become_part_of_the_video(self):
+        """A request can die after writing part of a chunk but before the offset is recorded. The server's
+        recorded offset is the truth: the next chunk is written AT that offset, discarding the stray tail.
+        (The old code appended and then read the offset back from the file size, so the junk was kept and the
+        upload "completed" with a corrupted file that still passed the header-only check.)"""
+        sid = self.start().json()["id"]
+        self.assertEqual(self.send(sid, MP4[:100], 0).status_code, 200)
+
+        from .models import UploadSession
+        stored = UploadSession.objects.get(pk=sid).storage_path
+        with open(f"{self.media}/{stored}", "ab") as fh:
+            fh.write(b"JUNK-FROM-A-CRASHED-REQUEST")
+
+        done = self.send(sid, MP4[100:], 100)
+        self.assertEqual(done.status_code, 200, done.content)
+        self.assertTrue(done.json()["is_complete"])
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.file_size, len(MP4))
+        with open(self.item.video_file.path, "rb") as fh:
+            self.assertEqual(fh.read(), MP4, "stray bytes must not survive into the stored video")
+
     def test_the_offset_header_is_required(self):
         sid = self.start().json()["id"]
         r = self.client_a.patch(self.SESSION.format(sid), MP4[:10],
