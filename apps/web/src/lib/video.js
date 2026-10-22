@@ -4,7 +4,14 @@
 // https://youtube.com.evil.example/watch?v=… is rejected, not "extracted".
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const VIMEO_ID = /^[0-9]{6,12}$/;
-const YT_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com", "youtu.be"]);
+const YT_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "youtube-nocookie.com",
+  "www.youtube-nocookie.com",
+  "youtu.be",
+]);
 const VIMEO_HOSTS = new Set(["vimeo.com", "www.vimeo.com", "player.vimeo.com"]);
 
 export function extractVideoId(provider, input) {
@@ -14,7 +21,11 @@ export function extractVideoId(provider, input) {
   if (!idRe) return "";
   if (idRe.test(text)) return text;
   let url;
-  try { url = new URL(text.includes("://") ? text : `https://${text}`); } catch { return ""; }
+  try {
+    url = new URL(text.includes("://") ? text : `https://${text}`);
+  } catch {
+    return "";
+  }
   if (url.protocol !== "https:" && url.protocol !== "http:") return "";
   const host = url.hostname.toLowerCase();
   const parts = url.pathname.split("/").filter(Boolean);
@@ -27,4 +38,31 @@ export function extractVideoId(provider, input) {
     candidate = parts.find((p) => /^\d+$/.test(p)) || "";
   }
   return idRe.test(candidate) ? candidate : "";
+}
+
+// ---------------------------------------------------------------------------
+// Embed allow-list. The server builds the embed URL, but the browser must not
+// trust that blindly: a frame's source is only ever set to one of the two exact
+// embed endpoints below (https, default port, no credentials, no extra path or
+// query). Anything else — another host, a look-alike, `javascript:`, `data:` —
+// returns null and the caller shows an error instead of a frame. The Content
+// Security Policy (`frame-src`) enforces the same two hosts a second time.
+const YT_EMBED_PATH = /^\/embed\/[A-Za-z0-9_-]{11}$/;
+const VIMEO_EMBED_PATH = /^\/video\/[0-9]{6,12}$/;
+
+export function safeEmbedUrl(input) {
+  if (typeof input !== "string" || input.length === 0 || input.length > 300) return null;
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  if (url.username || url.password || url.port) return null;
+  if (url.search || url.hash) return null;
+  const host = url.hostname.toLowerCase();
+  if (host === "www.youtube-nocookie.com" && YT_EMBED_PATH.test(url.pathname)) return url.href;
+  if (host === "player.vimeo.com" && VIMEO_EMBED_PATH.test(url.pathname)) return url.href;
+  return null;
 }
