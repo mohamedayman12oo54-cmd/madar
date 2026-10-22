@@ -122,15 +122,19 @@ class CheckoutIdempotencyTests(TenantTestCase):
         self.assertEqual(r1.json()["attempt_id"], r2.json()["attempt_id"])
         self.assertEqual(PaymentAttempt.objects.filter(environment=self.env_a).count(), 1)
 
-    def test_a_second_request_naming_a_different_plan_still_returns_the_existing_attempt(self):
+    def test_a_second_request_naming_a_different_plan_is_refused_not_silently_reused(self):
+        """Re-using the live attempt would charge the OLD plan's amount for the plan the teacher
+        just clicked; voiding it could orphan a payment in progress. So: 409, one attempt."""
         r1 = self.client_a.post(
             "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
         )
         r2 = self.client_a.post(
             "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id)
         )
-        self.assertEqual(r1.json()["attempt_id"], r2.json()["attempt_id"])
+        self.assertEqual(r1.status_code, 201)
+        self.assertEqual((r2.status_code, r2.json()["code"]), (409, "checkout_in_progress"))
         self.assertEqual(PaymentAttempt.objects.filter(environment=self.env_a).count(), 1)
+        self.assertEqual(PaymentAttempt.objects.get(environment=self.env_a).plan.key, Plan.Key.PLAN_1)
 
 
 class CheckoutPermissionTests(TenantTestCase):
@@ -226,3 +230,22 @@ class CheckoutProviderCallOutsideTransactionTests(TransactionTestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertIn("in_atomic_block", captured)
         self.assertFalse(captured["in_atomic_block"])
+
+
+class PendingCheckoutSurfaceTests(TenantTestCase):
+    """The status endpoint tells the UI about a live checkout so it can offer to resume it."""
+
+    def test_status_reports_no_pending_checkout_then_the_live_one_without_provider_ids(self):
+        url = "/api/v1/billing/subscription/"
+        self.assertIsNone(self.client_a.get(url, **self.with_env(self.env_a.id)).json()["pending_checkout"])
+        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json",
+                           **self.with_env(self.env_a.id))
+        body = self.client_a.get(url, **self.with_env(self.env_a.id)).json()["pending_checkout"]
+        self.assertEqual((body["plan_key"], body["status"]), (Plan.Key.PLAN_2, "initiated"))
+        self.assertEqual(set(body), {"attempt_id", "status", "plan_key"})
+
+    def test_another_teachers_pending_checkout_is_never_visible(self):
+        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json",
+                           **self.with_env(self.env_a.id))
+        body = self.client_b.get("/api/v1/billing/subscription/", **self.with_env(self.env_b.id)).json()
+        self.assertIsNone(body["pending_checkout"])
