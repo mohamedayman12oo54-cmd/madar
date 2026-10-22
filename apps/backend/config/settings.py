@@ -124,6 +124,7 @@ INSTALLED_APPS = [
     "knowledge",
     "parents",
     "studentarea",
+    "billing",
 ]
 
 
@@ -229,6 +230,11 @@ else:
 #            needs GEMINI_API_KEY / GEMINI_MODEL and QUIZ_LANGUAGE below. The
 #            Study Assistant and State Recommendation still use the stub rules.
 AI_PROVIDER = env_str("AI_PROVIDER", "stub")
+# Tests must be hermetic: a developer .env that selects the real LLM must never make
+# the suite call the network (cost, data leakage, flaky results). Tests that need the
+# llm provider opt in with override_settings.
+if "test" in sys.argv:
+    AI_PROVIDER = "stub"
 
 # --- AI Quiz generation (ai/quiz_contract.py, ai/quiz_prompt.py) ---------------
 # The quiz LANGUAGE has no default: Madar has no language policy yet, so the
@@ -340,12 +346,20 @@ REST_FRAMEWORK = {
         "guardian-login": "30/hour",
         "guardian-phone": "10/hour",
         "guardian-code": "10/hour",
+        # session self check-in (public): per IP / per phone / per link (covers the whole class)
+        "checkin-ip": "120/hour",
+        "checkin-phone": "8/hour",
+        "checkin-link": "200/hour",
 
         # --- per authenticated user ---
         "scan": "240/min",
         "video-upload": "20/hour",
         "student-add": "300/hour",
         "ai-submit": "30/hour",
+        "billing-checkout": "10/hour",
+        "billing-cancel": "10/hour",
+        "billing-status": "120/min",
+        "billing-webhook": "600/min",
         "broadcast": "20/hour",
         "password-change": "10/hour",
         "token-refresh": "300/hour",
@@ -524,6 +538,8 @@ VIDEO_TRANSCODE_TIMEOUT = env_int("VIDEO_TRANSCODE_TIMEOUT", 3600)  # per rendit
 # live) and Kashier's own docs (reviewed 2026-10-15) say a key from one mode
 # can't be used in the other.
 PAYMENT_PROVIDER = env_str("PAYMENT_PROVIDER", "fake" if (DEBUG or "test" in sys.argv) else "kashier")
+if "test" in sys.argv:
+    PAYMENT_PROVIDER = "fake"  # never let a .env point the suite at a real payment provider
 KASHIER_MODE = env_str("KASHIER_MODE", "test")
 KASHIER_MERCHANT_ID = env_str("KASHIER_MERCHANT_ID", "")
 KASHIER_PAYMENT_API_KEY_TEST = env_str("KASHIER_PAYMENT_API_KEY_TEST", "")
@@ -532,6 +548,21 @@ KASHIER_SECRET_KEY_TEST = env_str("KASHIER_SECRET_KEY_TEST", "")
 KASHIER_SECRET_KEY_LIVE = env_str("KASHIER_SECRET_KEY_LIVE", "")
 KASHIER_API_BASE_TEST = env_str("KASHIER_API_BASE_TEST", "https://test-api.kashier.io")
 KASHIER_API_BASE_LIVE = env_str("KASHIER_API_BASE_LIVE", "https://api.kashier.io")
+KASHIER_FEP_BASE_TEST = env_str("KASHIER_FEP_BASE_TEST", "https://test-fep.kashier.io")
+KASHIER_FEP_BASE_LIVE = env_str("KASHIER_FEP_BASE_LIVE", "https://fep.kashier.io")
+# Public HTTPS URL Kashier calls (the ONE inbound integration, ADR-016). Kashier rejects
+# localhost/private addresses, so sandbox needs a tunnel/staging URL.
+KASHIER_WEBHOOK_URL = env_str("KASHIER_WEBHOOK_URL", "")
+# Where the teacher's BROWSER lands after the hosted page (a FRONTEND route, display only —
+# a redirect is never proof of payment). e.g. https://app.example.com/app/billing
+BILLING_CHECKOUT_RETURN_URL = env_str("BILLING_CHECKOUT_RETURN_URL", "")
+# BILL-EXT-01: agreement cadence values are configuration, deliberately NOT defaulted.
+KASHIER_AGREEMENT_TYPE = env_str("KASHIER_AGREEMENT_TYPE", "")
+KASHIER_AGREEMENT_PAYMENT_FREQUENCY = env_str("KASHIER_AGREEMENT_PAYMENT_FREQUENCY", "")
+KASHIER_AGREEMENT_MIN_DAYS_BETWEEN = env_str("KASHIER_AGREEMENT_MIN_DAYS_BETWEEN", "")
+KASHIER_AGREEMENT_EXPIRY_DATE = env_str("KASHIER_AGREEMENT_EXPIRY_DATE", "")
+KASHIER_AGREEMENT_NUMBER_OF_PAYMENTS = env_str("KASHIER_AGREEMENT_NUMBER_OF_PAYMENTS", "")
+
 
 if KASHIER_MODE not in ("test", "live"):
     raise ImproperlyConfigured("KASHIER_MODE must be 'test' or 'live'.")
@@ -554,6 +585,8 @@ if not DEBUG and PAYMENT_PROVIDER == "kashier":
             ("KASHIER_MERCHANT_ID", KASHIER_MERCHANT_ID),
             (_kashier_api_key_name, _kashier_api_key),
             (_kashier_secret_name, _kashier_secret),
+            ("KASHIER_WEBHOOK_URL", KASHIER_WEBHOOK_URL),
+            ("BILLING_CHECKOUT_RETURN_URL", BILLING_CHECKOUT_RETURN_URL),
         )
         if not value
     ]
@@ -562,6 +595,10 @@ if not DEBUG and PAYMENT_PROVIDER == "kashier":
             f"PAYMENT_PROVIDER=kashier (KASHIER_MODE={KASHIER_MODE!r}) is missing: "
             f"{', '.join(_kashier_missing)}."
         )
+    for _name, _url in (("KASHIER_WEBHOOK_URL", KASHIER_WEBHOOK_URL),
+                        ("BILLING_CHECKOUT_RETURN_URL", BILLING_CHECKOUT_RETURN_URL)):
+        if _url and not _url.lower().startswith("https://"):
+            raise ImproperlyConfigured(f"{_name} must be an https:// URL in production.")
 
 # Live-mode kill switch for the renewal-charging worker (BILL-WU-025).
 # Madar owns the billing schedule and initiates each cycle's charge
@@ -577,6 +614,12 @@ SECURE_SSL_REDIRECT = env_bool(
     "DJANGO_SECURE_SSL_REDIRECT",
     default=not DEBUG,
 )
+
+# The Django admin is a password form with no throttle: in production it is OFF unless an operator
+# deliberately turns it on, and then it should live on a non-guessable path (and ideally behind a VPN /
+# IP allow-list at the proxy). The product itself never needs it (it is an API + SPA).
+ENABLE_ADMIN = env_bool("DJANGO_ENABLE_ADMIN", default=DEBUG or "test" in sys.argv)
+ADMIN_URL = env_str("DJANGO_ADMIN_PATH", "admin/").strip("/") + "/"
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
