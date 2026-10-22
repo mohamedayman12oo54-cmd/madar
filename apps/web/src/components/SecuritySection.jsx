@@ -18,7 +18,10 @@ export default function SecuritySection() {
             {security.map((s, i) => {
               const I = icons[i % icons.length];
               return (
-                <div className="s" key={i}><I className="ic" size={18} /><span>{s}</span></div>
+                <div className="s" key={i}>
+                  <I className="ic" size={18} />
+                  <span>{s}</span>
+                </div>
               );
             })}
           </div>
