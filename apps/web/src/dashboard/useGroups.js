@@ -12,12 +12,21 @@ export function useGroups() {
 
   const reload = useCallback(() => {
     setStatus((s) => (s === "ready" ? "ready" : "loading"));
-    groupsApi.list()
-      .then((data) => { setGroups(Array.isArray(data) ? data : data.results || []); setStatus("ready"); })
-      .catch((e) => { setError(e instanceof ApiError ? e.message : "تعذّر تحميل المجموعات."); setStatus("error"); });
+    groupsApi
+      .list()
+      .then((data) => {
+        setGroups(Array.isArray(data) ? data : data.results || []);
+        setStatus("ready");
+      })
+      .catch((e) => {
+        setError(e instanceof ApiError ? e.message : "تعذّر تحميل المجموعات.");
+        setStatus("error");
+      });
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   return { groups, status, error, reload };
 }
