@@ -213,6 +213,12 @@ class PaymentAttempt(TenantOwnedModel):
         BillingPeriod, on_delete=models.PROTECT, null=True, blank=True, related_name="payment_attempts"
     )
 
+    # The plan THIS attempt buys. Money-state rule: `Subscription.plan` only ever changes
+    # when a payment for that plan is VERIFIED — never when checkout merely starts
+    # (otherwise starting a Plan 3 checkout during a grace period would grant Plan 3
+    # capabilities without paying). Null only for attempts created before this field.
+    plan = models.ForeignKey("billing.Plan", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+
     merchant_order_id = models.CharField(max_length=64, unique=True)
     status = models.CharField(max_length=9, choices=Status.choices, default=Status.INITIATED)
 
@@ -232,6 +238,13 @@ class PaymentAttempt(TenantOwnedModel):
                 fields=["billing_period"],
                 condition=Q(status__in=["initiated", "pending", "unknown"]),
                 name="unique_non_terminal_attempt_per_billing_period",
+            ),
+            # Structural double-click guard for CHECKOUT attempts (billing_period is null, so the
+            # constraint above cannot apply): at most one live checkout per subscription.
+            models.UniqueConstraint(
+                fields=["subscription"],
+                condition=Q(billing_period__isnull=True, status__in=["initiated", "pending", "unknown"]),
+                name="unique_non_terminal_checkout_per_subscription",
             ),
         ]
 
@@ -285,6 +298,10 @@ class ProviderEvent(models.Model):
 
     signature_valid = models.BooleanField()
     redacted_payload = models.JSONField(default=dict, blank=True)
+    # Opaque provider references needed to APPLY a successful setup (the stored payload is
+    # redacted, so it cannot carry them). Never a PAN/CVV. Scrubbed to "" once applied.
+    agreement_token = models.CharField(max_length=255, blank=True, default="")
+    agreement_id = models.CharField(max_length=255, blank=True, default="")
 
     received_at = models.DateTimeField(auto_now_add=True)
     processing_status = models.CharField(
