@@ -1,0 +1,700 @@
+/* ==========================================================================
+   MADAR — Student quizzes (/learn/quizzes)
+   Mobile-first. Sections:
+     1. Page shell        4. Question card + options
+     2. Quiz list         5. Sticky navigation
+     3. Progress + dots   6. Review step · result · answer review
+   Status colours come from the global tokens (--ok / --bad / --warn).
+   ========================================================================== */
+
+/* ---------- 1. Page shell ---------- */
+.qz {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.qz-head {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.qz-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--navy);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: border-color 0.15s;
+}
+.qz-back:hover {
+  border-color: var(--navy);
+}
+
+.qz-title {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--navy);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+/* ---------- 2. Quiz list ---------- */
+.qz-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-block-end: 14px;
+}
+.qz-stats > div {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 14px 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  text-align: center;
+}
+.qz-stats strong {
+  color: var(--navy);
+  font-size: 1.35rem;
+  line-height: 1.3;
+}
+.qz-stats span {
+  color: var(--soft);
+  font-size: 0.76rem;
+}
+
+.qz-filter {
+  display: flex;
+  gap: 8px;
+  margin-block-end: 14px;
+  overflow-x: auto;
+  padding-block-end: 2px;
+  scrollbar-width: none;
+}
+.qz-filter::-webkit-scrollbar {
+  display: none;
+}
+.qz-filter button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1.5px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--navy);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.qz-filter button.is-active {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--cream);
+}
+
+.qz-none {
+  padding: 28px 12px;
+  color: var(--soft);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.qz-list {
+  display: grid;
+  gap: 10px;
+}
+
+.qz-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.qz-row:hover {
+  border-color: var(--navy);
+  transform: translateY(-1px);
+}
+.qz-row-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--fill);
+  color: var(--navy);
+}
+.qz-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.qz-row-main strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--navy);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+.qz-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--soft);
+  font-size: 0.78rem;
+}
+.qz-row-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.qz-row-chevron {
+  color: var(--soft);
+}
+@media (max-width: 350px) {
+  /* the status chip drops under the title instead of squeezing it */
+  .qz-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .qz-row-end {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+}
+
+/* ---------- 3. Progress + question dots ---------- */
+.qz-progress {
+  display: grid;
+  gap: 8px;
+}
+.qz-progress-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--soft);
+  font-size: 0.84rem;
+}
+.qz-progress-row strong {
+  color: var(--navy);
+}
+.qz-progress .progress {
+  height: 8px;
+  margin: 0;
+}
+
+.qz-dots {
+  display: flex;
+  gap: 8px;
+  padding: 2px 2px 6px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.qz-dots::-webkit-scrollbar {
+  display: none;
+}
+
+.qz-dot {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1.5px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--soft);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  scroll-snap-align: center;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.qz-dot.is-answered {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--navy) 14%, var(--panel));
+  color: var(--navy);
+}
+.qz-dot.is-current {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--cream);
+}
+.qz-dot-lg {
+  width: 100%;
+  height: 46px;
+  font-size: 0.95rem;
+}
+
+/* ---------- 4. Question card + options ---------- */
+.qz-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--panel);
+  box-shadow: 0 18px 40px -32px rgba(49, 56, 81, 0.45);
+}
+
+.qz-qno {
+  margin: 0;
+  color: var(--soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.qz-q {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+.qz-q:focus {
+  outline: none;
+}
+
+.qz-options {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qz-opt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 11px 14px;
+  border: 1.5px solid var(--line-2);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.98rem;
+  line-height: 1.7;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.1s;
+}
+.qz-opt:not(.is-static):hover {
+  border-color: var(--navy);
+}
+.qz-opt:not(.is-static):active {
+  transform: scale(0.99);
+}
+
+/* The native radio stays in the DOM (keyboard + screen readers) but is invisible. */
+.qz-opt-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.qz-opt-input:focus-visible ~ .qz-opt-mark {
+  outline: 3px solid color-mix(in srgb, var(--navy) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.qz-opt-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--navy);
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.qz-opt-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.qz-opt.is-selected {
+  border-color: var(--navy);
+  background: color-mix(in srgb, var(--navy) 7%, var(--panel));
+  font-weight: 600;
+}
+.qz-opt.is-selected .qz-opt-mark {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--cream);
+}
+
+/* answer review (read-only) */
+.qz-opt.is-static {
+  cursor: default;
+  font-size: 0.94rem;
+}
+.qz-opt.right {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+.qz-opt.right .qz-opt-mark {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+.qz-opt.wrong {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+.qz-opt.wrong .qz-opt-mark {
+  border-color: var(--bad);
+  background: var(--bad);
+  color: #fff;
+}
+.qz-opt-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.qz-opt.right .qz-opt-tag {
+  color: var(--ok);
+}
+.qz-opt.wrong .qz-opt-tag {
+  color: var(--bad);
+}
+@media (max-width: 420px) {
+  /* the tag wraps under the option text instead of squeezing it */
+  .qz-opt.is-static {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .qz-opt-tag {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* ---------- 5. Sticky navigation (sits just above the tab bar) ---------- */
+.qz-nav {
+  position: sticky;
+  bottom: calc(var(--stu-tabs-h, 68px) + env(safe-area-inset-bottom, 0px) + 8px);
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-block: 12px 4px;
+  background: linear-gradient(to top, var(--cream) 62%, transparent);
+}
+.qz-nav .abtn {
+  min-height: 52px;
+  white-space: nowrap;
+}
+.qz-nav .abtn-secondary {
+  background: var(--panel);
+}
+.qz-nav-end {
+  position: static;
+  grid-template-columns: minmax(0, 1fr);
+  background: none;
+}
+.qz-nav-end .abtn {
+  text-decoration: none;
+}
+/* on the review step only «السابق» is shown — let it take the full row */
+.qz-nav:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------- 6a. Review step (before submitting) ---------- */
+.qz-review-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--fill);
+  color: var(--navy);
+}
+.qz-review-sub {
+  margin: -6px 0 0;
+  color: var(--soft);
+  font-size: 0.9rem;
+}
+.qz-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 8px;
+}
+.qz-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+.qz-warn svg {
+  flex: none;
+  margin-block-start: 3px;
+}
+.qz-review-actions {
+  display: grid;
+  gap: 10px;
+}
+
+/* ---------- 6b. Result summary ---------- */
+.qz-result {
+  --ring-color: var(--navy);
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 22px 18px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 18px 40px -32px rgba(49, 56, 81, 0.45);
+  text-align: center;
+}
+.qz-result.is-great,
+.qz-result.is-good {
+  --ring-color: var(--ok);
+}
+.qz-result.is-ok {
+  --ring-color: #d19a00;
+}
+.qz-result.is-low {
+  --ring-color: var(--bad);
+}
+.qz-result-text h2 {
+  color: var(--navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.qz-result-text p {
+  margin-block-start: 4px;
+  color: var(--soft);
+  font-size: 0.92rem;
+}
+.qz-result-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+.qz-result-stats > div {
+  padding: 10px 6px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+.qz-result-stats dt {
+  color: var(--soft);
+  font-size: 0.76rem;
+}
+.qz-result-stats dd {
+  margin: 2px 0 0;
+  color: var(--navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* ---------- score ring ---------- */
+.qz-ring {
+  --ring-color: var(--navy);
+  position: relative;
+  flex: none;
+  width: var(--ring-size, 64px);
+  height: var(--ring-size, 64px);
+}
+.qz-ring-sm {
+  --ring-size: 50px;
+  --ring-stroke: 4;
+}
+.qz-ring-md {
+  --ring-size: 64px;
+  --ring-stroke: 3.4;
+}
+.qz-ring-lg {
+  --ring-size: 148px;
+  --ring-stroke: 2.8;
+}
+.qz-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.qz-ring circle {
+  fill: none;
+  stroke-width: var(--ring-stroke, 3.4);
+}
+.qz-ring-track {
+  stroke: var(--fill);
+}
+.qz-ring-fill {
+  stroke: var(--ring-color);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.8s var(--e-out);
+}
+.qz-ring-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  color: var(--navy);
+  text-align: center;
+}
+.qz-ring-text strong {
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+.qz-ring-lg .qz-ring-text strong {
+  font-size: 2rem;
+}
+.qz-ring-text span {
+  color: var(--soft);
+  font-size: 0.82rem;
+}
+.is-good .qz-ring,
+.is-great .qz-ring {
+  --ring-color: var(--ok);
+}
+.is-ok .qz-ring {
+  --ring-color: #d19a00;
+}
+.is-low .qz-ring {
+  --ring-color: var(--bad);
+}
+
+/* ---------- 6c. Answer review cards ---------- */
+.qz-review {
+  border-inline-start: 5px solid var(--line-2);
+}
+.qz-review.is-right {
+  border-inline-start-color: var(--ok);
+}
+.qz-review.is-wrong {
+  border-inline-start-color: var(--bad);
+}
+.qz-review.is-skip {
+  border-inline-start-color: #d19a00;
+}
+.qz-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.qz-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.qz-status.is-right {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.qz-status.is-wrong {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.qz-status.is-skip {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.qz-explain {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+.qz-explain strong {
+  color: var(--navy);
+  font-size: 0.82rem;
+}
+.qz-explain p {
+  margin-block-start: 4px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.85;
+}
+
+/* ---------- larger screens ---------- */
+@media (min-width: 700px) {
+  .qz {
+    gap: 18px;
+  }
+  .qz-card {
+    gap: 18px;
+    padding: 28px;
+  }
+  .qz-q {
+    font-size: 1.28rem;
+  }
+  .qz-opt {
+    min-height: 62px;
+    font-size: 1.02rem;
+  }
+  .qz-title {
+    font-size: 1.4rem;
+  }
+  .qz-result {
+    padding: 30px 28px;
+  }
+  .qz-review-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
