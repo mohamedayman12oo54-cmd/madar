@@ -25,6 +25,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsTeacher
+from accounts.throttles import BillingCancelRateThrottle, BillingCheckoutRateThrottle, BillingStatusRateThrottle
 from environments.tenancy import IsEnvironmentMember, StandardPagination
 
 from . import entitlements
@@ -61,6 +62,7 @@ class PlanListView(generics.ListAPIView):
 class SubscriptionStatusView(APIView):
     """GET — the caller's environment's subscription/trial status plus its
     BILL-WU-010 entitlement summary."""
+    throttle_classes = [BillingStatusRateThrottle]
 
     permission_classes = IS_ENV_OWNER
 
@@ -81,6 +83,7 @@ class SubscriptionStatusView(APIView):
             "trial_end": trial_end,
             "current_period_end": subscription.current_period_end if subscription is not None else None,
             "cancel_at_period_end": bool(subscription is not None and subscription.cancel_at_period_end),
+            "pending_checkout": _pending_checkout(environment),
             "entitlement": {
                 "access_granted": decision.access_granted,
                 "basis": decision.basis,
@@ -93,12 +96,35 @@ class SubscriptionStatusView(APIView):
         return Response(serializer.data)
 
 
+def _pending_checkout(environment):
+    attempt = (
+        PaymentAttempt.objects.select_related("plan")
+        .filter(environment=environment, billing_period__isnull=True,
+                status__in=[PaymentAttempt.Status.INITIATED, PaymentAttempt.Status.PENDING, PaymentAttempt.Status.UNKNOWN])
+        .order_by("-created_at").first()
+    )
+    if attempt is None:
+        return None
+    return {"attempt_id": attempt.pk, "status": attempt.status, "plan_key": attempt.plan.key if attempt.plan_id else None}
+
+
+def _return_url_for(attempt):
+    """Where the teacher's browser lands after the hosted page: a FRONTEND route (display only —
+    a redirect is never proof of payment). `attempt_id` is the only thing the page reads, and the
+    server re-checks that the attempt belongs to the caller's environment."""
+    from django.conf import settings
+
+    base = settings.BILLING_CHECKOUT_RETURN_URL or "http://localhost:5173/app/billing"
+    return f"{base}{'&' if '?' in base else '?'}attempt_id={attempt.pk}"
+
+
 class CheckoutView(APIView):
     """POST — start (or resume) Kashier's hosted recurring-setup checkout
     for one plan (BILL-WU-019). Allowed in EVERY access state — billing
     resolution is one of `entitlements.ALWAYS_PERMITTED_CATEGORIES`, so
     this is deliberately not gated by `entitlements.decide(...)`
     (AC-BILL-019-6)."""
+    throttle_classes = [BillingCheckoutRateThrottle]
 
     permission_classes = IS_ENV_OWNER
 
@@ -106,14 +132,15 @@ class CheckoutView(APIView):
         serializer = CheckoutRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        return_url = request.build_absolute_uri("/api/v1/billing/checkout/return/")
         try:
             attempt, session_url = start_checkout(
-                request.environment, serializer.validated_data["plan_key"], return_url
+                request.environment, serializer.validated_data["plan_key"], _return_url_for
             )
         except CheckoutError as exc:
             http_status = (
-                status.HTTP_409_CONFLICT if exc.code == "paid_period_active" else status.HTTP_400_BAD_REQUEST
+                status.HTTP_409_CONFLICT if exc.code in ("paid_period_active", "checkout_in_progress")
+                else status.HTTP_503_SERVICE_UNAVAILABLE if exc.code == "provider_unavailable"
+                else status.HTTP_400_BAD_REQUEST
             )
             return Response({"detail": exc.detail, "code": exc.code}, status=http_status)
 
@@ -127,6 +154,7 @@ class CheckoutReturnView(APIView):
     "success"), this view never writes to Subscription, PaymentAttempt or
     entitlement state — it only reports the attempt's current server-side
     status (AC-BILL-019-3)."""
+    throttle_classes = [BillingStatusRateThrottle]
 
     permission_classes = IS_ENV_OWNER
 
@@ -143,6 +171,7 @@ class CancelSubscriptionView(APIView):
     reason `CheckoutView` isn't (billing resolution is always-permitted).
     Idempotent; never deletes data or issues a refund (this unit's own
     exclusions, AC-BILL-028-5)."""
+    throttle_classes = [BillingCancelRateThrottle]
 
     permission_classes = IS_ENV_OWNER
 
@@ -166,6 +195,7 @@ class PaymentHistoryView(generics.ListAPIView):
     """GET — the caller's environment's payment attempts, newest first,
     each annotated with its billing period's bounds. Paginated with the
     shared `StandardPagination` (`environments/tenancy.py`)."""
+    throttle_classes = [BillingStatusRateThrottle]
 
     permission_classes = IS_ENV_OWNER
     serializer_class = PaymentHistoryRowSerializer
