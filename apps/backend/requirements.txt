@@ -13,3 +13,6 @@ psycopg[binary]==3.3.6
 faster-whisper==1.2.1
 # faster-whisper 1.2.1 breaks on PyAV >= 17 (av.open no longer takes metadata_errors).
 av>=16,<17
+# Production deployment
+gunicorn>=23,<24
+whitenoise>=6,<7
