@@ -18,6 +18,7 @@ import {
 
 export const dashboardNav = [
   { to: "/app", label: "نظرة عامة", icon: LayoutDashboard, end: true },
+  { to: "/app/billing", label: "الاشتراك والباقات", icon: CreditCard },
   { to: "/app/students", label: "الطلاب", icon: Users },
   { to: "/app/groups", label: "المجموعات والمواعيد", icon: UsersRound },
   { to: "/app/sessions", label: "الجلسات", icon: CalendarClock },
@@ -27,6 +28,5 @@ export const dashboardNav = [
   { to: "/app/financials", label: "المدفوعات", icon: Wallet },
   { to: "/app/content", label: "المحتوى التعليمي", icon: BookOpen },
   { to: "/app/notifications", label: "الإشعارات", icon: Bell },
-  { to: "/app/billing", label: "الاشتراك والباقات", icon: CreditCard },
   { to: "/app/settings", label: "الإعدادات", icon: Settings },
 ];
