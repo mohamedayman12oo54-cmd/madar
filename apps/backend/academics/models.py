@@ -24,8 +24,10 @@ from client input.
 from django.conf import settings
 from django.core.exceptions import ValidationError
 import secrets
+from datetime import timedelta
 
 from django.db import models
+from django.utils import timezone
 
 from environments.models import current_academic_year
 from environments.tenancy import TenantOwnedModel
@@ -192,3 +194,33 @@ class Enrollment(TenantOwnedModel):
 
     def __str__(self):
         return f"{self.student} @ {self.environment} ({self.grade}, {self.academic_year})"
+
+
+def new_registration_token():
+    return secrets.token_urlsafe(24)
+
+
+class RegistrationLink(models.Model):
+    """The teacher's student SELF-REGISTRATION link (printed/shown as a QR).
+
+    A student scans it and fills the public form; the server then enrols them in THIS environment. The
+    token is an opaque bearer secret: it names one environment, can be revoked at any moment, expires,
+    and is replaced (the old one stops working) whenever the teacher regenerates it. It can do exactly
+    one thing - create an Enrollment through the same validation as the teacher's own "add student"
+    form. It never reads a roster and never reveals the student's badge code (the teacher hands that
+    over separately, which is what keeps the second proof of the activation flow meaningful)."""
+
+    VALID_FOR = timedelta(days=30)
+
+    environment = models.ForeignKey("environments.Environment", on_delete=models.CASCADE, related_name="registration_links")
+    token = models.CharField(max_length=64, unique=True, editable=False, default=new_registration_token)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    registered_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def is_usable(self):
+        return self.revoked_at is None and self.expires_at > timezone.now()

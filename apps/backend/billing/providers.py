@@ -60,6 +60,19 @@ class ChargeResult:
             raise ValueError(f"unknown ChargeResult outcome {self.outcome!r}")
 
 
+def customer_reference_for(attempt):
+    """The opaque customer reference sent to the provider for a subscription."""
+    return f"madar-sub-{attempt.subscription_id}"
+
+
+@dataclass
+class AgreementRef:
+    """Opaque provider-issued token + agreement id for a saved card (never a PAN)."""
+
+    card_token: str
+    agreement_id: str
+
+
 @dataclass
 class OrderStatus:
     outcome: str
@@ -100,6 +113,10 @@ class PaymentProvider:
 
     def lookup_order(self, merchant_order_id) -> OrderStatus:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def fetch_agreement(self, merchant_order_id, customer_reference=""):
+        """The saved-card token/agreement for a paid setup order, or None."""
+        return None
 
     def verify_and_parse_webhook(self, raw_body: bytes, headers) -> VerifiedEvent:  # pragma: no cover - interface
         raise NotImplementedError
@@ -191,6 +208,10 @@ def get_payment_provider() -> PaymentProvider:
     from django.conf import settings
 
     name = getattr(settings, "PAYMENT_PROVIDER", "fake")
+    if name == "kashier":
+        from .kashier import KashierPaymentProvider  # lazy: keeps the fake path free of provider imports
+
+        return KashierPaymentProvider()
     try:
         return _PROVIDERS[name]()
     except KeyError:

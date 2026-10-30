@@ -226,3 +226,31 @@ class CheckinLinkRateThrottle(SimpleRateThrottle):
             return None
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
         return self.cache_format % {"scope": self.scope, "ident": digest}
+
+
+# ---- student self-registration (public, unauthenticated) ----------------------
+class RegisterIPRateThrottle(IPRateThrottle):
+    """A class may share one NAT address, so this is generous; the link and phone caps stop abuse."""
+
+    scope = "register-ip"
+
+
+class RegisterPhoneRateThrottle(TargetRateThrottle):
+    """Caps submissions for ONE phone number (someone enrolling a stranger's number over and over)."""
+
+    scope = "register-phone"
+    target_fields = ("phone",)
+
+
+class RegisterLinkRateThrottle(SimpleRateThrottle):
+    """Caps ALL submissions through one link, whoever sends them: a leaked link cannot be used to
+    flood the roster, and a teacher's real class still fits."""
+
+    scope = "register-link"
+
+    def get_cache_key(self, request, view):
+        token = getattr(view, "kwargs", {}).get("token", "")
+        if not token:
+            return None
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+        return self.cache_format % {"scope": self.scope, "ident": digest}

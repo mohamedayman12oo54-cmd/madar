@@ -338,3 +338,37 @@ access ruleset), BILL-DEC-06 (teacher notifications), BILL-EXT-05 (consent wordi
 Still outside the code, needs an operator: rotate the leaked e-mail password and the Gemini key that sat in the shipped
 `.env`; put the admin (if enabled) behind a VPN/IP allow-list; IP allow-list the webhook path to Kashier's
 addresses at the proxy as an EXTRA layer (never instead of the signature); schedule the three billing workers.
+
+## Student self-registration by QR (new) — `academics/test_registration.py`, 14 tests
+
+A teacher creates a registration link (shown as a QR). A student opens it, fills in name, phone, grade,
+**one** group and guardian name/phone, and is enrolled in that teacher's environment.
+
+* **Bearer link, bounded.** Opaque `secrets.token_urlsafe` token, 30-day expiry, instant revoke; creating a
+  new link revokes the previous one. Only the environment owner can manage it.
+* **Same rules as the teacher's own form.** The public serializer subclasses the add-student serializer, so
+  one-group-only, grade/group matching, phone validation and the plan cap apply identically. Groups of
+  another environment are refused (asserted).
+* **No badge code leaves the server.** The student code is the second proof of the activation flow, so the
+  response never contains it; the teacher hands it over. Registering alone cannot activate an account.
+* **No oracle.** A phone already enrolled gets the identical success response and nothing is overwritten; a
+  phone belonging to a non-student account gets a generic refusal.
+* **Cap closes quietly.** At the plan limit the form answers "registration closed, contact the teacher" with
+  no billing detail.
+* **Abuse limits.** Throttled per IP (60/h), per phone (5/h) and per link (300/h).
+* Residual risk, by design: anyone holding a live link can enrol a phone number as a student of that teacher.
+  The teacher sees every self-registered student in the roster and can deactivate or switch the link off.
+
+## Progressive lock-out after wrong credentials (new) — `accounts/test_lockout.py`
+
+First 6 wrong attempts lock the target for 5 minutes; every following round allows 5, then locks 5 minutes
+again. Applies to teacher/team/student password login and OTP verification. Keyed on a hash of the submitted
+identifier (not on whether the account exists), cleared by a correct login, forgotten after an hour without
+failures. Trade-off: someone can deliberately keep an account in lock-out cycles; the per-IP and per-account
+request throttles remain, and the lock never exceeds 5 minutes per round.
+
+## Changed rule — a student belongs to ONE group
+
+The product owner reversed INV-4: a student may be in a single group. Enforced in
+`MAX_GROUPS_PER_STUDENT = 1` for the teacher's form and the public form. Students who already sit in two
+groups keep them until edited. The approved documentation that states INV-4 must be updated.

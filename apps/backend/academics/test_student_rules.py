@@ -153,12 +153,19 @@ class EditStudentTests(TenantTestCase):
         return self.client_a.get(f"{ENR}{self.eid}/", **self.with_env(self.env_a.id)).json()
 
     def test_fix_name_parent_and_groups_after_adding(self):
-        r = self.patch({"student_name": "الاسم الصحيح", "parent_name": "أبو أحمد", "parent_phone": "+966 55 123 4567", "group_ids": [self.g1.id, self.g2.id]})
+        r = self.patch({"student_name": "الاسم الصحيح", "parent_name": "أبو أحمد", "parent_phone": "+966 55 123 4567", "group_ids": [self.g1.id]})
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertEqual(body["student"]["name"], "الاسم الصحيح")
         self.assertEqual(body["parent_phone"], "966551234567")
-        self.assertEqual(sorted(g["id"] for g in body["groups"]), sorted([self.g1.id, self.g2.id]))
+        self.assertEqual([g["id"] for g in body["groups"]], [self.g1.id])
+
+    def test_a_student_can_be_in_one_group_only(self):
+        # Product-owner rule (Oct 2026): two groups at once is refused, and nothing is changed.
+        r = self.patch({"group_ids": [self.g1.id, self.g2.id]})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn("group_ids", r.json()["fields"])
+        self.assertEqual(list(Enrollment.objects.get(pk=self.eid).groups.values_list("pk", flat=True)), [self.g1.id])
 
     def test_parent_phone_is_validated_per_country(self):
         self.assertEqual(self.patch({"parent_phone": "+20 123"}).status_code, 400)
