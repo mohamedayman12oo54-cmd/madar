@@ -108,7 +108,8 @@ class GroupRenameSerializer(serializers.ModelSerializer):
 
 NOT_ADDABLE = "لا يمكن إضافة هذا الرقم كطالب."
 PHONE_IN_USE = "لا يمكن استخدام هذا الرقم."
-MAX_GROUPS_PER_STUDENT = 20
+# Product-owner decision (Oct 2026): a student belongs to ONE group only.
+MAX_GROUPS_PER_STUDENT = 1
 
 
 class EnrollmentSerializer(serializers.ModelSerializer):
@@ -150,7 +151,7 @@ def _resolve_groups(env, ids, grade):
     GRADE (INV-4). Returns the Group rows."""
     ids = list(dict.fromkeys(ids))  # de-duplicate, keep order
     if len(ids) > MAX_GROUPS_PER_STUDENT:
-        raise serializers.ValidationError({"group_ids": "عدد المجموعات أكبر من المسموح."})
+        raise serializers.ValidationError({"group_ids": "يمكن إضافة الطالب إلى مجموعة واحدة فقط."})
     groups = list(Group.objects.filter(environment=env, id__in=ids))
     if len(groups) != len(ids):
         raise serializers.ValidationError({"group_ids": "مجموعة غير موجودة."})
