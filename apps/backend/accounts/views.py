@@ -36,6 +36,7 @@ from .serializers import (
     issue_tokens_for,
     user_public,
 )
+from . import lockout
 from .throttles import (
     PasswordChangeRateThrottle,
     RefreshRateThrottle,
@@ -45,6 +46,7 @@ from .throttles import (
     OTPTargetRateThrottle,
     OTPVerifyRateThrottle,
     SensitiveRateThrottle,
+    normalize_target,
 )
 
 
@@ -105,6 +107,13 @@ def consume_pending(pending) -> bool:
     return deleted > 0
 
 
+def _ident(request, field):
+    """The submitted identifier as a normalised string, or "" when absent / not a string."""
+    data = request.data
+    value = data.get(field) if isinstance(data, dict) else None
+    return normalize_target(value) if isinstance(value, str) else ""
+
+
 GENERIC_RETRY = "حدث خطأ ما، برجاء المحاولة من جديد."
 
 
@@ -115,7 +124,7 @@ class TeamLoginView(APIView):
 
     def post(self, request):
         ser = TeamLoginSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        lockout.guarded("login", _ident(request, "identifier"), lambda: ser.is_valid(raise_exception=True))
         user = ser.validated_data["user"]
         return Response({**issue_tokens_for(user), "user": user_public(user)})
 
@@ -126,7 +135,7 @@ class TeacherLoginView(APIView):
 
     def post(self, request):
         ser = TeacherLoginSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        lockout.guarded("login", _ident(request, "identifier"), lambda: ser.is_valid(raise_exception=True))
         user = ser.validated_data["user"]
         return Response({**issue_tokens_for(user), "user": user_public(user)})
 
@@ -137,7 +146,7 @@ class StudentLoginView(APIView):
 
     def post(self, request):
         ser = StudentLoginSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        lockout.guarded("login", _ident(request, "phone"), lambda: ser.is_valid(raise_exception=True))
         user = ser.validated_data["user"]
         return Response({**issue_tokens_for(user), "user": user_public(user)})
 
@@ -350,7 +359,7 @@ class OTPVerifyView(APIView):
         if not purpose:
             return Response({"detail": "غير موجود."}, status=status.HTTP_404_NOT_FOUND)
         ser = OTPVerifySerializer(data=request.data, purpose=purpose)
-        ser.is_valid(raise_exception=True)
+        lockout.guarded("otp", _ident(request, "pending_id"), lambda: ser.is_valid(raise_exception=True))
         return Response({"pending_id": ser.validated_data["pending_id"], "verified": True})
 
 
