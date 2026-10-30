@@ -10,7 +10,8 @@ import QRCode from "qrcode";
 import { scannerApi } from "../lib/dashboardApi.js";
 import { qrImageSrc } from "../lib/qr.js";
 import { useGrades } from "./useGrades.js";
-import { CheckList, Confirm, Empty, PageHeader, toggleId, useDebounced } from "./common.jsx";
+import RegistrationQrModal from "./RegistrationQrModal.jsx";
+import { Confirm, Empty, PageHeader, SearchSelect, useDebounced } from "./common.jsx";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
 
@@ -24,7 +25,7 @@ function StudentFormModal({ grades, enrollment, onClose, onSaved }) {
   const [phone, setPhone] = useState(enrollment ? `+${enrollment.student.phone}` : "");
   const [gradeId, setGradeId] = useState(enrollment?.grade.id || grades[0]?.id || "");
   const [groups, setGroups] = useState([]);
-  const [groupIds, setGroupIds] = useState(enrollment?.groups.map((g) => g.id) || []);
+  const [groupIds, setGroupIds] = useState(enrollment?.groups.slice(0, 1).map((g) => g.id) || []);
   const [parentName, setParentName] = useState(enrollment?.parent_name || "");
   const [parentPhone, setParentPhone] = useState(
     enrollment?.parent_phone ? `+${enrollment.parent_phone}` : ""
@@ -117,7 +118,7 @@ function StudentFormModal({ grades, enrollment, onClose, onSaved }) {
       text={
         editing
           ? "صحّح ما أخطأت فيه. التعديل يخص بيئتك أنت فقط."
-          : "سيتمكن الطالب من تفعيل حسابه لاحقًا برقم الهاتف هذا إذا كان نشطًا."
+          : "سيتمكن الطالب من تفعيل حسابه لاحقًا برقم هاتفه أو بريده الإلكتروني الشخصي إذا كان نشطًا."
       }
       onClose={onClose}
       footer={
@@ -193,13 +194,15 @@ function StudentFormModal({ grades, enrollment, onClose, onSaved }) {
         </Field>
         <Field
           className="form-wide"
-          label="المجموعات (يمكن اختيار أكثر من مجموعة)"
+          label="المجموعة (مجموعة واحدة فقط)"
           error={fe.group_ids}
         >
-          <CheckList
+          <SearchSelect
             items={groups}
-            selected={groupIds}
-            onToggle={(id) => setGroupIds((l) => toggleId(l, id))}
+            value={groupIds[0] ?? ""}
+            onChange={(id) => setGroupIds([id])}
+            placeholder="اختر المجموعة"
+            searchPlaceholder="ابحث عن مجموعة…"
             empty="لا توجد مجموعات في هذا الصف بعد."
           />
         </Field>
@@ -301,7 +304,7 @@ export default function StudentsPage() {
       text:
         (result.created ? "تمت إضافة الطالب. " : "هذا الطالب مسجّل لديك بالفعل. ") +
         (result.active
-          ? "يستطيع تفعيل حسابه برقم هاتفه."
+          ? "يستطيع تفعيل حسابه برقم هاتفه أو بريده الإلكتروني الشخصي."
           : "الطالب غير نشط: لن يستطيع التفعيل حتى تفعّله."),
     });
   };
@@ -314,6 +317,13 @@ export default function StudentsPage() {
           disabled={gradesStatus !== "ready" || grades.length === 0}
         >
           <UserRoundPlus size={16} /> إضافة طالب
+        </Btn>
+        <Btn
+          variant="ghost"
+          onClick={() => setForm("qr")}
+          disabled={gradesStatus !== "ready" || grades.length === 0}
+        >
+          <QrCode size={16} /> إنشاء QR للتسجيل
         </Btn>
       </PageHeader>
 
@@ -461,7 +471,15 @@ export default function StudentsPage() {
         </>
       )}
 
-      {form && (
+      {form === "qr" && (
+        <RegistrationQrModal
+          onClose={() => {
+            setForm(null);
+            reload();
+          }}
+        />
+      )}
+      {form && form !== "qr" && (
         <StudentFormModal
           grades={grades}
           enrollment={form === "add" ? null : form}

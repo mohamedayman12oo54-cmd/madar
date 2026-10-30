@@ -8,7 +8,7 @@ import { ApiError } from "../lib/api.js";
 import { pollUntilDone } from "../lib/poll.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
-import { CheckList, Confirm, Empty, PageHeader, toggleId, useDebounced } from "./common.jsx";
+import { Confirm, Empty, PageHeader, SearchSelect, useDebounced } from "./common.jsx";
 import { UploadCloud, FileVideo, AlertCircle } from "lucide-react";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
@@ -37,7 +37,7 @@ function VideoModal({ item, onClose }) {
   );
 }
 
-function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
+function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
   // The file needs something to attach to, but making the teacher save first
   // and come back is a pointless round trip. On the first file pick we create
   // the content as a draft with whatever title has been typed, then keep
@@ -60,7 +60,18 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
     return created;
   };
 
-  const onUploaded = onSaved;
+  // Finishing an upload must NOT close the window: the teacher is still filling in the form.
+  // Refresh the list behind it, and keep the draft in sync so the transcript panel appears.
+  const onUploaded = (info) => {
+    setDraft((d) =>
+      d
+        ? info
+          ? { ...d, source: "upload", original_filename: info.original_filename, file_size: info.file_size }
+          : { ...d, source: "none" }
+        : d
+    );
+    onRefresh?.();
+  };
   const formId = useId();
   const editing = !!item;
   const [title, setTitle] = useState(item?.title || "");
@@ -229,20 +240,30 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved }) {
             اختر الصف ثم المجموعة. الفيديو بلا مستهدفين يبقى مسودة لا يراها أحد.
           </p>
         </div>
-        <Field className="form-wide" label="الصفوف المستهدفة" error={fe.grade_ids}>
-          <CheckList
-            items={grades}
-            selected={gradeIds}
-            onToggle={(id) => setGradeIds((l) => toggleId(l, id))}
-          />
-        </Field>
-        <Field className="form-wide" label="المجموعات المستهدفة" error={fe.group_ids}>
-          <CheckList
-            items={groups}
-            selected={groupIds}
-            onToggle={(id) => setGroupIds((l) => toggleId(l, id))}
-          />
-        </Field>
+        <div className="form-wide form-pair">
+          <Field label="الصفوف المستهدفة" error={fe.grade_ids}>
+            <SearchSelect
+              multiple
+              items={grades}
+              value={gradeIds}
+              onChange={setGradeIds}
+              placeholder="اختر الصفوف"
+              searchPlaceholder="ابحث عن صف…"
+              empty="لا توجد صفوف بعد."
+            />
+          </Field>
+          <Field label="المجموعات المستهدفة" error={fe.group_ids}>
+            <SearchSelect
+              multiple
+              items={groups}
+              value={groupIds}
+              onChange={setGroupIds}
+              placeholder="اختر المجموعات"
+              searchPlaceholder="ابحث عن مجموعة…"
+              empty="لا توجد مجموعات بعد."
+            />
+          </Field>
+        </div>
         <Field className="form-wide" label="طلاب بعينهم (اختياري)" error={fe.enrollment_ids}>
           <TextInput
             value={studentSearch}
@@ -411,6 +432,7 @@ export default function ContentPage() {
             setForm(null);
             load();
           }}
+          onRefresh={load}
         />
       )}
       {view && <VideoModal item={view} onClose={() => setView(null)} />}
@@ -479,8 +501,9 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
       // to save-and-reopen just to attach a file.
       const target = item || (ensureItem ? await ensureItem() : null);
       if (!target) throw new Error("تعذّر تجهيز المحتوى للرفع.");
-      setInfo(await contentApi.uploadVideo(target.id, file, setPct));
-      onUploaded?.();
+      const res = await contentApi.uploadVideo(target.id, file, setPct);
+      setInfo(res);
+      onUploaded?.(res);
     } catch (e2) {
       setErr(e2?.data?.video?.[0] || e2?.data?.detail || e2?.message || "تعذّر رفع الملف.");
     } finally {
@@ -499,7 +522,7 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
     try {
       await contentApi.removeVideo(item.id);
       setInfo(null);
-      onUploaded?.();
+      onUploaded?.(null);
     } catch (e2) {
       setErr(e2?.message || "تعذّر الحذف.");
     }
@@ -549,7 +572,23 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
           aria-valuemax={100}
         >
           <div className="upload-bar-fill" style={{ width: `${pct}%` }} />
-          <span className="upload-pct">{pct}%</span>
+          <span className="upload-pct" aria-hidden="true">
+            {pct}%
+          </span>
+          {/* Same label in white, revealed only over the filled part, so the number stays readable
+              whether the bar behind it is empty (navy text) or filled (white text). */}
+          <span
+            className="upload-pct upload-pct-on"
+            aria-hidden="true"
+            style={{
+              clipPath:
+                document.documentElement.dir === "ltr"
+                  ? `inset(0 ${100 - pct}% 0 0)`
+                  : `inset(0 0 0 ${100 - pct}%)`,
+            }}
+          >
+            {pct}%
+          </span>
         </div>
       )}
       {err && <Banner tone="err">{err}</Banner>}

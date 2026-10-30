@@ -189,7 +189,7 @@ const WEEKDAYS = [
   [4, "الجمعة"],
 ];
 
-function SchedulesModal({ group, onClose }) {
+function SchedulesModal({ group, onClose, onChanged }) {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("loading");
   const [weekday, setWeekday] = useState(5);
@@ -226,6 +226,7 @@ function SchedulesModal({ group, onClose }) {
         end_time: endTime,
       });
       await load();
+      onChanged?.();
     } catch (e2) {
       setErr(
         e2 instanceof ApiError
@@ -240,7 +241,8 @@ function SchedulesModal({ group, onClose }) {
   };
   const remove = async (id) => {
     await schedulingApi.schedules.remove(id).catch(() => {});
-    load();
+    await load();
+    onChanged?.();
   };
 
   return (
@@ -316,12 +318,14 @@ export default function GroupsPage() {
     if (grades.length === 0) setActiveGradeId(null);
   }, [grades, activeGradeId]);
 
-  const loadGroups = (gradeId) => {
+  // `silent` keeps the current cards on screen while refreshing (no loading flash), used when a
+  // child dialog changes data the cards display (e.g. weekly schedules).
+  const loadGroups = (gradeId, silent = false) => {
     if (!gradeId) {
       setGroups([]);
       return;
     }
-    setGroupsStatus("loading");
+    if (!silent) setGroupsStatus("loading");
     groupsApi
       .list({ grade_id: gradeId })
       .then((data) => {
@@ -505,7 +509,11 @@ export default function GroupsPage() {
         />
       )}
       {modal?.schedules && (
-        <SchedulesModal group={modal.schedules} onClose={() => setModal(null)} />
+        <SchedulesModal
+          group={modal.schedules}
+          onClose={() => setModal(null)}
+          onChanged={() => loadGroups(activeGradeId, true)}
+        />
       )}
       {modal?.deleteGrade && (
         <Confirm

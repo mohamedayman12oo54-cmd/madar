@@ -963,7 +963,30 @@ textarea.inp {
 .dash-linkish {
   color: var(--navy);
   text-decoration: underline;
+  text-underline-offset: 3px;
   font-weight: 600;
+}
+/* A <button> carrying this class must look like a link, not a grey browser button. */
+button.dash-linkish {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+}
+button.dash-linkish:hover {
+  color: #1f2540;
+  background: var(--fill);
+}
+/* Student names in the attendance list read as names, not as underlined links. */
+.att-list button.dash-linkish,
+.dash-list button.dash-linkish {
+  text-decoration: none;
+  font-size: 1rem;
 }
 
 /* Form-style pages (settings, scanner) read better in a column than edge to edge. */
@@ -986,10 +1009,19 @@ textarea.inp {
   display: grid;
   place-items: center;
 }
+.scan-stage {
+  position: relative;
+}
 .scan-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.scan-stage.is-live .scan-video {
+  opacity: 1;
 }
 .scan-placeholder {
   display: grid;
@@ -1005,9 +1037,14 @@ textarea.inp {
 }
 .scan-controls {
   display: flex;
+  justify-content: center;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-block-end: 12px;
+}
+.scan-controls > * {
+  min-width: 170px;
 }
 .scan-manual {
   display: flex;
@@ -2279,4 +2316,182 @@ textarea.inp {
 
 .dash-cards--groups {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+
+/* ---------- upload progress: readable at every percentage ---------- */
+.upload-pct-on {
+  color: #fff;
+}
+.upload-bar-fill {
+  background: linear-gradient(90deg, var(--navy), #4a5478);
+}
+
+/* ---------- side-by-side form fields ---------- */
+.form-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 560px) {
+  .form-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- SearchSelect (searchable dropdown) ---------- */
+.ss {
+  position: relative;
+}
+.ss-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+}
+.ss-trigger.is-empty .ss-value {
+  color: var(--soft);
+}
+.ss-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ss-pop {
+  position: absolute;
+  z-index: 30;
+  inset-inline: 0;
+  margin-block-start: 6px;
+  background: var(--panel);
+  border: 1.5px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(49, 56, 81, 0.18);
+  padding: 8px;
+}
+.ss-search {
+  width: 100%;
+  min-height: 40px;
+  margin-block-end: 6px;
+}
+.ss-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.ss-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+.ss-opt.is-cur {
+  background: var(--fill);
+}
+.ss-opt.is-on {
+  font-weight: 700;
+}
+.ss-tick {
+  inline-size: 16px;
+  color: var(--ok);
+  font-weight: 800;
+}
+.ss-hint {
+  margin-inline-start: auto;
+  color: var(--soft);
+  font-size: 0.78rem;
+}
+.ss-none {
+  padding: 12px 10px;
+  color: var(--soft);
+  font-size: 0.86rem;
+}
+.ss-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-start: 8px;
+}
+.ss-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--fill);
+  border: 1px solid var(--line);
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+.ss-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 50%;
+}
+.ss-chip button:hover {
+  color: var(--bad);
+}
+
+/* ---------- breathing room under a page-level notice ---------- */
+.banner {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.banner + .dash-filters,
+.banner + .list-rows,
+.banner + .dash-tabs,
+.banner + .dash-section-head,
+.banner + .banner {
+  margin-block-start: 16px;
+}
+
+/* ---------- registration QR dialog ---------- */
+.rq-live,
+.rq-start {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+}
+.rq-qr {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px;
+  background: #fff;
+}
+.rq-meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+.rq-note {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--soft);
+}
+.rq-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }

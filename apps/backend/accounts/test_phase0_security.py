@@ -80,7 +80,8 @@ class ThrottlingIsEnforcedTests(TestCase):
                 self.assertEqual(last.status_code, 429, path)
                 self.assertEqual(last.data["code"], "throttled")
 
-    def test_login_account_limit_holds_across_many_ips(self):
+    @mock.patch("accounts.views.lockout.guarded", side_effect=lambda scope, ident, fn: fn())  # lock-out has its own tests
+    def test_login_account_limit_holds_across_many_ips(self, _lock):
         """A botnet rotating source IPs still gets only 20 guesses/hour per account."""
         make_teacher()
         codes = [
@@ -362,7 +363,8 @@ class OTPAtomicityAndResendLimitTests(TestCase):
         p.refresh_from_db()
         self.assertEqual(p.resend_count, PendingAuth.MAX_RESENDS)
 
-    def test_total_guess_budget_is_bounded_across_resends(self):
+    @mock.patch("accounts.views.lockout.guarded", side_effect=lambda scope, ident, fn: fn())  # lock-out has its own tests
+    def test_total_guess_budget_is_bounded_across_resends(self, _lock):
         """An attacker who guesses, resends, guesses, resends... gets exactly
         MAX_ATTEMPTS * (MAX_RESENDS + 1) real guesses in total, then nothing
         (regression: resend reset the counter with no limit)."""

@@ -32,6 +32,7 @@ import {
 } from "./auth/screens/StudentAuth.jsx";
 import { ParentLogin } from "./auth/screens/ParentAuth.jsx";
 import { CheckinPage } from "./auth/screens/Checkin.jsx";
+import { RegisterPage } from "./auth/screens/Register.jsx";
 import { TeamLogin } from "./auth/screens/TeamAuth.jsx";
 import {
   AuthGallery,
@@ -98,6 +99,8 @@ function AnimatedRoutes({ ready }) {
         <Route path="/auth/parent" element={<ParentLogin />} />
         {/* public self check-in (opened from the teacher's QR) */}
         <Route path="/checkin/:token" element={<CheckinPage />} />
+        {/* public student self-registration (opened from the teacher's QR) */}
+        <Route path="/register/:token" element={<RegisterPage />} />
         <Route path="/auth/team/login" element={<TeamLogin />} />
         <Route path="/auth/state/:key" element={<AuthStateScreen />} />
 
@@ -109,7 +112,7 @@ function AnimatedRoutes({ ready }) {
 
 export default function App() {
   const location = useLocation();
-  const isAuth = location.pathname.startsWith("/auth") || location.pathname.startsWith("/checkin/");
+  const isAuth = location.pathname.startsWith("/auth") || location.pathname.startsWith("/checkin/") || location.pathname.startsWith("/register/");
   const isApp = location.pathname.startsWith("/app");
   // NOT startsWith("/learn"): keep the match exact so no marketing path can collide with it.
   const isLearn = location.pathname === "/learn" || location.pathname.startsWith("/learn/");

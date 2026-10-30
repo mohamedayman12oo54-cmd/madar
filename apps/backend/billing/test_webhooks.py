@@ -223,6 +223,9 @@ class AllowAnyRouteEnumerationTests(SimpleTestCase):
         # Student self check-in (QR token + phone + announced code); attendance-only, throttled.
         "scheduling.checkin.CheckinInfoView",
         "scheduling.checkin.CheckinSubmitView",
+        # Student self-registration (QR token): can only create an enrolment in its own environment.
+        "academics.registration.RegistrationInfoView",
+        "academics.registration.RegistrationSubmitView",
     })
 
     def test_the_allow_any_route_set_is_exactly_the_expected_one(self):

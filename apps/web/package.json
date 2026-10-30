@@ -1,27 +1,23 @@
 {
-  "name": "madar-frontend",
+  "name": "madar-web",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
-  "description": "Madar — Arabic-first RTL educational platform frontend (UI/UX prototype track).",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "test": "node --test src/lib/api.test.js src/lib/poll.test.js src/lib/phone.test.js src/lib/dates.test.js src/lib/datePicker.test.js src/lib/video.test.js src/lib/billing.test.js src/dashboard/nav.test.js src/lib/pwa.test.mjs src/components/install.test.mjs src/components/player.test.mjs src/lib/routes.conformance.test.mjs src/auth/modal.test.mjs src/auth/claim.test.mjs src/dashboard/render.smoke.test.mjs src/lib/security.static.test.mjs src/lib/a11y.static.test.mjs src/lib/embed-qr.test.js src/lib/styles.static.test.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "framer-motion": "^11.3.19",
-    "lucide-react": "^0.427.0",
+    "framer-motion": "^11.0.0",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^0.400.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1"
+    "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "jsdom": "^30.1.2",
-    "prettier": "^3.3.3",
-    "vite": "^5.4.2"
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^5.4.0"
   }
 }

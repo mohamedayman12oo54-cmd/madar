@@ -32,3 +32,10 @@ export const enrollmentsApi = {
   create: (payload) => api.post("/academics/enrollments/", payload, { tenant: true }),
   update: (id, payload) => api.patch(`/academics/enrollments/${id}/`, payload, { tenant: true }),
 };
+
+// The teacher's student self-registration link (the QR in "add student").
+export const registrationApi = {
+  get: () => api.get("/academics/registration-link/", { tenant: true }),
+  create: () => api.post("/academics/registration-link/", {}, { tenant: true }),
+  revoke: () => api.delete("/academics/registration-link/", { tenant: true }),
+};
