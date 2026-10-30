@@ -9,6 +9,7 @@ import { notificationsApi } from "../lib/dashboardApi.js";
 import { formatPhone } from "../lib/phone.js";
 import { dashboardNav } from "./nav.js";
 import BillingBanner from "./BillingBanner.jsx";
+import PlansWelcome from "./PlansWelcome.jsx";
 import "./billing.css";
 import "./dashboard.css";
 
@@ -235,6 +236,7 @@ export default function DashboardLayout() {
         </header>
         <main className="dash-body">
           <BillingBanner />
+          <PlansWelcome />
           <Outlet context={{ refreshFailed }} />
         </main>
       </div>
