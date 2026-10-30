@@ -350,6 +350,10 @@ REST_FRAMEWORK = {
         "checkin-ip": "120/hour",
         "checkin-phone": "8/hour",
         "checkin-link": "200/hour",
+        # student self-registration (public): per IP / per phone / per link
+        "register-ip": "60/hour",
+        "register-phone": "5/hour",
+        "register-link": "300/hour",
 
         # --- per authenticated user ---
         "scan": "240/min",
