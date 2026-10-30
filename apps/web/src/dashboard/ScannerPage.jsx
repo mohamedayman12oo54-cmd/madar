@@ -2,17 +2,16 @@
  * Teacher QR scanner — scan a student badge, then pick one of three actions:
  * attendance, recitation, monthly fees.
  *
- * Camera decoding uses the browser's built-in BarcodeDetector where it exists
- * (Chrome/Android — the phone case this screen is built for). There is NO
- * third-party scanning dependency: where the API is missing the screen falls
- * back to typing/pasting the badge code, so the workflow always works instead
- * of silently failing.
+ * Camera decoding uses the browser's built-in BarcodeDetector where it exists and falls back to
+ * jsQR (small, pure-JS, no network) elsewhere. The REAR camera is requested first. Typing/pasting
+ * the badge code always remains available.
  *
  * Nothing here maps a code to a student: the opaque token is sent to the
  * server, which resolves it inside the active environment only. The client
  * also never sends a fee amount — the Grade owns it (INV-5).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import jsQR from "jsqr";
 import {
   ScanLine,
   Camera,
@@ -94,40 +93,82 @@ export default function ScannerPage() {
     [busy, sessionId]
   );
 
+  // Rear camera first (facingMode "environment"), then any camera. The <video> element is ALWAYS in
+  // the DOM (see the stage below) so the stream always has somewhere to render.
+  const openStream = async () => {
+    const tries = [
+      { video: { facingMode: { exact: "environment" } }, audio: false },
+      { video: { facingMode: { ideal: "environment" } }, audio: false },
+      { video: true, audio: false },
+    ];
+    let last;
+    for (const constraints of tries) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) {
+        last = e;
+        if (e?.name === "NotAllowedError" || e?.name === "SecurityError") break;
+      }
+    }
+    throw last;
+  };
+
   const startCamera = useCallback(async () => {
     setCamError(null);
-    if (!("BarcodeDetector" in window)) {
-      setCamError("متصفحك لا يدعم قراءة الرموز بالكاميرا. استخدم إدخال الرمز يدويًا بالأسفل.");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError("الكاميرا تحتاج اتصالًا آمنًا (HTTPS) ومتصفحًا حديثًا. استخدم إدخال الرمز يدويًا.");
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
+      const stream = await openStream();
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      const video = videoRef.current;
+      video.srcObject = stream;
+      await video.play();
       setCamOn(true);
-      const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+
+      // Native detector where it exists; jsQR (pure JS) everywhere else, so the camera works on
+      // desktop Chrome, Safari and Firefox too.
+      const native = "BarcodeDetector" in window ? new window.BarcodeDetector({ formats: ["qr_code"] }) : null;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const onHit = (value) => {
+        // Ignore the same code re-detected frame after frame.
+        if (value && value !== lastRef.current) {
+          lastRef.current = value;
+          resolve(value);
+        }
+      };
       loopRef.current = setInterval(async () => {
-        if (!videoRef.current) return;
+        const v = videoRef.current;
+        if (!v || v.readyState < 2 || !v.videoWidth) return;
         try {
-          const [hit] = await detector.detect(videoRef.current);
-          // Ignore the same code re-detected frame after frame.
-          if (hit?.rawValue && hit.rawValue !== lastRef.current) {
-            lastRef.current = hit.rawValue;
-            resolve(hit.rawValue);
+          if (native) {
+            const [hit] = await native.detect(v);
+            onHit(hit?.rawValue);
+          } else {
+            const w = Math.min(640, v.videoWidth);
+            canvas.width = w;
+            canvas.height = Math.round((v.videoHeight / v.videoWidth) * w);
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            onHit(jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" })?.data);
           }
         } catch {
           /* a dropped frame is not an error worth surfacing */
         }
-      }, 400);
-    } catch {
-      setCamError("تعذّر فتح الكاميرا. تأكد من منح الإذن، أو أدخل الرمز يدويًا.");
+      }, 300);
+    } catch (e) {
+      stopCamera();
+      setCamError(
+        e?.name === "NotAllowedError"
+          ? "تم رفض إذن الكاميرا. فعّله من إعدادات المتصفح ثم أعد المحاولة، أو أدخل الرمز يدويًا."
+          : e?.name === "NotFoundError"
+          ? "لا توجد كاميرا متاحة على هذا الجهاز. أدخل الرمز يدويًا."
+          : "تعذّر فتح الكاميرا. تأكد أنها غير مستخدمة في تطبيق آخر، أو أدخل الرمز يدويًا."
+      );
     }
-  }, [resolve]);
+  }, [resolve, stopCamera]);
 
   const act = async (fn, successText) => {
     setBusy(true);
@@ -175,10 +216,9 @@ export default function ScannerPage() {
             </select>
           </Field>
 
-          <div className="scan-stage">
-            {camOn ? (
-              <video ref={videoRef} className="scan-video" muted playsInline />
-            ) : (
+          <div className={`scan-stage${camOn ? " is-live" : ""}`}>
+            <video ref={videoRef} className="scan-video" muted playsInline autoPlay />
+            {!camOn && (
               <div className="scan-placeholder">
                 <ScanLine size={30} />
                 <p>وجّه الكاميرا نحو بادچ الطالب</p>
