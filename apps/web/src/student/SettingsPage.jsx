@@ -4,6 +4,7 @@ import { formatPhone } from "../lib/phone.js";
 import { Field, TextInput } from "../auth/ui.jsx";
 import { PageHeader } from "../dashboard/common.jsx";
 import { SecuritySection } from "../dashboard/SettingsPage.jsx";
+import PushToggle from "../dashboard/PushToggle.jsx";
 
 export default function SettingsPage() {
   const { user } = useSession();
@@ -25,6 +26,7 @@ export default function SettingsPage() {
           </Link>
         </p>
       </section>
+      <PushToggle />
       <SecuritySection loginPath="/auth/student" />
     </>
   );
