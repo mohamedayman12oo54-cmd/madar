@@ -168,6 +168,18 @@ class ScanRateThrottle(UserRateThrottle):
     scope = "scan"
 
 
+class ExamAnswerRateThrottle(UserRateThrottle):
+    """Autosave while a student sits an exam: one write per answer, generous per minute."""
+
+    scope = "exam-answer"
+
+
+class ExamEventRateThrottle(UserRateThrottle):
+    """Integrity signals from the exam page. Bounded so a script cannot flood the log."""
+
+    scope = "exam-event"
+
+
 # ---- guardian code login ---------------------------------------------------
 class GuardianLoginRateThrottle(IPRateThrottle):
     scope = "guardian-login"
