@@ -406,7 +406,13 @@ class PromptTests(SimpleTestCase):
 
 @override_settings(QUIZ_LANGUAGE="ar-msa")
 class ProviderTests(SimpleTestCase):
+    """Content validation (ContentValidationTests, below) is its own LLM call
+    and is covered there; every test in this class opts OUT of it so a
+    `FakeClient`'s queued outcomes still line up one-to-one with the
+    quiz-generation calls they were written to test."""
+
     def provider(self, *outcomes, **kw):
+        kw.setdefault("validate_content", False)
         client = FakeClient(*outcomes)
         return LLMQuizProvider(client=client, **kw), client
 
