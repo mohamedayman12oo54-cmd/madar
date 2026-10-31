@@ -35,6 +35,7 @@ from billing import capabilities
 from billing.permissions import RequiresCapability
 from config.months import current_month, month_bounds
 from content.models import ContentItem, Transcript, VideoProgress
+
 from content.video import describe_video
 from environments.tenancy import IsEnvironmentMember
 from evaluation.models import MonthlyRating, PrivateNote, StudentState
@@ -77,11 +78,15 @@ def _visible_content(enrollment):
 def _can_quiz(item):
     """Mirrors `ai.quiz_source.prepare_quiz_source`: an uploaded video is quizzed
     from its (completed) transcript; anything else from the teacher's text."""
+    if item.kind != ContentItem.Kind.VIDEO:
+        return False
     if item.source == ContentItem.Source.UPLOAD:
         return (
             getattr(item, "transcript_state", None) == Transcript.Status.COMPLETED
             and (getattr(item, "transcript_chars", None) or 0) + len(teacher_text(item)) >= MIN_QUIZ_SOURCE_CHARS
         )
+    if item.kind != ContentItem.Kind.VIDEO:
+        return False
     source = f"{item.title}\n{item.description}\n{item.quiz_source}"
     return len(source.strip()) >= MIN_QUIZ_SOURCE_CHARS and bool(item.quiz_source.strip() or len(item.description.strip()) >= 20)
 
@@ -94,8 +99,21 @@ def _video_row(item):
         # ticket-protected) or embed the external player. The stored path is
         # deliberately NOT exposed.
         "source": item.source,
+        "kind": item.kind,
         "can_quiz": _can_quiz(item),
     }
+
+
+def _material_row(item, detail=False):
+    """A PDF or a summary as the student sees it. The stored file path is never exposed; a PDF is
+    opened through a signed ticket (content.document_views)."""
+    row = {"id": item.id, "kind": item.kind, "title": item.title, "description": item.description,
+           "published_at": item.published_at}
+    if item.kind == ContentItem.Kind.PDF:
+        row.update({"original_filename": item.original_filename, "file_size": item.file_size})
+    if detail and item.kind == ContentItem.Kind.SUMMARY:
+        row["body"] = item.body
+    return row
 
 
 def _month_str(d):
@@ -133,7 +151,7 @@ class OverviewView(StudentView):
                 "recitation": {"studied": rec.get("studied", 0), "not_studied": rec.get("not_studied", 0)},
             },
             "unread_notifications": Notification.objects.filter(environment=env, recipient=request.user, read_at__isnull=True).count(),
-            "latest_videos": [_video_row(v) for v in _visible_content(e).order_by("-published_at")[:3]],
+            "latest_videos": [_video_row(v) for v in _visible_content(e).filter(kind=ContentItem.Kind.VIDEO).order_by("-published_at")[:3]],
         })
 
 
@@ -227,7 +245,7 @@ class EvaluationView(StudentView):
 class VideoListView(StudentView):
     def get(self, request):
         e = my_enrollment(request)
-        items = _visible_content(e).order_by("-published_at")[:MAX_ROWS]
+        items = _visible_content(e).filter(kind=ContentItem.Kind.VIDEO).order_by("-published_at")[:MAX_ROWS]
         return Response({"results": [_video_row(v) for v in items]})
 
 
@@ -237,7 +255,7 @@ class VideoDetailView(StudentView):
 
     def get(self, request, pk):
         e = my_enrollment(request)
-        item = generics.get_object_or_404(_visible_content(e), pk=pk)
+        item = generics.get_object_or_404(_visible_content(e).filter(kind=ContentItem.Kind.VIDEO), pk=pk)
         row = _video_row(item)
         prog = VideoProgress.objects.filter(item=item, enrollment=e).first()
         row["progress"] = {"position_seconds": prog.position_seconds, "percent": prog.percent,
@@ -245,15 +263,42 @@ class VideoDetailView(StudentView):
         return Response(row)
 
 
+class MaterialListView(StudentView):
+    """PDF files and summaries targeted at this student (`?kind=pdf|summary`, default both)."""
+
+    def get(self, request):
+        e = my_enrollment(request)
+        kinds = [ContentItem.Kind.PDF, ContentItem.Kind.SUMMARY]
+        wanted = request.query_params.get("kind")
+        if wanted:
+            if wanted not in kinds:
+                raise serializers.ValidationError({"kind": "نوع غير صالح."})
+            kinds = [wanted]
+        items = _visible_content(e).filter(kind__in=kinds).order_by("-published_at")[:MAX_ROWS]
+        return Response({"results": [_material_row(i) for i in items]})
+
+
+class MaterialDetailView(StudentView):
+    """One PDF or summary the student may read; anything not targeted at them is a plain 404."""
+
+    def get(self, request, pk):
+        e = my_enrollment(request)
+        item = generics.get_object_or_404(
+            _visible_content(e).filter(kind__in=[ContentItem.Kind.PDF, ContentItem.Kind.SUMMARY]), pk=pk)
+        return Response(_material_row(item, detail=True))
+
+
 class NotificationListView(StudentView):
     def get(self, request):
         qs = Notification.objects.filter(environment=request.environment, recipient=request.user)
         if request.query_params.get("unread") in ("1", "true"):
             qs = qs.filter(read_at__isnull=True)
-        qs = qs.select_related("broadcast").prefetch_related("broadcast__grades", "broadcast__groups")
+        qs = qs.select_related("broadcast", "content_item").prefetch_related("broadcast__grades", "broadcast__groups")
         return Response({"results": [
             {"id": n.id, "type": n.type, "type_label": n.get_type_display(), "title": n.title, "body": n.body,
              "created_at": n.created_at, "read": n.read_at is not None,
+             # Where "open" should take the student (an exam, a file/summary, a video) — None for the rest.
+             "target": n.target(),
              # For a teacher message: who it was addressed to, so the student
              # can open the full context instead of a truncated line.
              "details": ({
@@ -330,7 +375,8 @@ class QuizListRequestView(StudentView):
         ser = QuizRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         e = my_enrollment(request)
-        item = generics.get_object_or_404(_visible_content(e), pk=ser.validated_data["content_id"])
+        item = generics.get_object_or_404(
+            _visible_content(e).filter(kind=ContentItem.Kind.VIDEO), pk=ser.validated_data["content_id"])
         key = ser.validated_data.get("idempotency_key")
         env = request.environment
         if key:

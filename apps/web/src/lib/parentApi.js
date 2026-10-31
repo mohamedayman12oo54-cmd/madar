@@ -50,6 +50,45 @@ export function setActiveChild(index) {
   return s;
 }
 
+/** Swap every child's token for a fresh one (the server accepts a still-valid token and issues a new one), so a
+ *  portal tab that stays open never expires under the guardian. A child the server no longer accepts (the
+ *  teacher changed the phone, the student was deactivated) is dropped; with none left the session is over.
+ *  A network failure keeps the current tokens. Returns the updated session, or null when it is over. */
+export async function renewParentSession() {
+  const s = getParentSession();
+  if (!s) return null;
+  const kept = [];
+  let ttl = null;
+  let activeToken = s.children[s.active]?.token;
+  for (const c of s.children) {
+    try {
+      const r = await api.post("/parent/renew/", {}, withParent(c.token));
+      kept.push({ ...c, token: r.token });
+      ttl = r.expires_in || ttl;
+      if (c.token === activeToken) activeToken = r.token;
+    } catch (e) {
+      if (e?.status === 401) continue;
+      kept.push(c); // offline / 5xx: nothing is known about this session, keep it
+    }
+  }
+  if (!kept.length) {
+    clearParentSession();
+    return null;
+  }
+  const next = {
+    ...s,
+    children: kept,
+    active: Math.max(0, kept.findIndex((c) => c.token === activeToken)),
+    expires_at: ttl ? Date.now() + ttl * 1000 : s.expires_at,
+  };
+  try {
+    sessionStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  return next;
+}
+
 export function clearParentSession() {
   try {
     sessionStorage.removeItem(KEY);

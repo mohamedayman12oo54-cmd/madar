@@ -76,8 +76,10 @@ class QuizPrompt:
     version: str = PROMPT_VERSION
 
 
-def _neutralize(source):
-    """The source must not be able to close its own fence."""
+def neutralize_source(source):
+    """The source must not be able to close its own fence. Shared with
+    ai/content_validation_prompt.py, which fences the same transcript the same
+    way for its own (separate) prompt."""
     return source.replace(SOURCE_BEGIN, "[marker removed]").replace(SOURCE_END, "[marker removed]")
 
 
@@ -150,7 +152,7 @@ def build_quiz_prompt(config: QuizGenerationConfig, title: str, source_text: str
         "LANGUAGE AND STYLE:\n" + _LANGUAGE_INSTRUCTIONS[config.language],
         _output_format(config),
         f"LESSON TITLE (context only): {title.strip()[:200]}",
-        f"{SOURCE_BEGIN}\n{_neutralize(source_text)}\n{SOURCE_END}",
+        f"{SOURCE_BEGIN}\n{neutralize_source(source_text)}\n{SOURCE_END}",
     ]
     if correction_errors:
         shown = "\n".join(f"- {e}" for e in list(correction_errors)[:8])

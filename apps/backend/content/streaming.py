@@ -36,11 +36,14 @@ from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.http import FileResponse, Http404, HttpResponse, StreamingHttpResponse
 
 SIGNER_SALT = "content.video.playback"
+# A study document (PDF) has its OWN salt: a document ticket can never be replayed against the
+# video stream endpoint, nor a video ticket against the document one.
+DOCUMENT_SALT = "content.document.view"
 _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
 CHUNK = 64 * 1024
 
 
-def issue_ticket(item_id: int, viewer_id: int, height: int | None = None) -> str:
+def issue_ticket(item_id: int, viewer_id: int, height: int | None = None, salt: str = SIGNER_SALT) -> str:
     """A short-lived, signed permission to stream ONE item as ONE viewer.
 
     `height` (e.g. 720) names one transcoded rendition; without it the ticket
@@ -48,14 +51,14 @@ def issue_ticket(item_id: int, viewer_id: int, height: int | None = None) -> str
     client cannot edit a 360p ticket into a 1080p one.
     """
     payload = f"{item_id}:{viewer_id}" if not height else f"{item_id}:{viewer_id}:{int(height)}"
-    return TimestampSigner(salt=SIGNER_SALT).sign(payload)
+    return TimestampSigner(salt=salt).sign(payload)
 
 
-def resolve_ticket_full(ticket: str):
+def resolve_ticket_full(ticket: str, salt: str = SIGNER_SALT):
     """`(item_id, viewer_id, height_or_None)` for a valid ticket, else Http404."""
     ttl = getattr(settings, "VIDEO_PLAYBACK_TTL_SECONDS", 300)
     try:
-        raw = TimestampSigner(salt=SIGNER_SALT).unsign(ticket or "", max_age=ttl)
+        raw = TimestampSigner(salt=salt).unsign(ticket or "", max_age=ttl)
         parts = [int(part) for part in raw.split(":")]
         if len(parts) not in (2, 3):
             raise ValueError

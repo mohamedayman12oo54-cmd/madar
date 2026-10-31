@@ -102,6 +102,17 @@ def session_response(enrollments):
     }
 
 
+class GuardianRenewView(APIView):
+    """Swap a still-valid guardian token for a fresh one for the SAME child, so a portal tab that stays open
+    never expires under the guardian. The same checks as every portal request apply first (the phone the
+    teacher recorded, the child still active); a token that is already expired cannot be renewed."""
+
+    permission_classes = [IsParent]
+
+    def post(self, request):
+        return Response({"token": issue_session(request.user.enrollment), "expires_in": SESSION_TTL_SECONDS})
+
+
 class CodeLoginSerializer(serializers.Serializer):
     phone = serializers.CharField()
     student_code = serializers.CharField(max_length=32)

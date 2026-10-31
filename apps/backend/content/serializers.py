@@ -6,6 +6,7 @@ from .models import ContentItem
 from .video import VideoRefError, describe_video, validate_video
 
 MAX_TARGETS = 500
+MAX_SUMMARY_CHARS = 20000
 
 
 class ContentItemSerializer(serializers.ModelSerializer):
@@ -16,11 +17,28 @@ class ContentItemSerializer(serializers.ModelSerializer):
     targets = serializers.SerializerMethodField()
     published = serializers.SerializerMethodField()
     transcript_status = serializers.SerializerMethodField()
+    has_document = serializers.SerializerMethodField()
+    has_body = serializers.SerializerMethodField()
 
     class Meta:
         model = ContentItem
-        fields = ["id", "title", "description", "quiz_source", "video", "source", "original_filename",
-                  "file_size", "targets", "published", "published_at", "created_at", "transcript_status"]
+        fields = ["id", "kind", "title", "description", "body", "has_body", "quiz_source", "video", "source",
+                  "original_filename", "file_size", "has_document", "targets", "published", "published_at",
+                  "created_at", "transcript_status"]
+
+    def get_has_document(self, obj):
+        return bool(obj.document_file)
+
+    def get_has_body(self, obj):
+        return bool(obj.body.strip())
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # A summary can be ~20k characters: list rows carry only `has_body`; the text comes from the
+        # single-item endpoint, so a long list stays light.
+        if self.context.get("list"):
+            data.pop("body", None)
+        return data
 
     def get_transcript_status(self, obj):
         row = getattr(obj, "transcript", None) if hasattr(obj, "transcript") else None
@@ -49,10 +67,13 @@ class ContentItemWriteSerializer(serializers.ModelSerializer):
     grade_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
     group_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
     enrollment_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+    kind = serializers.ChoiceField(choices=ContentItem.Kind.choices, required=False)
+    body = serializers.CharField(required=False, allow_blank=True, max_length=MAX_SUMMARY_CHARS, trim_whitespace=False)
 
     class Meta:
         model = ContentItem
-        fields = ["id", "title", "description", "quiz_source", "video_provider", "video_ref", "grade_ids", "group_ids", "enrollment_ids"]
+        fields = ["id", "kind", "title", "description", "body", "quiz_source", "video_provider", "video_ref",
+                  "grade_ids", "group_ids", "enrollment_ids"]
         read_only_fields = ["id"]
 
     def validate_title(self, value):
@@ -71,15 +92,28 @@ class ContentItemWriteSerializer(serializers.ModelSerializer):
         return rows
 
     def validate(self, attrs):
-        provider = attrs.get("video_provider", getattr(self.instance, "video_provider", "none"))
-        ref = attrs.get("video_ref", getattr(self.instance, "video_ref", ""))
-        if "video_provider" in attrs and attrs["video_provider"] == "none" and "video_ref" not in attrs:
-            ref = ""
-        try:
-            attrs["video_ref"] = validate_video(provider, ref)
-        except VideoRefError as e:
-            raise serializers.ValidationError({"video_ref": str(e)})
-        attrs["video_provider"] = provider
+        # The kind is fixed when the item is created: turning a video into a PDF would leave its blob
+        # and transcript orphaned and change what students were already told they received.
+        current = getattr(self.instance, "kind", None)
+        kind = attrs.get("kind", current or ContentItem.Kind.VIDEO)
+        if current and kind != current:
+            raise serializers.ValidationError({"kind": "لا يمكن تغيير نوع المحتوى بعد إنشائه."})
+        attrs["kind"] = kind
+        if kind != ContentItem.Kind.SUMMARY and attrs.get("body", "").strip():
+            raise serializers.ValidationError({"body": "النص متاح للملخصات فقط."})
+        if kind == ContentItem.Kind.VIDEO:
+            provider = attrs.get("video_provider", getattr(self.instance, "video_provider", "none"))
+            ref = attrs.get("video_ref", getattr(self.instance, "video_ref", ""))
+            if "video_provider" in attrs and attrs["video_provider"] == "none" and "video_ref" not in attrs:
+                ref = ""
+            try:
+                attrs["video_ref"] = validate_video(provider, ref)
+            except VideoRefError as e:
+                raise serializers.ValidationError({"video_ref": str(e)})
+            attrs["video_provider"] = provider
+        else:
+            # A PDF or a summary never carries a video reference.
+            attrs["video_provider"], attrs["video_ref"] = "none", ""
         if "grade_ids" in attrs:
             attrs["_grades"] = self._targets(Grade, attrs.pop("grade_ids"), "grade_ids")
         if "group_ids" in attrs:

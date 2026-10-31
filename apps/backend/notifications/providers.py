@@ -36,4 +36,7 @@ class NullPushProvider(PushProvider):
 
 
 def get_provider() -> PushProvider:
-    return NullPushProvider()
+    """Real Web Push when VAPID keys are configured, otherwise the honest no-op stand-in."""
+    from . import webpush
+
+    return webpush.WebPushProvider() if webpush.enabled() else NullPushProvider()

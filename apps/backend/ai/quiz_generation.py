@@ -14,10 +14,15 @@ Pipeline per operation (every step is its own module):
     1. configuration    quiz_contract.QuizGenerationConfig   (validated BEFORE any LLM call)
     2. source guard     evidence["text"] is already the complete prepared lesson
                         (quiz_source.py); too little material fails explicitly
-    3. prompt           quiz_prompt.build_quiz_prompt
-    4. model call       ai.llm.LLMClient (never Gemini directly), JSON output mode
-    5. validation       quiz_contract.parse_generated_quiz   (deterministic, whole result)
-    6. bounded recovery at most QUIZ_MAX_ATTEMPTS model calls in total, each
+    3. content check    content_validation_prompt + content_validation_contract:
+                        one classification call, EDUCATIONAL vs NON_EDUCATIONAL
+                        (QUIZ_CONTENT_VALIDATION_ENABLED; on by default). A
+                        NON_EDUCATIONAL verdict, or a validation failure, stops
+                        here — the quiz-generation steps below never run.
+    4. prompt           quiz_prompt.build_quiz_prompt
+    5. model call       ai.llm.LLMClient (never Gemini directly), JSON output mode
+    6. validation       quiz_contract.parse_generated_quiz   (deterministic, whole result)
+    7. bounded recovery at most QUIZ_MAX_ATTEMPTS model calls in total, each
                         retry carrying the validation errors; then fail
 
 Failures never produce a partial quiz, and never leak provider detail: the
@@ -28,6 +33,9 @@ import logging
 
 from django.conf import settings
 
+from .content_validation_contract import parse_validation_response
+from .content_validation_prompt import PROMPT_VERSION as CONTENT_VALIDATION_PROMPT_VERSION
+from .content_validation_prompt import build_content_validation_prompt
 from .llm import LLMError, LLMRequest, get_llm_client
 from .providers import AIProviderError, QuizResult, StubTutorProvider
 from .quiz_contract import INSUFFICIENT_SOURCE, QuizConfigError, QuizGenerationConfig, parse_generated_quiz
@@ -42,11 +50,15 @@ DEFAULT_MIN_SOURCE_CHARS = 400
 _BUSY = "خدمة توليد الاختبارات مشغولة حاليًا. حاول مرة أخرى بعد قليل."
 _INVALID = "تعذّر إنشاء اختبار صالح لهذا الدرس. حاول مرة أخرى."
 _GENERIC = "تعذّر إنشاء الاختبار الآن."
+NON_EDUCATIONAL = "non_educational"
+CONTENT_VALIDATION_FAILED = "content_validation_failed"
 _FAILURE_MESSAGES = {
     "config": "خدمة توليد الاختبارات غير مهيأة بعد. أخبر معلمك.",
     INSUFFICIENT_SOURCE: "مادة هذا الدرس لا تكفي لإنشاء اختبار كامل منها.",
     "rate_limit": _BUSY, "timeout": _BUSY, "network": _BUSY, "provider": _BUSY,
     "invalid_output": _INVALID, "truncated": _INVALID, "malformed_response": _INVALID, "blocked": _INVALID,
+    NON_EDUCATIONAL: "لا يحتوي هذا الفيديو على محتوى تعليمي كافٍ لإنشاء اختبار ذي معنى منه.",
+    CONTENT_VALIDATION_FAILED: "تعذّر التحقق من محتوى هذا الدرس. حاول مرة أخرى.",
 }
 
 
@@ -62,19 +74,21 @@ class QuizGenerationError(AIProviderError):
 
 class LLMQuizProvider(StubTutorProvider):
     def __init__(self, *, client=None, config=None, max_attempts=DEFAULT_MAX_ATTEMPTS,
-                 min_source_chars=DEFAULT_MIN_SOURCE_CHARS):
+                 min_source_chars=DEFAULT_MIN_SOURCE_CHARS, validate_content=True):
         if not 1 <= max_attempts <= MAX_ATTEMPTS_LIMIT:
             raise QuizGenerationError("config", {"detail": f"QUIZ_MAX_ATTEMPTS must be 1..{MAX_ATTEMPTS_LIMIT}"})
         self._client = client
         self._config = config   # None => QuizGenerationConfig.from_settings() per operation
         self.max_attempts = max_attempts
         self.min_source_chars = min_source_chars
+        self.validate_content = validate_content
 
     @classmethod
     def from_settings(cls):
         return cls(
             max_attempts=getattr(settings, "QUIZ_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS),
             min_source_chars=getattr(settings, "QUIZ_MIN_SOURCE_CHARS", DEFAULT_MIN_SOURCE_CHARS),
+            validate_content=getattr(settings, "QUIZ_CONTENT_VALIDATION_ENABLED", True),
         )
 
     def generate_quiz(self, title, text):
@@ -103,6 +117,11 @@ class LLMQuizProvider(StubTutorProvider):
         except LLMError as exc:
             log.error("quiz generation: LLM client unavailable (%s)", exc.category)
             raise QuizGenerationError(exc.category, meta) from exc
+
+        # 3. content check — a NON_EDUCATIONAL verdict (or a failure to reach
+        # one) stops here; the generation loop below never sees this text.
+        if self.validate_content:
+            meta["content_validation"] = self._check_content(client, title, text, meta)
 
         usage = {"prompt_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         errors, category = [], "invalid_output"
@@ -138,3 +157,39 @@ class LLMQuizProvider(StubTutorProvider):
 
         raise QuizGenerationError(category, {
             **meta, "attempts": self.max_attempts, "usage": usage, "validation_errors": errors[:5]})
+
+    def _check_content(self, client, title, text, meta):
+        """One classification call (no corrective regeneration — see
+        content_validation_prompt.build_content_validation_prompt). Returns
+        the metadata to record on success; raises `QuizGenerationError`
+        (NON_EDUCATIONAL, or CONTENT_VALIDATION_FAILED for anything that
+        stopped us from reaching a verdict) otherwise — the generation loop
+        is never reached in that case."""
+        prompt = build_content_validation_prompt(title, text)
+        try:
+            response = client.complete(LLMRequest(prompt=prompt.user, system=prompt.system, json_output=True))
+        except LLMError as exc:
+            log.warning("content validation: LLM call failed category=%s", exc.category)
+            raise QuizGenerationError(exc.category, {**meta, "step": "content_validation"}) from exc
+
+        if response.truncated:
+            log.warning("content validation: truncated output")
+            raise QuizGenerationError(CONTENT_VALIDATION_FAILED, {**meta, "step": "content_validation"})
+
+        outcome = parse_validation_response(response.text)
+        if not outcome.ok:
+            log.warning("content validation: invalid output errors=%d", len(outcome.errors))
+            raise QuizGenerationError(CONTENT_VALIDATION_FAILED,
+                                       {**meta, "step": "content_validation", "validation_errors": outcome.errors[:5]})
+
+        log.info("content validation ok prompt=%s is_educational=%s category=%s confidence=%.2f",
+                  CONTENT_VALIDATION_PROMPT_VERSION, outcome.is_educational, outcome.category, outcome.confidence)
+        if not outcome.is_educational:
+            raise QuizGenerationError(NON_EDUCATIONAL, {
+                **meta, "step": "content_validation", "content_category": outcome.category,
+                "confidence": outcome.confidence, "reason": outcome.reason,
+            })
+        return {
+            "prompt_version": CONTENT_VALIDATION_PROMPT_VERSION, "is_educational": True,
+            "category": outcome.category, "confidence": outcome.confidence,
+        }

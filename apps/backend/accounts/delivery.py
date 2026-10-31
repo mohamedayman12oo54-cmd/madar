@@ -14,7 +14,9 @@ import logging
 from importlib import import_module
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+
+from .email_templates import SUBJECT, render_otp_html, render_otp_text
 
 log = logging.getLogger(__name__)
 
@@ -60,13 +62,16 @@ def send_otp(channel: str, target: str, code: str) -> None:
     """Deliver `code` to `target` over `channel` or raise OTPDeliveryError."""
     try:
         if channel == "email":
-            send_mail(
-                subject="رمز التحقق من مدار",
-                message=_message(code),
+            # Plain text first (the fallback every client can show, and what tests read), the branded
+            # HTML as the preferred alternative.
+            msg = EmailMultiAlternatives(
+                subject=SUBJECT,
+                body=render_otp_text(code),
                 from_email=None,  # DEFAULT_FROM_EMAIL
-                recipient_list=[target],
-                fail_silently=False,
+                to=[target],
             )
+            msg.attach_alternative(render_otp_html(code), "text/html")
+            msg.send(fail_silently=False)
         else:
             _load_sms_backend().send(target, _message(code))
     except OTPDeliveryError:

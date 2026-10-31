@@ -14,7 +14,7 @@
  * be live, and caching authenticated responses risks showing one user data
  * fetched for another.
  */
-const VERSION = "madar-v1";
+const VERSION = "madar-v3";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 const OFFLINE_URL = "/";
@@ -77,4 +77,45 @@ self.addEventListener("fetch", (event) => {
       })),
     );
   }
+});
+
+/* ---------------- Web Push ----------------
+ * The server (notifications/webpush.py) sends an ENCRYPTED payload to the browser's push service, which
+ * wakes this worker even when no Madar tab is open. We only ever open same-origin paths from a payload.
+ */
+const safePath = (u) => (typeof u === "string" && u.startsWith("/") && !u.startsWith("//") ? u : "/");
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "مدار", {
+      body: data.body || "",
+      icon: "/icon-192.png?v=2",
+      badge: "/icon-192.png?v=2",
+      tag: data.tag || undefined,
+      dir: "rtl",
+      lang: "ar",
+      data: { url: safePath(data.url) },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(safePath(event.notification.data && event.notification.data.url), self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (w.url.startsWith(self.location.origin) && "focus" in w) {
+          return w.focus().then((c) => (c && "navigate" in c ? c.navigate(target) : c));
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
 });

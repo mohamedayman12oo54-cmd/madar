@@ -17,7 +17,10 @@ from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from rest_framework import authentication, exceptions, permissions
 
 SALT = "parents.session"
-SESSION_TTL_SECONDS = 60 * 60 * 6  # a school day; re-verify by OTP after that
+# A guardian is never signed out on a timer while the portal tab is open: the page renews its token every
+# half hour (parents/views.py GuardianRenewView), so this only bounds a token nobody renews — a closed tab or
+# a computer that was switched off. After that, the guardian logs in again with phone + student code.
+SESSION_TTL_SECONDS = 60 * 60 * 24
 
 
 def guardian_visible_q():

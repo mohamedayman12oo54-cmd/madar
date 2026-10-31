@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { CalendarCheck, BookOpenCheck, Wallet, Gauge, Star, Bell, LogOut } from "lucide-react";
 import { Banner } from "../auth/ui.jsx";
@@ -8,8 +8,10 @@ import {
   clearParentSession,
   getParentSession,
   parentApi,
+  renewParentSession,
   setActiveChild,
 } from "../lib/parentApi.js";
+import { startKeepAlive } from "../lib/keepalive.js";
 import { fmtDate, fmtDateTime, fmtMonth } from "../lib/dates.js";
 import { fmtMoney } from "../dashboard/common.jsx";
 import "../dashboard/dashboard.css"; // the cards, rows and chips used below live here
@@ -43,19 +45,34 @@ export default function ParentPortal() {
   const [err, setErr] = useState(null);
   const active = session?.active ?? 0;
   const token = session?.children?.[active]?.token;
+  // The portal reads whichever token is current; a background renewal swaps it WITHOUT reloading the page.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+
+  // No timed sign-out: while this tab is open the guardian's session is renewed in the background.
+  useEffect(
+    () =>
+      startKeepAlive(async () => {
+        const next = await renewParentSession();
+        if (next) setSession(next);
+        else nav("/auth/parent", { replace: true });
+      }),
+    [nav]
+  );
 
   const out = () => {
     clearParentSession();
     nav("/auth/parent", { replace: true });
   };
 
+  const hasToken = Boolean(token);
   useEffect(() => {
-    if (!token) return undefined;
+    if (!hasToken) return undefined;
     let alive = true;
     setD(null);
     setErr(null);
     parentApi
-      .overview(token)
+      .overview(tokenRef.current)
       .then((x) => alive && setD(x))
       .catch((e) => {
         if (!alive) return;
@@ -69,7 +86,7 @@ export default function ParentPortal() {
     return () => {
       alive = false;
     };
-  }, [token, nav]);
+  }, [hasToken, active, nav]);
 
   if (!session) return <Navigate to="/auth/parent" replace />;
 

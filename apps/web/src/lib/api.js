@@ -99,10 +99,13 @@ export class ApiError extends Error {
   }
 }
 
-async function performRefresh() {
+async function performRefresh(sentRefresh) {
   // Read at call time: another tab may already have rotated the tokens.
   const tokens = getTokens();
   if (!tokens?.refresh) return null;
+  // Another tab (or an earlier call) already rotated the pair while we waited: use its result instead of
+  // spending the old refresh token a second time (rotation + blacklist would reject it and log us out).
+  if (sentRefresh && tokens.refresh !== sentRefresh) return tokens.access;
 
   let res;
   try {
@@ -118,7 +121,10 @@ async function performRefresh() {
   }
 
   if (res.status === 401 || res.status === 400) {
-    // The server rejected the refresh token (expired / blacklisted / revoked).
+    // The server rejected the refresh token. Before concluding the session is over, check whether a
+    // parallel tab rotated it a moment ago (its newer pair is already in storage).
+    const now = getTokens();
+    if (now?.refresh && now.refresh !== tokens.refresh) return now.access;
     clearTokens();
     return null;
   }
@@ -136,7 +142,14 @@ let refreshInFlight = null;
 
 export function refreshAccessToken() {
   if (!refreshInFlight) {
-    refreshInFlight = performRefresh().finally(() => {
+    const sent = getTokens()?.refresh;
+    // The Web Locks API serialises refreshes across ALL open tabs of this site, so two tabs waking up
+    // together cannot both spend the same one-time refresh token. Older browsers just skip the lock.
+    const run = () => performRefresh(sent);
+    const locked = typeof navigator !== "undefined" && navigator.locks?.request
+      ? navigator.locks.request("madar-token-refresh", run)
+      : run();
+    refreshInFlight = Promise.resolve(locked).finally(() => {
       refreshInFlight = null;
     });
   }

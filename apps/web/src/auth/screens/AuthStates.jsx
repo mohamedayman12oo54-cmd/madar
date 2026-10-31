@@ -11,7 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import { AuthShell, AuthCard, StateView, SuccessRing, Btn, Modal, OrbitBig } from "../ui.jsx";
-import { authApi } from "../api.js";
+import { useSession } from "../../state/session.jsx";
 
 const STATES = {
   "invalid-credentials": {
@@ -151,9 +151,10 @@ export function AuthStateScreen() {
 
 export function LogoutConfirm() {
   const nav = useNavigate();
+  const { logout } = useSession(); // the session store must hear about it, or the app still thinks you are in
   const doLogout = async () => {
-    await authApi.logout();
-    nav("/auth");
+    await logout();
+    nav("/auth", { replace: true });
   };
   return (
     <AuthShell>

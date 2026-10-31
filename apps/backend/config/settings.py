@@ -124,6 +124,7 @@ INSTALLED_APPS = [
     "knowledge",
     "parents",
     "studentarea",
+    "learning",
     "billing",
 ]
 
@@ -247,6 +248,12 @@ QUIZ_MAX_ATTEMPTS = env_int("QUIZ_MAX_ATTEMPTS", 2)
 # Below this many characters of lesson material the quiz fails explicitly with
 # "insufficient source" instead of asking the model to invent content.
 QUIZ_MIN_SOURCE_CHARS = env_int("QUIZ_MIN_SOURCE_CHARS", 400)
+# One extra, non-retried model call per quiz request that classifies the
+# transcript as EDUCATIONAL / NON_EDUCATIONAL before any quiz is generated
+# (ai/content_validation_prompt.py). On by default; set to False to generate
+# a quiz from every transcript regardless of content, as before this setting
+# existed.
+QUIZ_CONTENT_VALIDATION_ENABLED = env_bool("QUIZ_CONTENT_VALIDATION_ENABLED", True)
 
 # --- LLM client foundation (ai/llm.py, ai/gemini.py) --------------------------
 # The low-level "send text, get text" seam a future real AIProvider will sit
@@ -358,6 +365,8 @@ REST_FRAMEWORK = {
         # --- per authenticated user ---
         "scan": "240/min",
         "video-upload": "20/hour",
+        "exam-answer": "240/min",   # autosave while sitting an exam
+        "exam-event": "60/min",     # integrity events reported by the exam page
         "student-add": "300/hour",
         "ai-submit": "30/hour",
         "billing-checkout": "10/hour",
@@ -489,6 +498,7 @@ MEDIA_ROOT = os.environ.get("MEDIA_ROOT") or str(BASE_DIR / "private-media")
 MEDIA_URL = None  # deliberately unset: there is no public media URL
 
 VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 4 * 1024 * 1024 * 1024)  # 4 GB — uploads are chunked and resumable
+DOCUMENT_MAX_BYTES = env_int("DOCUMENT_MAX_BYTES", 50 * 1024 * 1024)  # PDF study files, single request
 FILE_UPLOAD_MAX_MEMORY_SIZE = env_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 2 * 1024 * 1024)
 # Uploaded files must never be executable, and the private dir must not be
 # world-readable.
@@ -512,10 +522,19 @@ VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
 VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
 
 # --- Lesson transcription (content/transcription.py) ------------------------
-# "faster_whisper" runs locally (pip install faster-whisper); the model is
+# "groq_whisper_api" (default): hosted Whisper via Groq's free-tier,
+# OpenAI-compatible REST API, with automatic fallback to local faster-whisper
+# when the API is unconfigured, rate limited (429), times out, or is
+# otherwise unavailable.
+# "faster_whisper": local only, no network call, no API key — the model is
 # downloaded once on first use. Bigger = more accurate and slower:
 # tiny / base / small / medium / large-v3.
-TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "faster_whisper")
+TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "groq_whisper_api")
+# Blank during test runs regardless of the environment (same reasoning as
+# VIDEO_TRANSCODE below): the suite must never place a real network call.
+GROQ_API_KEY = env_str("GROQ_API_KEY", "") if "test" not in sys.argv else ""
+GROQ_STT_MODEL = env_str("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+GROQ_STT_TIMEOUT_SECONDS = env_int("GROQ_STT_TIMEOUT_SECONDS", 120)
 TRANSCRIPTION_MODEL = env_str("TRANSCRIPTION_MODEL", "small")
 # cpu works everywhere. "cuda" needs the NVIDIA CUDA/cuBLAS libraries installed; "auto" picks
 # cuda whenever a GPU is present and then fails if those libraries are missing.
@@ -754,3 +773,11 @@ LOGGING = {
         },
     },
 }
+
+
+# ---- Web Push (notifications that reach a closed app) ---------------------------------------------
+# Generate once per deployment:  python manage.py generate_vapid_keys   and paste the lines into .env.
+# Leave both keys empty to keep in-app notifications only (the worker then uses the null provider).
+VAPID_PUBLIC_KEY = env_str("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = env_str("VAPID_PRIVATE_KEY", "")
+VAPID_CONTACT = env_str("VAPID_CONTACT", "mailto:admin@example.com")
