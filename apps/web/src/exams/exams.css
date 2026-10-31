@@ -1,0 +1,536 @@
+/* Exams — teacher builder / results and the student's locked-down exam page.
+   Tokens come from index.css; nothing here introduces a new colour. */
+
+/* ---------- teacher: list ---------- */
+.ex-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block-end: 14px;
+}
+.ex-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-block-start: 3px;
+  font-size: 0.8rem;
+  color: var(--soft);
+}
+.ex-meta bdi {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- teacher: builder ---------- */
+.ex-opts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+.ex-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.ex-check input {
+  margin-block-start: 5px;
+  width: 17px;
+  height: 17px;
+  accent-color: var(--navy);
+}
+.ex-questions {
+  display: grid;
+  gap: 12px;
+}
+.ex-q {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.ex-q-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ex-q-no {
+  font-weight: 700;
+  color: var(--navy);
+  font-size: 0.9rem;
+}
+.ex-q-tools {
+  display: flex;
+  gap: 6px;
+}
+.ex-q textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+.ex-points {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--soft);
+}
+.ex-points input {
+  width: 74px;
+}
+.ex-choices {
+  display: grid;
+  gap: 8px;
+}
+.ex-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ex-choice input[type="radio"] {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  accent-color: var(--ok);
+}
+.ex-choice .inp {
+  flex: 1;
+  min-width: 0;
+}
+.ex-choice.is-correct .inp {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+.ex-q-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ex-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ex-errlist {
+  margin: 0;
+  padding-inline-start: 18px;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+/* ---------- teacher: results ---------- */
+.ex-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-block-end: 14px;
+}
+.ex-stat {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.ex-stat .k {
+  font-size: 0.76rem;
+  color: var(--soft);
+}
+.ex-stat .v {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+.ex-flag {
+  display: inline-block;
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--fill);
+  color: var(--soft);
+}
+.ex-flag.hot {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.ex-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.ex-timeline li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+.ex-timeline li.counted {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.ex-review {
+  display: grid;
+  gap: 10px;
+}
+.ex-rq {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.ex-rq p {
+  margin: 0 0 8px;
+  font-weight: 600;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ex-ra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-block-start: 4px;
+  border-radius: 9px;
+  font-size: 0.88rem;
+  background: var(--fill);
+  overflow-wrap: anywhere;
+}
+.ex-ra.right {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.ex-ra.wrong {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+/* ---------- student: intro / result ---------- */
+.ex-card {
+  display: grid;
+  gap: 14px;
+  max-width: 640px;
+  margin-inline: auto;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel);
+}
+.ex-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--navy);
+}
+.ex-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.ex-fact {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+.ex-fact .k {
+  font-size: 0.76rem;
+  color: var(--soft);
+}
+.ex-fact .v {
+  font-weight: 700;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+.ex-rules {
+  margin: 0;
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+  line-height: 1.8;
+  color: var(--ink);
+}
+.ex-score {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--fill);
+}
+.ex-score .big {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- student: the exam itself ---------- */
+.ex-run {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+  color: var(--ink);
+  /* nothing on the paper can be picked up with the mouse or finger */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.ex-run * {
+  -webkit-user-drag: none;
+}
+.ex-run-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  padding-block-start: max(10px, env(safe-area-inset-top));
+  background: var(--panel);
+  border-block-end: 1px solid var(--line);
+}
+.ex-run-title {
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-timer {
+  flex: none;
+  padding: 5px 14px;
+  border-radius: 99px;
+  background: var(--fill);
+  color: var(--navy);
+  font-weight: 800;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.ex-timer.low {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.ex-timer.crit {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.ex-strikes {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--soft);
+}
+.ex-strikes.hot {
+  color: var(--bad);
+  font-weight: 700;
+}
+.ex-run-body {
+  position: relative;
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 24px;
+}
+.ex-paper {
+  max-width: 720px;
+  margin-inline: auto;
+  display: grid;
+  gap: 16px;
+}
+.ex-qtext {
+  font-size: 1.08rem;
+  line-height: 2;
+  font-weight: 600;
+  color: var(--navy);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ex-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: start;
+  font: inherit;
+  font-size: 0.98rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1.5px solid var(--line-2);
+  border-radius: 14px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.ex-opt:hover {
+  border-color: var(--navy);
+}
+.ex-opt[aria-checked="true"] {
+  border-color: var(--navy);
+  background: var(--fill);
+  font-weight: 700;
+}
+.ex-opt .mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-2);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--soft);
+}
+.ex-opt[aria-checked="true"] .mark {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: var(--cream);
+}
+.ex-opt .txt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ex-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-block-start: 6px;
+}
+.ex-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.ex-dot {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 1.5px solid var(--line-2);
+  background: var(--panel);
+  color: var(--soft);
+  cursor: pointer;
+}
+.ex-dot.done {
+  background: var(--fill);
+  color: var(--navy);
+  border-color: var(--navy);
+}
+.ex-dot.now {
+  background: var(--navy);
+  color: var(--cream);
+  border-color: var(--navy);
+}
+.ex-savewarn {
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+/* faint, tiled name over the paper: a photographed screen then says whose it is */
+.ex-wm {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ex-wm-grid {
+  position: absolute;
+  inset: -30%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  align-content: space-around;
+  gap: 54px 12px;
+  transform: rotate(-24deg);
+}
+.ex-wm-grid span {
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--navy);
+  opacity: 0.075;
+}
+
+/* shown INSTEAD of the paper whenever the student is not in the locked view */
+.ex-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--cream);
+}
+.ex-cover-card {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+  text-align: center;
+  justify-items: center;
+}
+.ex-cover-card h3 {
+  margin: 0;
+  color: var(--navy);
+}
+.ex-cover-card p {
+  margin: 0;
+  line-height: 1.9;
+  color: var(--ink);
+}
+
+@media (max-width: 560px) {
+  .ex-opts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ex-run-top {
+    padding-inline: 12px;
+  }
+  .ex-run-title {
+    font-size: 0.85rem;
+  }
+}
+
+/* A printed or "saved as PDF" copy of the page is empty. */
+@media print {
+  .ex-run,
+  .ex-run * {
+    display: none !important;
+  }
+  body::before {
+    content: "لا يمكن طباعة الامتحان.";
+    display: block;
+    padding: 40px;
+    font-size: 1.4rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ex-opt {
+    transition: none;
+  }
+}
