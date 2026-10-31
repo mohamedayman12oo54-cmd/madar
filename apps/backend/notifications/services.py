@@ -14,15 +14,15 @@ def _fmt_session(session):
     return timezone.localtime(session.scheduled_at).strftime("%Y-%m-%d")
 
 
-def notify_enrollment(enrollment, type_, title, body="", session=None):
+def notify_enrollment(enrollment, type_, title, body="", session=None, exam=None):
     return Notification.objects.create(
         environment_id=enrollment.environment_id, recipient_id=enrollment.student_id,
-        enrollment=enrollment, type=type_, title=title[:150], body=body[:500], session=session,
+        enrollment=enrollment, type=type_, title=title[:150], body=body[:500], session=session, exam=exam,
     )
 
 
-def notify_many(enrollments, type_, title, body="", broadcast=None, content_item=None):
-    """Fan out ONE event to many students (video / broadcast). Active
+def notify_many(enrollments, type_, title, body="", broadcast=None, content_item=None, exam=None):
+    """Fan out ONE event to many students (video / exam / broadcast). Active
     enrollments only, de-duplicated by enrollment id."""
     seen, rows = set(), []
     for e in enrollments:
@@ -31,7 +31,7 @@ def notify_many(enrollments, type_, title, body="", broadcast=None, content_item
         seen.add(e.id)
         rows.append(Notification(
             environment_id=e.environment_id, recipient_id=e.student_id, enrollment=e,
-            type=type_, title=title[:150], body=body[:500], broadcast=broadcast, content_item=content_item,
+            type=type_, title=title[:150], body=body[:500], broadcast=broadcast, content_item=content_item, exam=exam,
         ))
     return Notification.objects.bulk_create(rows)
 
