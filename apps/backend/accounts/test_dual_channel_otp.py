@@ -232,9 +232,22 @@ class CheckOTPDeliveryCommandTests(TestCase):
     def test_a_delivery_failure_is_reported_as_an_error(self):
         from django.core.management import CommandError, call_command
 
-        with mock.patch("accounts.delivery.send_mail", side_effect=OSError("smtp down")):
+        with mock.patch("accounts.delivery.EmailMultiAlternatives.send", side_effect=OSError("smtp down")):
             with self.assertRaises(CommandError):
                 call_command("check_otp_delivery", email="teacher@gmail.com")
+
+    def test_email_has_branded_html_alternative_with_the_code(self):
+        from django.core import mail
+
+        from accounts.delivery import send_otp
+
+        send_otp("email", "x@gmail.com", "048213")
+        m = mail.outbox[-1]
+        self.assertIn("048213", m.body)
+        html, mime = m.alternatives[0]
+        self.assertEqual(mime, "text/html")
+        self.assertIn('dir="rtl"', html)
+        self.assertEqual(sum(f">{d}</div>" in html for d in "048213"), 6)
 
     def test_needs_a_target(self):
         from django.core.management import CommandError, call_command
