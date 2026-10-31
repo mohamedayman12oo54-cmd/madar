@@ -272,9 +272,41 @@ const ROUTES = {
   "/content/": {
     count: 3,
     results: [
+      // a PDF (published) and a summary (draft) so the other sections render too
+      {
+        id: 11,
+        kind: "pdf",
+        title: "ملف PDF منشور",
+        description: "",
+        source: "upload",
+        original_filename: "notes.pdf",
+        file_size: 2048,
+        has_document: true,
+        has_body: false,
+        video: null,
+        targets: { grades: [{ id: 1, name: "أول" }], groups: [], students: [] },
+        published: true,
+        published_at: NOW,
+        created_at: NOW,
+      },
+      {
+        id: 12,
+        kind: "summary",
+        title: "ملخص مسودة",
+        description: "",
+        source: "external",
+        has_document: false,
+        has_body: true,
+        video: null,
+        targets: { grades: [], groups: [], students: [] },
+        published: false,
+        published_at: null,
+        created_at: NOW,
+      },
       // published upload
       {
         id: 1,
+        kind: "video",
         title: "درس منشور",
         description: "",
         source: "upload",
@@ -396,6 +428,108 @@ const ROUTES = {
     renewal_attempt_status: null,
   },
   // ---- student area ----
+  // ---- exams (teacher: /exams/…, student: /student/exams/…) ----
+  "/exams/": {
+    results: [
+      {
+        id: 1, title: "امتحان الباب الأول", description: "", duration_minutes: 30, shuffle_questions: true,
+        shuffle_choices: true, allow_back: false, max_violations: 3, reveal_answers: false, opens_at: null,
+        closes_at: inDays(2), published_at: NOW, created_at: NOW, grade_ids: [1], group_ids: [], enrollment_ids: [],
+        question_count: 2, attempt_count: 1, questions: [],
+      },
+      {
+        id: 2, title: "امتحان مسودة", description: "", duration_minutes: 20, shuffle_questions: true,
+        shuffle_choices: true, allow_back: false, max_violations: 3, reveal_answers: false, opens_at: null,
+        closes_at: null, published_at: null, created_at: NOW, grade_ids: [1], group_ids: [], enrollment_ids: [],
+        question_count: 3, attempt_count: 0, questions: [],
+      },
+    ],
+  },
+  "/exams/2/publish/": { id: 2, title: "امتحان مسودة", notified: 2, published_at: NOW },
+  "/exams/1/results/": {
+    exam_id: 1, title: "امتحان الباب الأول", average_percent: 66.7, finished: 2, total: 3,
+    results: [
+      {
+        enrollment_id: 1, name: "أحمد", phone: "201001234567", status: "finished", score: 2, max_score: 3,
+        percent: 66.7, end_reason: "submitted", violations: 2, submitted_at: NOW, best_attempt: 1,
+        attempt_count: 1, reopened: false, can_reopen: true,
+        violation_log: [{ type: "blur", at: NOW }, { type: "copy", at: NOW }],
+        attempts: [{
+          number: 1, status: "finished", score: 2, max_score: 3, percent: 66.7, end_reason: "submitted", violations: 2,
+          violation_log: [{ type: "blur", at: NOW }, { type: "copy", at: NOW }], started_at: NOW, submitted_at: NOW,
+        }],
+      },
+      {
+        enrollment_id: 3, name: "منى", phone: "201001234569", status: "finished", score: 3, max_score: 3,
+        percent: 100, end_reason: "submitted", violations: 0, submitted_at: NOW, best_attempt: 2,
+        attempt_count: 2, reopened: false, can_reopen: true, violation_log: [],
+        attempts: [
+          { number: 1, status: "finished", score: 0, max_score: 3, percent: 0, end_reason: "violations", violations: 3,
+            violation_log: [{ type: "hidden", at: NOW }], started_at: NOW, submitted_at: NOW },
+          { number: 2, status: "finished", score: 3, max_score: 3, percent: 100, end_reason: "submitted", violations: 0,
+            violation_log: [], started_at: NOW, submitted_at: NOW },
+        ],
+      },
+      { enrollment_id: 2, name: "سارة", phone: "201001234568", status: "not_started", attempt_count: 0, attempts: [], reopened: false, can_reopen: false },
+    ],
+  },
+  "/exams/1/reopen/": { enrollment_id: 1, reopened: true, already: false },
+  "/student/exams/": {
+    results: [
+      {
+        id: 1, title: "امتحان الباب الأول", description: "", duration_minutes: 30, question_count: 2,
+        opens_at: NOW, closes_at: inDays(2), state: "open", max_violations: 3, allow_back: false,
+        attempts: 0, can_retake: false, reopened: false,
+      },
+      {
+        id: 2, title: "امتحان الباب الثاني", description: "", duration_minutes: 20, question_count: 4,
+        opens_at: NOW, closes_at: null, state: "finished", max_violations: 3, allow_back: true,
+        attempts: 2, can_retake: true, reopened: true, score: 3, max_score: 4, percent: 75,
+      },
+    ],
+  },
+  "/student/exams/1/start/": () => ({
+    attempt_id: 1, number: 1, started_at: NOW, deadline_at: new Date(Date.now() + 30 * 60000).toISOString(), total: 2,
+    current_index: 0, violations: 0, max_violations: 3, warnings_left: 3, allow_back: false, title: "امتحان الباب الأول",
+    finished: false, end_reason: "",
+  }),
+  "/student/exams/1/question/0/": () => ({
+    question_id: 1, index: 0, total: 2, text: "ما عاصمة مصر؟", points: 1, chosen_choice_id: null,
+    choices: [{ id: 11, text: "القاهرة" }, { id: 12, text: "الإسكندرية" }],
+    attempt_id: 1, number: 1, deadline_at: new Date(Date.now() + 30 * 60000).toISOString(), started_at: NOW, current_index: 0,
+    violations: 0, max_violations: 3, warnings_left: 3, allow_back: false, title: "امتحان الباب الأول", finished: false, end_reason: "",
+  }),
+  "/student/exams/1/question/1/": () => ({
+    question_id: 2, index: 1, total: 2, text: "كم يساوي ٢ + ٢؟", points: 2, chosen_choice_id: null,
+    choices: [{ id: 21, text: "٣" }, { id: 22, text: "٤" }],
+    attempt_id: 1, number: 1, deadline_at: new Date(Date.now() + 30 * 60000).toISOString(), started_at: NOW, current_index: 1,
+    violations: 0, max_violations: 3, warnings_left: 3, allow_back: false, title: "امتحان الباب الأول", finished: false, end_reason: "",
+  }),
+  "/student/exams/1/answer/": { attempt_id: 1, finished: false },
+  "/student/exams/1/violation/": (init) => ({
+    attempt_id: 1, number: 1, violations: 1, max_violations: 3, warnings_left: 2, finished: false, end_reason: "",
+    counted: true, last_violation: JSON.parse(init?.body || "{}").type || "blur",
+  }),
+  "/student/exams/1/submit/": { attempt_id: 1, finished: true, end_reason: "submitted" },
+  "/student/exams/1/result/": {
+    title: "امتحان الباب الأول", attempt_number: 1, score: 2, max_score: 3, percent: 66.7, end_reason: "submitted",
+    violations: 1, attempts: 1, can_retake: false, best_score: 2, best_percent: 66.7, is_best: true,
+  },
+  "/student/exams/2/result/": {
+    title: "امتحان الباب الثاني", attempt_number: 2, score: 2, max_score: 4, percent: 50, end_reason: "submitted",
+    violations: 0, attempts: 2, can_retake: true, best_score: 3, best_percent: 75, is_best: false,
+  },
+  "/student/exams/2/question/0/": () => ({
+    question_id: 7, index: 0, total: 4, text: "سؤال المحاولة الجديدة", points: 1, chosen_choice_id: null,
+    choices: [{ id: 71, text: "أ" }, { id: 72, text: "ب" }],
+    attempt_id: 5, number: 3, deadline_at: new Date(Date.now() + 20 * 60000).toISOString(), started_at: NOW, current_index: 0,
+    violations: 0, max_violations: 3, warnings_left: 3, allow_back: true, title: "امتحان الباب الثاني", finished: false, end_reason: "",
+  }),
+  "/student/exams/2/start/": () => ({
+    attempt_id: 5, number: 3, started_at: NOW, deadline_at: new Date(Date.now() + 20 * 60000).toISOString(), total: 4,
+    current_index: 0, violations: 0, max_violations: 3, warnings_left: 3, allow_back: true, title: "امتحان الباب الثاني",
+    finished: false, end_reason: "",
+  }),
   "/student/overview/": {
     environment: { name: "بيئة" },
     student: { badge_code: "WK38G4", name: "أحمد" },
@@ -463,6 +597,20 @@ const ROUTES = {
     can_quiz: true,
     progress: null,
   },
+  "/student/materials/1/": {
+    id: 1,
+    kind: "summary",
+    title: "ملخص الدرس",
+    description: "وصف",
+    body: "# عنوان\n- نقطة\n<script>alert(1)</script>",
+    published_at: NOW,
+  },
+  "/student/materials/": {
+    results: [
+      { id: 1, kind: "summary", title: "ملخص الدرس", description: "", published_at: NOW },
+      { id: 2, kind: "pdf", title: "ملف الدرس", description: "", original_filename: "a.pdf", file_size: 10, published_at: NOW },
+    ],
+  },
   "/student/videos/": {
     results: [
       {
@@ -487,6 +635,14 @@ const ROUTES = {
         body: "b",
         created_at: NOW,
         read: false,
+      },
+      {
+        id: 2, type: "new_exam", type_label: "امتحان جديد", title: "امتحان جديد", body: "تم نشر امتحان: الفصل الثالث",
+        created_at: NOW, read: false, target: { kind: "exam", id: 1 },
+      },
+      {
+        id: 3, type: "new_material", type_label: "ملف أو ملخص جديد", title: "ملخص جديد", body: "تمت إضافة: ملخص الدرس",
+        created_at: NOW, read: true, target: { kind: "material", id: 1 },
       },
     ],
   },
@@ -592,10 +748,10 @@ const ROUTES = {
     ],
   },
 };
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, init) => {
   const path = new URL(String(url), "http://x").pathname.replace(/^\/api\/v1/, "");
   return new Response(
-    JSON.stringify(typeof ROUTES[path] === "function" ? ROUTES[path]() : (ROUTES[path] ?? {})),
+    JSON.stringify(typeof ROUTES[path] === "function" ? ROUTES[path](init) : (ROUTES[path] ?? {})),
     { status: 200, headers: { "content-type": "application/json" } }
   );
 };
@@ -625,6 +781,8 @@ const STUDENT_PAGES = [
   "/learn/records",
   "/learn/videos",
   "/learn/videos/1",
+  "/learn/materials/1",
+  "/learn/exams/1",
   "/learn/quizzes",
   "/learn/quizzes/1",
   "/learn/quizzes/2",
@@ -1393,6 +1551,670 @@ test("public check-in page: phone + 6-digit code form, no account data, attendan
     assert.equal(m.container.querySelectorAll(".otp input").length, 6, "six code boxes");
     assert.match(text, /تسجّل حضورك فقط/);
     assert.doesNotMatch(text, /undefined|NaN|Invalid/);
+  } finally {
+    await m.done();
+  }
+});
+
+
+// ----- teacher: PDF files + summaries & notes ---------------------------------------------------------
+// The shared mock ignores query strings, so wrap it: `/content/?kind=…` returns only that kind, like the server.
+const kindAwareContent = () => {
+  const orig = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const u = new URL(String(url), "http://x");
+    if (u.pathname.endsWith("/content/") && (!init || !init.method || init.method === "GET")) {
+      const kind = u.searchParams.get("kind");
+      const rows = ROUTES["/content/"].results.filter((r) => (r.kind || "video") === (kind || r.kind || "video"));
+      return new Response(JSON.stringify({ results: rows }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return orig(url, init);
+  };
+  return { calls, restore: () => (globalThis.fetch = orig) };
+};
+const openTab = async (m, name) => {
+  const tab = [...m.container.querySelectorAll("[role=tab]")].find((b) => b.textContent.includes(name));
+  assert.ok(tab, `tab ${name}`);
+  await clickEl(tab);
+  await act(async () => {
+    await tick(120);
+  });
+};
+const typeInto = (el, value) =>
+  act(async () => {
+    const proto = el.tagName === "TEXTAREA" ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+    el.dispatchEvent(new w.Event("input", { bubbles: true }));
+    await tick(10);
+  });
+
+test("content hub (teacher): four sections, and each lists only its own kind", async () => {
+  ME = TEACHER;
+  const net = kindAwareContent();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    const names = [...m.container.querySelectorAll("[role=tab]")].map((b) => b.textContent.trim());
+    assert.deepEqual(names, ["الفيديوهات", "ملفات PDF", "الملخصات والملاحظات", "الامتحانات"]);
+    assert.doesNotMatch(m.container.textContent, /ملف PDF منشور|ملخص مسودة/, "videos tab shows videos only");
+    await openTab(m, "ملفات PDF");
+    let text = m.container.textContent;
+    assert.match(text, /ملف PDF منشور/);
+    assert.match(text, /notes\.pdf/);
+    assert.match(text, /٢ كيلوبايت/, "small files are shown in KB, not 0.00 MB");
+    assert.doesNotMatch(text, /ملخص مسودة|درس منشور/);
+    await openTab(m, "الملخصات");
+    text = m.container.textContent;
+    assert.match(text, /ملخص مسودة/);
+    assert.doesNotMatch(text, /ملف PDF منشور|درس منشور/);
+    assert.ok(net.calls.some((c) => c.url.includes("kind=pdf")) && net.calls.some((c) => c.url.includes("kind=summary")));
+    assert.doesNotMatch(text, /undefined|NaN|Invalid/);
+  } finally {
+    net.restore();
+    await m.done();
+  }
+});
+
+test("content hub (teacher): a draft summary says what is still missing before it can be published", async () => {
+  ME = TEACHER;
+  const net = kindAwareContent();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openTab(m, "الملخصات");
+    assert.match(m.container.textContent, /حدّد الصف أو المجموعة/, "text is written, audience missing");
+    assert.ok(buttonWith(m.container, "نشر"), "publish button on the draft");
+  } finally {
+    net.restore();
+    await m.done();
+  }
+});
+
+test("content hub (teacher): the summary form refuses an empty title or text and sends nothing", async () => {
+  ME = TEACHER;
+  const net = kindAwareContent();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openTab(m, "الملخصات");
+    await clickEl(buttonWith(m.container, "كتابة ملخص"));
+    const modal = w.document.querySelector("[role=dialog]") || w.document.body;
+    assert.ok(modal.querySelector("textarea"), "a text area for the summary");
+    assert.match(modal.textContent, /«# عنوان»/, "formatting help is shown");
+    await clickEl(buttonWith(modal, "حفظ"));
+    assert.match(modal.textContent, /اكتب عنوانًا/);
+    assert.match(modal.textContent, /اكتب نص الملخص/);
+    assert.ok(!net.calls.some((c) => c.init?.method === "POST"), "nothing is posted");
+  } finally {
+    net.restore();
+    await m.done();
+  }
+});
+
+test("content hub (teacher): saving a summary posts its kind, title and text", async () => {
+  ME = TEACHER;
+  const net = kindAwareContent();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openTab(m, "الملخصات");
+    await clickEl(buttonWith(m.container, "كتابة ملخص"));
+    const modal = w.document.querySelector("[role=dialog]") || w.document.body;
+    await typeInto(modal.querySelector("input.inp"), "ملخص الباب الأول");
+    await typeInto(modal.querySelector("textarea"), "# عنوان\n- نقطة");
+    await clickEl(buttonWith(modal, "حفظ"));
+    await act(async () => {
+      await tick(100);
+    });
+    const post = net.calls.find((c) => c.init?.method === "POST" && /\/content\/$/.test(new URL(c.url, "http://x").pathname));
+    assert.ok(post, "the item was created");
+    const body = JSON.parse(post.init.body);
+    assert.equal(body.kind, "summary");
+    assert.equal(body.title, "ملخص الباب الأول");
+    assert.equal(body.body, "# عنوان\n- نقطة");
+  } finally {
+    net.restore();
+    await m.done();
+  }
+});
+
+test("content hub (teacher): the PDF form takes a file with a size limit and validates the title", async () => {
+  ME = TEACHER;
+  const net = kindAwareContent();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openTab(m, "ملفات PDF");
+    await clickEl(buttonWith(m.container, "رفع ملف PDF"));
+    const modal = w.document.querySelector("[role=dialog]") || w.document.body;
+    const input = modal.querySelector("input[type=file]");
+    assert.ok(input, "a file picker");
+    assert.match(input.getAttribute("accept"), /pdf/);
+    assert.match(modal.textContent, /٥٠ ميجابايت/, "the limit is stated");
+    await clickEl(buttonWith(modal, "حفظ"));
+    assert.match(modal.textContent, /اكتب عنوانًا/);
+    assert.ok(!net.calls.some((c) => c.init?.method === "POST"));
+  } finally {
+    net.restore();
+    await m.done();
+  }
+});
+
+// ----- student: PDF files + summaries ----------------------------------------------------------------
+test("student content: PDFs and summaries are cards with a type label, size, and one clear action", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/videos", React.createElement(StudentRoutes));
+  try {
+    const names = [...m.container.querySelectorAll("[role=tab]")].map((b) => b.textContent.trim());
+    assert.deepEqual(names, ["فيديوهات", "ملفات PDF", "ملخصات وملاحظات", "امتحانات"]);
+    await openTab(m, "ملفات PDF");
+    const pdf = m.container.querySelector(".mat-card.is-pdf");
+    assert.ok(pdf, "a PDF card");
+    assert.match(pdf.textContent, /ملف الدرس/);
+    assert.match(pdf.textContent, /ملف PDF/);
+    assert.match(pdf.textContent, /فتح الملف/);
+    await openTab(m, "ملخصات");
+    const sum = m.container.querySelector(".mat-card.is-summary");
+    assert.ok(sum, "a summary card");
+    const go = sum.querySelector("a[href='/learn/materials/1']");
+    assert.ok(go, "links to the reading page");
+    assert.match(go.textContent, /قراءة الملخص/);
+    assert.doesNotMatch(m.container.textContent, /undefined|NaN|Invalid/);
+  } finally {
+    await m.done();
+  }
+});
+
+test("student content: the summary reader shows the date, renders text only, and can enlarge the font", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/materials/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(150);
+    });
+    const reader = m.container.querySelector(".summary-reader");
+    assert.ok(reader);
+    assert.match(reader.textContent, /نُشر في/);
+    assert.equal(reader.querySelector("script"), null);
+    assert.ok(!reader.classList.contains("is-big"));
+    await clickEl(buttonWith(reader, "تكبير الخط"));
+    assert.ok(m.container.querySelector(".summary-reader").classList.contains("is-big"));
+    assert.ok(buttonWith(m.container, "تصغير الخط"), "the toggle flips");
+  } finally {
+    await m.done();
+  }
+});
+
+// ----- summaries -----------------------------------------------------------------------------------
+test("student summary: /learn/materials/:id opens the reading page and renders the text without executing markup", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/materials/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(120);
+    });
+    const text = m.container.textContent;
+    assert.match(text, /ملخص الدرس/);
+    assert.match(text, /عنوان/);
+    assert.equal(m.container.querySelector("script"), null, "stored markup is shown as text, never parsed");
+    assert.doesNotMatch(text, /undefined|NaN/);
+  } finally {
+    await m.done();
+  }
+});
+
+// ----- exams ---------------------------------------------------------------------------------------
+const recordFetch = () => {
+  const calls = [];
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return orig(url, init);
+  };
+  return { calls, restore: () => (globalThis.fetch = orig) };
+};
+const openExamsTab = async (m) => {
+  const tab = [...m.container.querySelectorAll("[role=tab]")].find((b) => b.textContent.includes("امتحانات"));
+  assert.ok(tab, "an exams tab exists");
+  await clickEl(tab);
+  await act(async () => {
+    await tick(120);
+  });
+};
+const startExam = async (m) => {
+  await clickEl(buttonWith(m.container, "ابدأ الامتحان"));
+  await act(async () => {
+    await tick(150);
+  });
+};
+
+test("exams (teacher): the exams tab lists each exam with its status and counts", async () => {
+  ME = TEACHER;
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openExamsTab(m);
+    const text = m.container.textContent;
+    assert.match(text, /امتحان الباب الأول/);
+    assert.match(text, /2 سؤال • 30 دقيقة • 1 محاولة/);
+    assert.match(text, /منشور/);
+    assert.match(text, /مسودة/);
+    assert.doesNotMatch(text, /undefined|NaN|Invalid/);
+    // a published exam that has attempts cannot be edited; a draft can be published
+    assert.ok(buttonWith(m.container, "النتائج"), "results button on the published exam");
+    assert.ok(buttonWith(m.container, "نشر"), "publish button on the draft");
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (teacher): publishing a draft posts to the publish endpoint and reports how many were notified", async () => {
+  ME = TEACHER;
+  const rec = recordFetch();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openExamsTab(m);
+    await clickEl(buttonWith(m.container, "نشر"));
+    await act(async () => {
+      await tick(120);
+    });
+    assert.ok(rec.calls.some((c) => c.url.includes("/exams/2/publish/") && c.init.method === "POST"));
+    assert.match(m.container.textContent, /تم نشر الامتحان وإشعار 2 طالب/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (teacher): the builder offers multiple-choice and true/false questions with one marked correct choice", async () => {
+  ME = TEACHER;
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openExamsTab(m);
+    await clickEl(buttonWith(m.container, "امتحان جديد"));
+    const modal = w.document.querySelector("[role=dialog]") || w.document.body;
+    assert.match(modal.textContent, /إعدادات منع الغش/);
+    const groups = () => modal.querySelectorAll("[role=radiogroup]");
+    assert.equal(groups().length, 1, "one starter question");
+    assert.equal(groups()[0].querySelectorAll("[role=radio]").length, 4, "four choices by default");
+    assert.equal(groups()[0].querySelectorAll("[role=radio][aria-checked=true]").length, 1, "exactly one correct choice");
+    await clickEl(buttonWith(modal, "سؤال صح / خطأ"));
+    assert.equal(groups().length, 2);
+    assert.equal(groups()[1].querySelectorAll("[role=radio]").length, 2, "true/false has two choices");
+    // saving an empty paper is refused with a message, nothing is posted
+    const rec = recordFetch();
+    await clickEl(buttonWith(modal, "حفظ"));
+    assert.match(modal.textContent, /اكتب نص السؤال 1/);
+    assert.ok(!rec.calls.some((c) => c.init?.method === "POST"), "nothing is sent for an invalid paper");
+    rec.restore();
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (teacher): results show the best score, every attempt and the violation log", async () => {
+  ME = TEACHER;
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openExamsTab(m);
+    await clickEl(buttonWith(m.container, "النتائج"));
+    await act(async () => {
+      await tick(120);
+    });
+    const text = () => w.document.body.textContent;
+    assert.match(text(), /أنهى ٢ من ٣/);
+    assert.match(text(), /المتوسط ٦٦٫٧٪/);
+    assert.match(text(), /٢\/٣ \(٦٦٫٧٪\)/, "a student's score is shown with its percentage");
+    assert.match(text(), /٣\/٣ \(١٠٠٪\)/, "a student with two attempts shows the BEST one");
+    assert.match(text(), /أعلى محاولة/, "the page says which attempt counts");
+    assert.match(text(), /لم يبدأ/);
+    assert.doesNotMatch(text(), /ترك الصفحة/, "the log is collapsed at first");
+    const attemptsBtn = (n) => [...w.document.querySelectorAll("table button")].find((b) => b.textContent.trim() === n);
+    await clickEl(attemptsBtn("١"));
+    assert.match(text(), /ترك الصفحة/);
+    assert.match(text(), /محاولة نسخ/);
+    await clickEl(attemptsBtn("٢"));
+    assert.match(text(), /المحاولة ٢/);
+    assert.match(text(), /أُغلق بسبب مخالفات/, "the first attempt of the second student was closed for violations");
+    assert.doesNotMatch(text(), /undefined|NaN|Invalid/);
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (teacher): re-opening an exam for a student asks first, posts that student, and says what happens", async () => {
+  ME = TEACHER;
+  const rec = recordFetch();
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    await openExamsTab(m);
+    await clickEl(buttonWith(m.container, "النتائج"));
+    await act(async () => {
+      await tick(120);
+    });
+    const reopenButtons = () => [...w.document.querySelectorAll("table button")].filter((b) => b.textContent.includes("إعادة فتح"));
+    assert.equal(reopenButtons().length, 2, "offered for each finished student, not for the one who has not started");
+    await clickEl(reopenButtons()[0]);
+    assert.match(w.document.body.textContent, /أعلى درجة بين محاولاته/, "the teacher is told the best score counts");
+    assert.ok(!rec.calls.some((c) => c.url.includes("/reopen/")), "nothing is sent before confirming");
+    await clickEl([...w.document.querySelectorAll("button")].find((b) => b.textContent.trim() === "إعادة الفتح"));
+    await act(async () => {
+      await tick(120);
+    });
+    const call = rec.calls.find((c) => c.url.includes("/exams/1/reopen/"));
+    assert.ok(call && call.init.method === "POST");
+    assert.deepEqual(JSON.parse(call.init.body), { enrollment_id: 1 });
+    assert.match(w.document.body.textContent, /أُعيد فتح الامتحان لـ أحمد/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): the list shows the best percentage, and a re-opened exam offers a new attempt", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/videos", React.createElement(StudentRoutes));
+  try {
+    await openExamsTab(m);
+    const text = m.container.textContent;
+    assert.ok(m.container.querySelector("a[href='/learn/exams/1']"), "a link to the open exam");
+    assert.match(text, /امتحان الباب الأول/);
+    assert.match(text, /٢ سؤال/);
+    assert.match(text, /٣٠ دقيقة/);
+    assert.match(text, /ابدأ الامتحان/);
+    assert.match(text, /٧٥٪/, "the finished exam shows its percentage");
+    assert.match(text, /أعلى نتيجة/, "with two attempts it says the best one counts");
+    assert.match(text, /أعاد المعلّم فتح الامتحان لك/);
+    assert.ok(m.container.querySelector("a[href='/learn/exams/2?retake=1']"), "a way to start the new attempt");
+    assert.doesNotMatch(text, /undefined|NaN/);
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (student): the exam is a focus screen — no app header, no tabs, no links away", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    assert.equal(m.container.querySelector(".stu-tabs, .stu-top"), null, "the app shell is not around the exam");
+    assert.equal(m.container.querySelectorAll("a[href]").length, 0, "nothing to tap that leads away while running");
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (student): no question is requested before pressing start, then one question at a time with no answer key", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    assert.match(m.container.textContent, /ابدأ الامتحان/);
+    assert.match(m.container.textContent, /مخالفة|مخالفات/);
+    assert.match(m.container.textContent, /٣ تحذيرات/, "the intro says how many warnings there are");
+    assert.ok(!rec.calls.some((c) => c.url.includes("/start/") || c.url.includes("/question/")), "nothing before start");
+    await startExam(m);
+    const asked = rec.calls.filter((c) => c.url.includes("/question/")).map((c) => c.url);
+    assert.equal(asked.length, 1, "only the first question was requested");
+    assert.match(asked[0], /\/question\/0\//);
+    assert.match(m.container.textContent, /ما عاصمة مصر/);
+    assert.equal(m.container.querySelectorAll("[role=radio]").length, 2);
+    assert.ok(m.container.querySelector("[role=timer]").textContent.match(/[٠-٩]{2}:[٠-٩]{2}/));
+    assert.doesNotMatch(JSON.stringify(rec.calls.map((c) => c.init?.body || "")), /is_correct/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): the exam shows progress as a percentage and the warning budget", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    const text = m.container.textContent;
+    assert.match(text, /السؤال ١ من ٢/);
+    assert.match(text, /٠٪ مكتمل/);
+    const bar = m.container.querySelector("[role=progressbar]");
+    assert.equal(bar.getAttribute("aria-valuenow"), "0");
+    assert.ok(m.container.querySelector("[aria-label='التحذيرات ٠ من ٣']"), "the strikes indicator shows 0 of 3");
+    await clickEl(m.container.querySelector("[role=radio]"));
+    await clickEl(buttonWith(m.container, "التالي"));
+    await act(async () => {
+      await tick(150);
+    });
+    assert.match(m.container.textContent, /٥٠٪ مكتمل/, "half way after the first question");
+    assert.equal(m.container.querySelector("[role=progressbar]").getAttribute("aria-valuenow"), "50");
+  } finally {
+    await m.done();
+  }
+});
+
+const afterGrace = () =>
+  act(async () => {
+    await tick(1650); // the guard ignores the first moments after entering the exam (full-screen shake)
+  });
+
+test("exams (student): copy, paste, the context menu and Ctrl+P are blocked, reported and warned about in full screen", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    await afterGrace();
+    const fire = async (ev) => {
+      await act(async () => {
+        w.document.dispatchEvent(ev);
+        await tick(30);
+      });
+      return ev.defaultPrevented;
+    };
+    assert.equal(await fire(new w.Event("copy", { bubbles: true, cancelable: true })), true);
+    assert.equal(await fire(new w.Event("paste", { bubbles: true, cancelable: true })), true);
+    assert.equal(await fire(new w.Event("contextmenu", { bubbles: true, cancelable: true })), true);
+    assert.equal(
+      await fire(new w.KeyboardEvent("keydown", { key: "p", code: "KeyP", ctrlKey: true, bubbles: true, cancelable: true })),
+      true,
+      "Ctrl+P is blocked"
+    );
+    assert.equal(
+      await fire(new w.KeyboardEvent("keydown", { key: "ArrowLeft", code: "ArrowLeft", bubbles: true, cancelable: true })),
+      false,
+      "ordinary keys still work"
+    );
+    const kinds = rec.calls.filter((c) => c.url.includes("/violation/")).map((c) => JSON.parse(c.init.body).type);
+    for (const k of ["copy", "paste", "contextmenu", "shortcut"]) assert.ok(kinds.includes(k), k);
+    const dialog = m.container.querySelector("[role=alertdialog]");
+    assert.ok(dialog, "a full-screen warning is shown");
+    assert.match(dialog.textContent, /المخالفة ١ من ٣/);
+    assert.match(dialog.textContent, /تبقّى لك تحذيران/, "it says how many warnings are left");
+    assert.match(dialog.textContent, /الوقت لا يتوقف/);
+    // it cannot be skipped by clicking around: only its button dismisses it, and the exam continues
+    await clickEl(buttonWith(dialog, "فهمت، أكمل الامتحان"));
+    assert.equal(m.container.querySelector("[role=alertdialog]"), null);
+    assert.match(m.container.textContent, /ما عاصمة مصر/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): leaving the window is reported, and the warning names what the student did", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    await afterGrace();
+    await act(async () => {
+      w.dispatchEvent(new w.Event("blur"));
+      await tick(80);
+    });
+    assert.ok(rec.calls.some((c) => c.url.includes("/violation/") && JSON.parse(c.init.body).type === "blur"));
+    assert.match(m.container.querySelector("[role=alertdialog]").textContent, /غادرت نافذة الامتحان/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): events right after entering the exam are not counted against the student", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    await act(async () => {
+      w.dispatchEvent(new w.Event("blur"));
+      await tick(60);
+    });
+    assert.ok(!rec.calls.some((c) => c.url.includes("/violation/")), "full-screen entry noise is ignored");
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): the Back button cannot leave the exam", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    const before = w.history.length;
+    await act(async () => {
+      w.dispatchEvent(new w.PopStateEvent("popstate"));
+      await tick(40);
+    });
+    assert.ok(w.history.length >= before, "the history entry is put back");
+    assert.match(m.container.textContent, /لا يمكن الرجوع أثناء الامتحان/);
+    assert.match(m.container.textContent, /ما عاصمة مصر/, "still in the exam");
+  } finally {
+    await m.done();
+  }
+});
+
+test("exams (student): 'submit now' asks first, then submits", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    await clickEl(buttonWith(m.container, "تسليم الآن"));
+    assert.match(m.container.querySelector("[role=alertdialog]").textContent, /تسليم الامتحان الآن؟/);
+    assert.ok(!rec.calls.some((c) => c.url.includes("/submit/")), "not submitted until confirmed");
+    await clickEl(buttonWith(m.container, "متابعة الامتحان"));
+    assert.equal(m.container.querySelector("[role=alertdialog]"), null);
+    await clickEl(buttonWith(m.container, "تسليم الآن"));
+    await clickEl(buttonWith(m.container, "نعم، سلّم"));
+    await act(async () => {
+      await tick(200);
+    });
+    assert.ok(rec.calls.some((c) => c.url.includes("/submit/") && c.init.method === "POST"));
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): an answer is saved on Next, and the last question submits and shows the result as a percentage", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/1", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(100);
+    });
+    await startExam(m);
+    await clickEl(m.container.querySelector("[role=radio]"));
+    await clickEl(buttonWith(m.container, "التالي"));
+    await act(async () => {
+      await tick(150);
+    });
+    const put = rec.calls.find((c) => c.url.includes("/answer/"));
+    assert.ok(put, "the answer was saved");
+    assert.deepEqual(JSON.parse(put.init.body), { question_id: 1, choice_id: 11 });
+    assert.match(m.container.textContent, /كم يساوي/, "the next question is shown");
+    assert.ok(!rec.calls.some((c) => c.url.includes("/submit/")), "not submitted before the last question");
+    await clickEl(m.container.querySelectorAll("[role=radio]")[1]);
+    await clickEl(buttonWith(m.container, "إنهاء وتسليم"));
+    await act(async () => {
+      await tick(250);
+    });
+    assert.ok(rec.calls.some((c) => c.url.includes("/submit/") && c.init.method === "POST"));
+    const text = m.container.textContent;
+    assert.match(text, /٢ من ٣ درجة/, "the score is shown");
+    assert.match(text, /٦٦٫٧٪/, "and the percentage");
+    assert.match(text, /جيد/, "with a plain verdict");
+    assert.ok(m.container.querySelector("[aria-label='نتيجتك ٦٦٫٧٪']"), "as a ring");
+    assert.equal(m.container.querySelector("[role=timer]"), null, "the exam view is gone");
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("exams (student): after a re-open the result offers a new attempt and says the best score counts", async () => {
+  ME = STUDENT;
+  const rec = recordFetch();
+  const m = await mount("/learn/exams/2", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(200);
+    });
+    const text = () => m.container.textContent;
+    assert.match(text(), /٥٠٪/, "this attempt");
+    assert.match(text(), /المحسوبة لك أعلى درجة: ٧٥٪ من محاولة سابقة/);
+    assert.match(text(), /أتاح لك معلمك محاولة أخرى/);
+    await clickEl(buttonWith(m.container, "ابدأ محاولة جديدة"));
+    assert.match(text(), /تُحتسب لك أعلى درجة/, "the intro repeats the rule");
+    await clickEl(buttonWith(m.container, "ابدأ المحاولة الجديدة"));
+    await act(async () => {
+      await tick(150);
+    });
+    const start = rec.calls.find((c) => c.url.includes("/exams/2/start/"));
+    assert.ok(start, "the new attempt was started");
+    assert.deepEqual(JSON.parse(start.init.body), { retake: true });
+    assert.match(text(), /المحاولة ٣/, "the running exam says which attempt this is");
+    assert.match(text(), /سؤال المحاولة الجديدة/);
+  } finally {
+    rec.restore();
+    await m.done();
+  }
+});
+
+test("notifications (student): an exam notification is badged as an exam and opens the exam", async () => {
+  ME = STUDENT;
+  const m = await mount("/learn/notifications", React.createElement(StudentRoutes));
+  try {
+    await act(async () => {
+      await tick(120);
+    });
+    const text = m.container.textContent;
+    assert.match(text, /امتحان جديد/);
+    assert.doesNotMatch(text, /فيديو جديد/, "an exam is never called a video");
+    assert.ok(m.container.querySelector("a[href='/learn/exams/1']"), "opens the exam");
+    assert.ok(m.container.querySelector("a[href='/learn/materials/1']"), "a file or summary opens its page");
+    assert.ok(m.container.querySelector(".chip-s.is-exam"));
   } finally {
     await m.done();
   }
