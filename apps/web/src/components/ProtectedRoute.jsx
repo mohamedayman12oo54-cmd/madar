@@ -22,20 +22,21 @@ const ENV_SELECT_PATH = {
   student: "/auth/student/environments",
 };
 
-function Boot() {
+function Boot({ offline = false }) {
   return (
     <div className="dash-boot" role="status" aria-label="جارٍ التحقق من الجلسة">
       <OrbitBig />
+      {offline && <p className="boot-note">تعذّر الاتصال بالخادم. جلستك محفوظة، ونعيد المحاولة تلقائيًا…</p>}
     </div>
   );
 }
 
 export default function ProtectedRoute({ role, requireEnvironment = false }) {
-  const { status, user } = useSession();
+  const { status, user, offline } = useSession();
   const env = useEnvironment();
   const location = useLocation();
 
-  if (status === "loading") return <Boot />;
+  if (status === "loading") return <Boot offline={offline} />;
 
   if (status !== "authenticated") {
     return <Navigate to={LOGIN_PATH[role] || "/auth"} replace state={{ from: location }} />;
