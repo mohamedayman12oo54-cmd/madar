@@ -31,12 +31,13 @@ class NotificationListView(TenantScopedQuerySetMixin, generics.ListAPIView):
 
     permission_classes = IS_ENV_OWNER
     serializer_class = NotificationSerializer
-    queryset = Notification.objects.select_related("enrollment", "broadcast", "content_item").prefetch_related(
-        "broadcast__grades", "broadcast__groups", "content_item__target_grades", "content_item__target_groups")
+    queryset = Notification.objects.select_related("enrollment", "broadcast", "content_item", "exam").prefetch_related(
+        "broadcast__grades", "broadcast__groups", "content_item__target_grades", "content_item__target_groups",
+        "exam__target_grades", "exam__target_groups")
 
     @staticmethod
     def _first_ids(qs, field):
-        """Newest delivery id for each distinct `field` (broadcast / content_item)."""
+        """Newest delivery id for each distinct `field` (broadcast / content_item / exam)."""
         col = f"{field}_id"
         if _supports_distinct_on():
             return list(qs.filter(**{f"{field}__isnull": False}).order_by(col, "-created_at", "-id")
@@ -61,9 +62,9 @@ class NotificationListView(TenantScopedQuerySetMixin, generics.ListAPIView):
         # that actually need attention. Keep a single representative row per
         # broadcast; the full audience lives behind its details view.
         if p.get("collapse", "1") not in ("0", "false"):
-            # One representative row per broadcast AND per published video.
-            keep_q = Q(broadcast__isnull=True, content_item__isnull=True)
-            for field in ("broadcast", "content_item"):
+            # One representative row per broadcast AND per published video / file / summary / exam.
+            keep_q = Q(broadcast__isnull=True, content_item__isnull=True, exam__isnull=True)
+            for field in ("broadcast", "content_item", "exam"):
                 keep_q |= Q(id__in=self._first_ids(qs, field))
             qs = qs.filter(keep_q)
         return qs
