@@ -8,11 +8,16 @@ python-dotenv==1.2.2
 # The binary wheel avoids needing libpq/build tools on the host.
 psycopg[binary]==3.3.6
 
-# Lesson-video transcription (speech-to-text, runs locally; model downloads on first use).
-# Decodes audio itself, so ffmpeg is NOT required.
+# Lesson-video transcription fallback (speech-to-text, runs locally; model downloads
+# on first use). Decodes audio itself, so ffmpeg is NOT required for this step — it IS
+# used, optionally, to shrink the upload before calling the external STT API (see
+# content/transcription.py); when ffmpeg is absent that step is simply skipped.
 faster-whisper==1.2.1
 # faster-whisper 1.2.1 breaks on PyAV >= 17 (av.open no longer takes metadata_errors).
 av>=16,<17
+
+# Web Push (browser notifications even when the app is closed). VAPID signing + payload encryption.
+pywebpush==2.5.0
 # Production deployment
 gunicorn>=23,<24
 whitenoise>=6,<7

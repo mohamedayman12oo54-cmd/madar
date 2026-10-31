@@ -19,7 +19,7 @@ from content.models import Transcript
 from .models import Quiz
 from .test_quiz_transcript import TranscriptQuizBase, lesson_text
 
-LLM = dict(AI_PROVIDER="llm", QUIZ_LANGUAGE="ar-msa")
+LLM = dict(AI_PROVIDER="llm", QUIZ_LANGUAGE="ar-msa", QUIZ_CONTENT_VALIDATION_ENABLED=False)
 
 
 def run_worker(client):

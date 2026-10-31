@@ -18,11 +18,19 @@ from django.utils import timezone
 from academics.models import Enrollment, Grade, Group
 from environments.tenancy import TenantOwnedModel
 
-from .uploads import rendition_path, storage_path
+from .uploads import document_path, rendition_path, storage_path
 from .video import PROVIDER_CHOICES
 
 
 class ContentItem(TenantOwnedModel):
+    class Kind(models.TextChoices):
+        """What the item IS. The educational-content area is split into sections: videos, PDF files
+        and written summaries (exams are their own model). Existing rows are videos."""
+        VIDEO = "video", "فيديو"
+        PDF = "pdf", "ملف PDF"
+        SUMMARY = "summary", "ملخص"
+
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.VIDEO, db_index=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     # EITHER an external reference (provider + opaque id) OR an uploaded file.
@@ -63,6 +71,12 @@ class ContentItem(TenantOwnedModel):
     original_filename = models.CharField(max_length=120, blank=True)
     file_size = models.PositiveBigIntegerField(null=True, blank=True)
     content_type = models.CharField(max_length=80, blank=True)
+    # PDF study file (kind=pdf). Private storage exactly like video: no public URL, random name,
+    # reachable only through a signed short-lived ticket (content.document_views).
+    document_file = models.FileField(upload_to=document_path, blank=True, null=True, max_length=255)
+    # The written summary (kind=summary). PLAIN TEXT: it is never interpreted as HTML anywhere, so a
+    # summary cannot carry script. The client renders it as text with simple line-based formatting.
+    body = models.TextField(blank=True, max_length=20000)
     # Teacher-provided text the AI Quiz is generated from (summary / transcript
     # of the lesson). The video itself is an external blob the quiz cannot read.
     quiz_source = models.TextField(blank=True, max_length=4000)

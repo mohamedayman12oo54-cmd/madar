@@ -123,6 +123,34 @@ class GuardianLoginTests(_Base):
     def test_anonymous_cannot_read_the_portal(self):
         self.assertEqual(self.anon.get(OVERVIEW).status_code, 401)
 
+    def test_an_open_portal_renews_its_own_token_and_never_expires_under_the_guardian(self):
+        from datetime import timedelta
+        from unittest import mock
+
+        c = self.portal()
+        r = c.post("/api/v1/parent/renew/")
+        self.assertEqual(r.status_code, 200, r.content)
+        fresh = r.json()["token"]
+        self.assertEqual(r.json()["expires_in"], 60 * 60 * 24)
+        later = APIClient()
+        later.credentials(HTTP_AUTHORIZATION="Parent " + fresh)
+        self.assertEqual(later.get(OVERVIEW).status_code, 200)
+        # a token nobody renewed does expire (the tab was closed for more than a day)
+        import time
+        old = issue_session(self.enr)
+        stale = APIClient()
+        stale.credentials(HTTP_AUTHORIZATION="Parent " + old)
+        with mock.patch.object(time, "time", return_value=time.time() + 60 * 60 * 25):
+            self.assertEqual(stale.get(OVERVIEW).status_code, 401)
+            self.assertEqual(stale.post("/api/v1/parent/renew/").status_code, 401)
+
+    def test_renewal_follows_the_same_rules_as_every_request(self):
+        c = self.portal()
+        self.enr.parent_phone = "201111000999"
+        self.enr.save()
+        self.assertEqual(c.post("/api/v1/parent/renew/").status_code, 401)
+        self.assertEqual(self.anon.post("/api/v1/parent/renew/").status_code, 401)
+
 
 class GuardianNeedsNoAccountTests(_Base):
     """The guardian never activates anything. Their recorded phone is enough —

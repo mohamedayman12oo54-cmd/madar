@@ -14,6 +14,12 @@ from .serializers import ContentItemSerializer, ContentItemWriteSerializer
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
 _PREFETCH = ("target_grades", "target_groups", "target_enrollments", "transcript")
+# A video keeps NEW_VIDEO; a PDF or a summary is NEW_MATERIAL (it used to be mislabelled "new video").
+_NEW_ITEM_TITLE = {
+    ContentItem.Kind.VIDEO: "فيديو جديد",
+    ContentItem.Kind.PDF: "ملف جديد",
+    ContentItem.Kind.SUMMARY: "ملخص جديد",
+}
 
 
 class ContentListCreateView(TenantScopedQuerySetMixin, generics.ListCreateAPIView):
@@ -25,6 +31,10 @@ class ContentListCreateView(TenantScopedQuerySetMixin, generics.ListCreateAPIVie
         p = self.request.query_params
         if grade_id := p.get("grade_id"):
             qs = qs.filter(target_grades__id=grade_id)
+        if kind := p.get("kind"):
+            if kind not in ContentItem.Kind.values:
+                raise serializers.ValidationError({"kind": "نوع غير صالح."})
+            qs = qs.filter(kind=kind)
         if search := p.get("search", "").replace("\x00", "").strip():
             qs = qs.filter(title__icontains=search)
         if p.get("published") in ("1", "true"):
@@ -35,6 +45,9 @@ class ContentListCreateView(TenantScopedQuerySetMixin, generics.ListCreateAPIVie
 
     def get_serializer_class(self):
         return ContentItemWriteSerializer if self.request.method == "POST" else ContentItemSerializer
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "list": self.request.method == "GET"}
 
 
 class ContentDetailView(TenantScopedQuerySetMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -61,10 +74,16 @@ class ContentPublishView(APIView):
                 return Response({"detail": "تم نشر هذا المحتوى من قبل.", "code": "already_published"}, status=409)
             if not item.has_targets():
                 raise serializers.ValidationError({"detail": "حدّد صفًا أو مجموعة أو طلابًا قبل النشر."})
+            if item.kind == ContentItem.Kind.PDF and not item.document_file:
+                raise serializers.ValidationError({"detail": "ارفع ملف PDF قبل النشر."})
+            if item.kind == ContentItem.Kind.SUMMARY and not item.body.strip():
+                raise serializers.ValidationError({"detail": "اكتب نص الملخص قبل النشر."})
             item.published_at = timezone.now()
             item.save(update_fields=["published_at"])
+            title = _NEW_ITEM_TITLE[item.kind]
+            kind = Notification.Type.NEW_VIDEO if item.kind == ContentItem.Kind.VIDEO else Notification.Type.NEW_MATERIAL
             recipients = notify_many(
-                list(item.audience()), Notification.Type.NEW_VIDEO, "فيديو جديد", f"تمت إضافة: {item.title}"[:500],
+                list(item.audience()), kind, title, f"تمت إضافة: {item.title}"[:500],
                 content_item=item,
             )
         item = ContentItem.objects.prefetch_related(*_PREFETCH).get(pk=item.pk)

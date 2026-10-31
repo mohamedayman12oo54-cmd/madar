@@ -41,14 +41,24 @@ export function EnvironmentProvider({ children }) {
       return;
     }
     setState((s) => ({ ...s, status: "checking" }));
-    try {
-      const data = await envApi.context(); // reads the id back out of storage itself
-      if (mine !== epoch.current) return;
-      setState({ status: "ready", environment: data });
-    } catch {
-      if (mine !== epoch.current) return;
-      clearActiveEnvironmentId();
-      setState({ status: "none", environment: null });
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const data = await envApi.context(); // reads the id back out of storage itself
+        if (mine !== epoch.current) return;
+        setState({ status: "ready", environment: data });
+        return;
+      } catch (e) {
+        if (mine !== epoch.current) return;
+        // Forget the selection only when the SERVER says it is not valid for this person. A dropped
+        // connection must not bounce someone out of their class to the environment picker.
+        if (typeof e?.status === "number" && e.status >= 400 && e.status < 500 && e.status !== 429) {
+          clearActiveEnvironmentId();
+          setState({ status: "none", environment: null });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, Math.min(1500 * (attempt + 1), 8000)));
+        if (mine !== epoch.current) return;
+      }
     }
   }, []);
 

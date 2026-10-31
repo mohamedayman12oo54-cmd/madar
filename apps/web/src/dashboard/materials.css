@@ -1,0 +1,19 @@
+/* ---------- teacher: PDF files + summaries ---------- */
+.mat-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-block-end: 12px; }
+.mat-sub { margin: 0; color: var(--soft); font-size: 0.9rem; flex: 1 1 260px; }
+.mat-form { display: grid; gap: 14px; }
+.mat-label { display: block; font-weight: 600; font-size: 0.9rem; margin-block-end: 6px; }
+.mat-file { display: grid; gap: 4px; }
+.mat-drop { display: grid; justify-items: center; gap: 4px; padding: 22px 16px; text-align: center; cursor: pointer; font: inherit; color: var(--navy);
+  background: var(--surface); border: 2px dashed var(--line-2); border-radius: 14px; }
+.mat-drop:hover, .mat-drop:focus-visible { border-color: var(--navy); background: #fff; }
+.mat-drop small { color: var(--soft); }
+.mat-file-card { display: flex; gap: 12px; align-items: center; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; }
+.mat-file-meta { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.mat-file-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mat-file-meta small { color: var(--soft); }
+.mat-body { min-height: 220px; line-height: 1.8; resize: vertical; }
+.mat-count { display: block; text-align: end; color: var(--soft); margin-block-start: 4px; }
+.mat-audience h4 { margin: 0 0 2px; }
+.mat-audience .audience-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .mat-audience .audience-row { grid-template-columns: minmax(0, 1fr); } }

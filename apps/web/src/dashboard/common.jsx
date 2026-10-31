@@ -331,3 +331,23 @@ export function SearchSelect({
 
 export const toggleId = (list, id) =>
   list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+
+/**
+ * Multi-choice dropdown with toggle semantics: `onToggle(id)` fires for each id that was added or removed
+ * and `onClear()` when the last selection is removed in one go. A thin layer over `SearchSelect`, so the
+ * search, chips and keyboard handling are the same everywhere. `label` is accepted for call-site readability.
+ */
+export function MultiSelect({ items, selected = [], onToggle, onClear, ...rest }) {
+  const change = (next) => {
+    const before = new Set(selected);
+    const after = new Set(next);
+    if (next.length === 0 && selected.length > 1 && onClear) {
+      onClear();
+      return;
+    }
+    for (const id of before) if (!after.has(id)) onToggle(id);
+    for (const id of after) if (!before.has(id)) onToggle(id);
+  };
+  const { label: _label, ...passThrough } = rest;
+  return <SearchSelect multiple items={items} value={selected} onChange={change} {...passThrough} />;
+}

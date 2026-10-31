@@ -6,6 +6,7 @@ import {
   ClipboardList,
   PlayCircle,
   FileQuestion,
+  FileText,
   Sparkles,
   LogOut,
   Settings,
@@ -20,7 +21,8 @@ import "./student.css";
 export const studentNav = [
   { to: "/learn", label: "الرئيسية", icon: Home, end: true },
   { to: "/learn/records", label: "سجلّي", icon: ClipboardList },
-  { to: "/learn/videos", label: "الفيديوهات", icon: PlayCircle },
+  { to: "/learn/videos", label: "المحتوى", icon: PlayCircle },
+  { to: "/learn/exams", label: "الامتحانات", icon: FileText },
   { to: "/learn/quizzes", label: "اختباراتي", icon: FileQuestion },
   { to: "/learn/assistant", label: "المساعد", icon: Sparkles },
 ];

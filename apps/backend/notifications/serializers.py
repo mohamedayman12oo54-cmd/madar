@@ -35,16 +35,31 @@ class NotificationSerializer(serializers.ModelSerializer):
             return None
         return {
             "id": c.id,
+            "kind": c.kind,
             "title": c.title,
             "grades": [g.name for g in c.target_grades.all()],
             "groups": [g.name for g in c.target_groups.all()],
+        }
+
+    exam = serializers.SerializerMethodField()
+
+    def get_exam(self, obj):
+        """Present on a collapsed exam row: ONE line saying which exam went to which grade / group."""
+        x = obj.exam
+        if x is None:
+            return None
+        return {
+            "id": x.id,
+            "title": x.title,
+            "grades": [g.name for g in x.target_grades.all()],
+            "groups": [g.name for g in x.target_groups.all()],
         }
 
     class Meta:
         model = Notification
         fields = [
             "id", "type", "type_label", "title", "body", "student", "session",
-            "broadcast", "content_item", "delivery_status", "delivery_error", "delivered_at", "created_at",
+            "broadcast", "content_item", "exam", "delivery_status", "delivery_error", "delivered_at", "created_at",
         ]
 
     def get_student(self, obj):

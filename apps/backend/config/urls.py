@@ -35,6 +35,8 @@ urlpatterns = [
     path("api/v1/ai/", include("ai.urls")),
     path("api/v1/knowledge/", include("knowledge.urls")),
     path("api/v1/parent/", include("parents.urls")),
+    path("api/v1/student/exams/", include("learning.student_urls")),
+    path("api/v1/exams/", include("learning.urls")),
     path("api/v1/student/", include("studentarea.urls")),
 ]
 

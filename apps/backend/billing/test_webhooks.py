@@ -219,6 +219,8 @@ class AllowAnyRouteEnumerationTests(SimpleTestCase):
         "parents.views.GuardianCodeLoginView",
         "parents.views.GuardianVerifyView",
         "content.video_views.VideoStreamView",
+        # PDF viewing: public by design, authorised by a signed short-lived ticket (like the video stream)
+        "content.document_views.DocumentStreamView",
         "billing.webhooks.KashierWebhookView",
         # Student self check-in (QR token + phone + announced code); attendance-only, throttled.
         "scheduling.checkin.CheckinInfoView",

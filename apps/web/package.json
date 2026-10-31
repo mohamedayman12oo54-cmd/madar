@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/lib/api.test.js src/lib/poll.test.js src/lib/phone.test.js src/lib/dates.test.js src/lib/datePicker.test.js src/lib/video.test.js src/lib/billing.test.js src/dashboard/nav.test.js src/lib/pwa.test.mjs src/components/install.test.mjs src/components/player.test.mjs src/lib/routes.conformance.test.mjs src/auth/modal.test.mjs src/auth/claim.test.mjs src/dashboard/render.smoke.test.mjs src/lib/a11y.static.test.mjs src/lib/embed-qr.test.js src/lib/keepalive.test.mjs src/lib/exam.test.js src/lib/parentApi.test.mjs src/lib/session.static.test.mjs src/lib/security.static.test.mjs src/lib/styles.static.test.mjs src/lib/summary.test.js src/lib/files.test.js"
   },
   "dependencies": {
     "framer-motion": "^11.0.0",
