@@ -8,7 +8,10 @@ import { ApiError } from "../lib/api.js";
 import { pollUntilDone } from "../lib/poll.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
-import { Confirm, Empty, PageHeader, SearchSelect, useDebounced } from "./common.jsx";
+import ExamsTab from "./ExamsTab.jsx";
+import MaterialsTab from "./MaterialsTab.jsx";
+import "./exams.css";
+import { Confirm, Empty, MultiSelect, PageHeader, toggleId, useDebounced } from "./common.jsx";
 import { UploadCloud, FileVideo, AlertCircle } from "lucide-react";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
@@ -37,7 +40,7 @@ function VideoModal({ item, onClose }) {
   );
 }
 
-function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
+function ItemFormModal({ item, grades, groups, onClose, onSaved, onChanged }) {
   // The file needs something to attach to, but making the teacher save first
   // and come back is a pointless round trip. On the first file pick we create
   // the content as a draft with whatever title has been typed, then keep
@@ -60,17 +63,18 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
     return created;
   };
 
-  // Finishing an upload must NOT close the window: the teacher is still filling in the form.
-  // Refresh the list behind it, and keep the draft in sync so the transcript panel appears.
-  const onUploaded = (info) => {
-    setDraft((d) =>
-      d
-        ? info
-          ? { ...d, source: "upload", original_filename: info.original_filename, file_size: info.file_size }
-          : { ...d, source: "none" }
-        : d
-    );
-    onRefresh?.();
+  // Finishing an upload refreshes the list behind the dialog but leaves the dialog OPEN: the teacher
+  // still has the title, audience and quiz summary to finish, and closes it himself when done.
+  const onUploaded = async (itemId) => {
+    onChanged?.();
+    // Re-read the row so the dialog shows the new file state (and the transcript panel) in place.
+    try {
+      const rows = listOf(await contentApi.list({}));
+      const fresh = rows.find((r) => r.id === itemId);
+      if (fresh) setDraft(fresh);
+    } catch {
+      /* the list behind the dialog still refreshes; the dialog just keeps its previous snapshot */
+    }
   };
   const formId = useId();
   const editing = !!item;
@@ -92,6 +96,7 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
   const [err, setErr] = useState(null);
   const [fe, setFe] = useState({});
   const [saving, setSaving] = useState(false);
+  const gradeNameById = Object.fromEntries(grades.map((g) => [g.id, g.name]));
 
   useEffect(() => {
     if (q.trim().length < 2) {
@@ -240,25 +245,31 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
             اختر الصف ثم المجموعة. الفيديو بلا مستهدفين يبقى مسودة لا يراها أحد.
           </p>
         </div>
-        <div className="form-wide form-pair">
+        <div className="form-wide audience-row">
           <Field label="الصفوف المستهدفة" error={fe.grade_ids}>
-            <SearchSelect
-              multiple
-              items={grades}
-              value={gradeIds}
-              onChange={setGradeIds}
-              placeholder="اختر الصفوف"
+            <MultiSelect
+              label="الصفوف المستهدفة"
+              items={grades.map((g) => ({ id: g.id, name: g.name }))}
+              selected={gradeIds}
+              onToggle={(id) => setGradeIds((l) => toggleId(l, id))}
+              onClear={() => setGradeIds([])}
+              placeholder="اختر الصف…"
               searchPlaceholder="ابحث عن صف…"
               empty="لا توجد صفوف بعد."
             />
           </Field>
           <Field label="المجموعات المستهدفة" error={fe.group_ids}>
-            <SearchSelect
-              multiple
-              items={groups}
-              value={groupIds}
-              onChange={setGroupIds}
-              placeholder="اختر المجموعات"
+            <MultiSelect
+              label="المجموعات المستهدفة"
+              items={groups.map((g) => ({
+                id: g.id,
+                name: g.name,
+                hint: gradeNameById[g.grade_id] || undefined,
+              }))}
+              selected={groupIds}
+              onToggle={(id) => setGroupIds((l) => toggleId(l, id))}
+              onClear={() => setGroupIds([])}
+              placeholder="اختر المجموعة…"
               searchPlaceholder="ابحث عن مجموعة…"
               empty="لا توجد مجموعات بعد."
             />
@@ -312,7 +323,7 @@ function ItemFormModal({ item, grades, groups, onClose, onSaved, onRefresh }) {
   );
 }
 
-export default function ContentPage() {
+function VideosTab() {
   const { grades } = useGrades();
   const { groups } = useGroups();
   const [data, setData] = useState(null);
@@ -327,7 +338,7 @@ export default function ContentPage() {
 
   const load = () =>
     contentApi
-      .list({ published: filter })
+      .list({ kind: "video", published: filter })
       .then((d) => {
         setData(listOf(d));
         setStatus("ready");
@@ -432,7 +443,7 @@ export default function ContentPage() {
             setForm(null);
             load();
           }}
-          onRefresh={load}
+          onChanged={load}
         />
       )}
       {view && <VideoModal item={view} onClose={() => setView(null)} />}
@@ -484,6 +495,7 @@ const ACCEPT = "video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov";
  *  extension, the declared type AND the file's leading bytes. */
 function VideoUploadField({ item, ensureItem, onUploaded }) {
   const [pct, setPct] = useState(null);
+  const [uploadedNow, setUploadedNow] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [err, setErr] = useState(null);
   const [info, setInfo] = useState(
@@ -501,9 +513,10 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
       // to save-and-reopen just to attach a file.
       const target = item || (ensureItem ? await ensureItem() : null);
       if (!target) throw new Error("تعذّر تجهيز المحتوى للرفع.");
-      const res = await contentApi.uploadVideo(target.id, file, setPct);
-      setInfo(res);
-      onUploaded?.(res);
+      setUploadedNow(false);
+      setInfo(await contentApi.uploadVideo(target.id, file, setPct));
+      setUploadedNow(true);
+      onUploaded?.(target.id);
     } catch (e2) {
       setErr(e2?.data?.video?.[0] || e2?.data?.detail || e2?.message || "تعذّر رفع الملف.");
     } finally {
@@ -522,7 +535,8 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
     try {
       await contentApi.removeVideo(item.id);
       setInfo(null);
-      onUploaded?.(null);
+      setUploadedNow(false);
+      onUploaded?.(item.id);
     } catch (e2) {
       setErr(e2?.message || "تعذّر الحذف.");
     }
@@ -572,24 +586,11 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
           aria-valuemax={100}
         >
           <div className="upload-bar-fill" style={{ width: `${pct}%` }} />
-          <span className="upload-pct" aria-hidden="true">
-            {pct}%
-          </span>
-          {/* Same label in white, revealed only over the filled part, so the number stays readable
-              whether the bar behind it is empty (navy text) or filled (white text). */}
-          <span
-            className="upload-pct upload-pct-on"
-            aria-hidden="true"
-            style={{
-              clipPath:
-                document.documentElement.dir === "ltr"
-                  ? `inset(0 ${100 - pct}% 0 0)`
-                  : `inset(0 0 0 ${100 - pct}%)`,
-            }}
-          >
-            {pct}%
-          </span>
+          <span className="upload-pct">{pct}%</span>
         </div>
+      )}
+      {pct === null && info?.original_filename && uploadedNow && (
+        <Banner tone="info">تم رفع الفيديو. أكمل بقية البيانات ثم اضغط «حفظ التعديلات» أو أغلق النافذة وقتما تشاء.</Banner>
       )}
       {err && <Banner tone="err">{err}</Banner>}
     </div>
@@ -741,5 +742,31 @@ function TranscriptPanel({ itemId }) {
           : tr.text}
       </div>
     </div>
+  );
+}
+
+/** Educational content hub: videos, PDF files, written summaries/notes and exams. */
+const TABS = [
+  { key: "videos", label: "الفيديوهات" },
+  { key: "pdf", label: "ملفات PDF" },
+  { key: "summary", label: "الملخصات والملاحظات" },
+  { key: "exams", label: "الامتحانات" },
+];
+
+export default function ContentPage() {
+  const [tab, setTab] = useState("videos");
+  return (
+    <>
+      <div className="ch-tabs" role="tablist" aria-label="أقسام المحتوى التعليمي">
+        {TABS.map((t) => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={"ch-tab" + (tab === t.key ? " is-on" : "")} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "videos" && <VideosTab />}
+      {(tab === "pdf" || tab === "summary") && <MaterialsTab kind={tab} />}
+      {tab === "exams" && <ExamsTab />}
+    </>
   );
 }
