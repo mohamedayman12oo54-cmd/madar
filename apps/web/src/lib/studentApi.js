@@ -14,6 +14,9 @@ export const studentApi = {
   evaluation: () => api.get("/student/evaluation/", T),
   videos: () => api.get("/student/videos/", T),
   video: (id) => api.get(`/student/videos/${id}/`, T),
+  materials: (kind) => api.get(`/student/materials/${qs({ kind })}`, T),
+  material: (id) => api.get(`/student/materials/${id}/`, T),
+  documentTicket: (id) => api.post(`/content/${id}/document-ticket/`, {}, T),
   playbackTicket: (id, quality) =>
     api.post(`/content/${id}/playback-ticket/`, quality ? { quality } : {}, T),
   videoProgress: (id, position_seconds, duration_seconds) =>
