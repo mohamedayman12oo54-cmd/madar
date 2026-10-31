@@ -69,6 +69,8 @@ class VideoUploadView(APIView):
 
     def put(self, request, pk):
         item = _owned_item(request, pk)
+        if item.kind != ContentItem.Kind.VIDEO:
+            raise serializers.ValidationError({"detail": "رفع الفيديو متاح لمحتوى الفيديو فقط."})
         upload = request.FILES.get("video")
         try:
             validate_video_upload(upload)
