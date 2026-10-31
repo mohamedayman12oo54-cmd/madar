@@ -127,6 +127,7 @@ export const evaluationApi = {
 
 export const contentApi = {
   list: (params) => api.get(`/content/${qs(params)}`, T),
+  get: (id) => api.get(`/content/${id}/`, T),
   create: (payload) => api.post("/content/", payload, T),
   update: (id, payload) => api.patch(`/content/${id}/`, payload, T),
   remove: (id) => api.delete(`/content/${id}/`, T),
@@ -205,6 +206,14 @@ export const contentApi = {
   uploadStatus: (sessionId) => api.get(`/content/uploads/${sessionId}/`, T),
   abortUpload: (sessionId) => api.delete(`/content/uploads/${sessionId}/`, T),
   removeVideo: (id) => api.delete(`/content/${id}/video/`, T),
+  // --- PDF study files (single request, <= 50 MB; the server re-validates type and bytes) ---
+  uploadDocument: (id, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.put(`/content/${id}/document/`, form, { ...T, raw: true });
+  },
+  removeDocument: (id) => api.delete(`/content/${id}/document/`, T),
+  documentTicket: (id) => api.post(`/content/${id}/document-ticket/`, {}, T),
   playbackTicket: (id) => api.post(`/content/${id}/playback-ticket/`, {}, T),
   watchers: (id) => api.get(`/content/${id}/watchers/`, T),
 };
