@@ -90,6 +90,8 @@ class UploadSessionCreateView(APIView):
     def post(self, request, pk):
         item = generics.get_object_or_404(
             ContentItem.objects.filter(environment=request.environment), pk=pk)
+        if item.kind != ContentItem.Kind.VIDEO:
+            raise serializers.ValidationError({"detail": "رفع الفيديو متاح لمحتوى الفيديو فقط."})
         ser = CreateSessionSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
