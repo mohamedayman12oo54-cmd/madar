@@ -41,7 +41,7 @@ test("manifest ships the icon sizes Android and Chrome require", () => {
 
 test("every icon the manifest references actually exists", () => {
   for (const icon of manifest.icons) {
-    const path = join(PUBLIC, icon.src.replace(/^\//, ""));
+    const path = join(PUBLIC, icon.src.replace(/^\//, "").split("?")[0]);
     assert.ok(existsSync(path), `missing icon file: ${icon.src}`);
   }
   assert.ok(existsSync(join(PUBLIC, "apple-touch-icon.png")), "iOS needs apple-touch-icon.png");
