@@ -14,6 +14,7 @@ const videoAudience = (c) =>
     ...(c.groups || []).map((g) => `المجموعة ${g}`),
   ].join(" • ") || "—";
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
+const SENT_WHAT = { video: "الفيديو", pdf: "ملف PDF", summary: "الملخص" };
 
 function Compose({ onSent }) {
   const { grades } = useGrades();
@@ -199,6 +200,8 @@ export default function NotificationsPage() {
               <option value="absent">غياب</option>
               <option value="not_studied">لم يذاكر</option>
               <option value="new_video">فيديو جديد</option>
+              <option value="new_material">ملف أو ملخص جديد</option>
+              <option value="new_exam">امتحان جديد</option>
               <option value="rating_published">نشر التقييم</option>
               <option value="broadcast">رسالة جماعية</option>
             </select>
@@ -218,16 +221,22 @@ export default function NotificationsPage() {
           {status === "ready" && listOf(data).length === 0 && (
             <Empty
               title="لا توجد إشعارات"
-              text="ستظهر هنا إشعارات الغياب وعدم المذاكرة والفيديوهات والتقييمات والرسائل الجماعية."
+              text="ستظهر هنا إشعارات الغياب وعدم المذاكرة والمحتوى والامتحانات والتقييمات والرسائل الجماعية."
             />
           )}
           <div className="list-rows">
             {listOf(data).map((n) => (
               <div key={n.id} className="list-row">
-                {n.content_item ? (
+                {n.exam ? (
                   <div>
-                    <strong>{n.type_label}</strong> — تم إرسال الفيديو «{n.content_item.title}» إلى{" "}
-                    {videoAudience(n.content_item)}
+                    <strong>{n.type_label}</strong> — تم نشر الامتحان «{n.exam.title}» إلى{" "}
+                    {videoAudience(n.exam)}
+                    <div className="stat-sub">{fmtDateTime(n.created_at)}</div>
+                  </div>
+                ) : n.content_item ? (
+                  <div>
+                    <strong>{n.type_label}</strong> — تم إرسال {SENT_WHAT[n.content_item.kind] || "المحتوى"} «
+                    {n.content_item.title}» إلى {videoAudience(n.content_item)}
                     <div className="stat-sub">{fmtDateTime(n.created_at)}</div>
                   </div>
                 ) : (
