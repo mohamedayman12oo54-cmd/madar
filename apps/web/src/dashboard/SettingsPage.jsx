@@ -16,6 +16,7 @@ import { formatPhone } from "../lib/phone.js";
 import { useSession } from "../state/session.jsx";
 import { useEnvironment } from "../state/environment.jsx";
 import { Confirm, PageHeader } from "./common.jsx";
+import PushToggle from "./PushToggle.jsx";
 
 const fieldsText = (e, fb) =>
   e instanceof ApiError ? (e.fields ? Object.values(e.fields).flat().join(" ") : e.message) : fb;
@@ -259,6 +260,7 @@ export default function SettingsPage() {
           <EnvironmentSection />
         </div>
         <div className="set-col">
+          <PushToggle />
           <SecuritySection />
         </div>
       </div>
