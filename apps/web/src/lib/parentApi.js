@@ -99,8 +99,38 @@ export function clearParentSession() {
 
 const withParent = (token) => ({ authorization: `Parent ${token}` });
 
+/** The portal is released in step with the server, but a server that has not been restarted (or an older
+ *  deployment) answers with fewer sections. Every section the page reads gets an empty default, so a missing
+ *  one shows its "nothing yet" text instead of crashing the whole page into a blank screen. */
+export function normalizeOverview(x) {
+  const o = x || {};
+  return {
+    ...o,
+    attendance: { present: 0, absent: 0, total: 0, recent: [], ...o.attendance },
+    recitation: { studied: 0, not_studied: 0, total: 0, recent: [], ...o.recitation },
+    payments: {
+      history: [],
+      ...o.payments,
+      this_month: { month: "", status: "unpaid", amount: "0", ...o.payments?.this_month },
+    },
+    evaluation: o.evaluation || [],
+    notifications: o.notifications || [],
+    exams: { finished: 0, total: 0, average_percent: null, results: [], ...o.exams },
+    schedule: { weekly: [], upcoming: [], ...o.schedule },
+    videos: { total: 0, completed: 0, started: 0, recent: [], ...o.videos },
+    quizzes: { taken: 0, average_percent: null, recent: [], ...o.quizzes },
+    trend: o.trend || [],
+    rank: o.rank || null,
+    messages: (o.messages || []).map((m) => ({ replies: [], can_reply: false, read_at: null, ...m })),
+  };
+}
+
 export const parentApi = {
   // Phone the teacher recorded for the guardian + the child's student code.
   login: (phone, student_code) => api.post("/parent/login/", { phone, student_code }),
-  overview: (token) => api.get("/parent/overview/", withParent(token)),
+  overview: (token) => api.get("/parent/overview/", withParent(token)).then(normalizeOverview),
+  // The one write a guardian makes: "I opened this message about my child".
+  // A short answer to the teacher about one message (a few per message).
+  reply: (token, id, body) => api.post(`/parent/messages/${id}/reply/`, { body }, withParent(token)),
+  markRead: (token, id) => api.post(`/parent/messages/${id}/read/`, {}, withParent(token)),
 };
