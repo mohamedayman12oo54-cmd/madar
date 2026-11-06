@@ -43,13 +43,15 @@ from environments.tenancy import TenantOwnedModel
 
 class Plan(models.Model):
     """Global plan catalog entry. Not teacher-scoped — every Environment
-    reads the same rows. Plan *data* (the three approved rows) is seeded by
-    BILL-WU-009, not here; this is the table shape only."""
+    reads the same rows. The three real rows live in `billing/catalog.py`
+    (migration 0005 / `manage.py seed_plans` write them); this is the table
+    shape only. Every plan grants every feature; plans differ in price and in
+    how long one paid period lasts (`period_days`)."""
 
     class Key(models.TextChoices):
-        PLAN_1 = "plan_1", "Plan 1"
-        PLAN_2 = "plan_2", "Plan 2"
-        PLAN_3 = "plan_3", "Plan 3"
+        MONTHLY = "monthly", "Monthly"
+        TERM = "term", "Term"
+        YEARLY = "yearly", "Yearly"
 
     key = models.CharField(max_length=20, choices=Key.choices, unique=True)
     name = models.CharField(max_length=100)
@@ -57,8 +59,10 @@ class Plan(models.Model):
     # ambiguity in money comparisons. 1000.00 EGP == 100000 piastres.
     price_minor_units = models.IntegerField()
     currency = models.CharField(max_length=3, default="EGP")
-    # null = no plan-level numerical student cap (Plan 3). Never 0.
+    # null = no plan-level numerical student cap (every current plan). Never 0.
     max_students = models.PositiveIntegerField(null=True, blank=True)
+    # Elapsed days one paid period lasts (30 / 180 / 365). Never calendar months — see billing/periods.py.
+    period_days = models.PositiveSmallIntegerField(default=30)
     is_active = models.BooleanField(default=True)
 
     class Meta:
