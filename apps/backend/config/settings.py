@@ -563,6 +563,8 @@ GROQ_STT_MODEL = env_str("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 GROQ_STT_TIMEOUT_SECONDS = env_int("GROQ_STT_TIMEOUT_SECONDS", 120)
 # Groq's per-file limit: 25 MB on the free tier, 100 MB on the dev tier.
 GROQ_STT_MAX_UPLOAD_MB = env_int("GROQ_STT_MAX_UPLOAD_MB", 25)
+# Optional full path to ffmpeg. Otherwise: the one on PATH, then the copy bundled with `imageio-ffmpeg`.
+FFMPEG_BINARY = env_str("FFMPEG_BINARY", "")
 # Frozen with faster-whisper: nothing reads the next three until it is registered again.
 TRANSCRIPTION_MODEL = env_str("TRANSCRIPTION_MODEL", "small")
 # cpu works everywhere. "cuda" needs the NVIDIA CUDA/cuBLAS libraries installed; "auto" picks
