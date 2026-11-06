@@ -3,11 +3,13 @@ Guardian (ولي الأمر) read-only portal.
 
 Flow: phone -> OTP -> short-lived session bound to one Enrollment.
 
-Strictly read-only, and scoped to the single enrollment whose `parent_phone`
+Read-only (the single write: a guardian opening a message about their child stamps when it was read), and scoped to the single enrollment whose `parent_phone`
 the caller proved they control. Private teacher notes are NEVER included —
 they are teacher-only, and a guardian is not the teacher.
 """
 from django.db import transaction
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -18,7 +20,7 @@ from accounts.models import PendingAuth, supersede_pending
 from accounts.serializers import clean_phone, normalize_student_code
 from accounts.throttles import (
     GuardianCodeRateThrottle, GuardianLoginRateThrottle, GuardianPhoneRateThrottle,
-    OTPRequestRateThrottle, OTPTargetRateThrottle, SensitiveRateThrottle,
+    GuardianReplyRateThrottle, OTPRequestRateThrottle, OTPTargetRateThrottle, SensitiveRateThrottle,
 )
 from accounts.views import consume_pending, otp_debug_field, send_pending_code
 from config.months import current_month
@@ -28,6 +30,10 @@ from notifications.models import Notification
 from scheduling.models import AttendanceRecord, RecitationRecord
 
 from .auth import IsParent, SESSION_TTL_SECONDS, guardian_visible_q, issue_session
+from .models import MAX_REPLIES_PER_MESSAGE, GuardianMessage, GuardianReply
+from .progress import class_schedule, exam_results, group_rank, monthly_trend, quiz_results, video_watching
+
+MESSAGES_SHOWN = 30
 
 # One message for every failure mode, so the endpoint never reveals whether a
 # number belongs to a guardian, a teacher, or nobody.
@@ -183,10 +189,72 @@ class GuardianVerifyView(APIView):
         return Response(session_response(enrollments))
 
 
+class GuardianMessageReadView(APIView):
+    """The ONE thing a guardian writes: that they opened a message about their own child. It sets a timestamp on
+    that message and nothing else; asking again changes nothing (the first time stays), and a message that is not
+    about this child is a plain 404, the same as one that does not exist."""
+
+    permission_classes = [IsParent]
+
+    def post(self, request, pk):
+        message = get_object_or_404(GuardianMessage, pk=pk, enrollment=request.user.enrollment)
+        if message.read_at is None:
+            # Conditional update: two tabs opening the same message cannot move the first read time.
+            GuardianMessage.objects.filter(pk=message.pk, read_at__isnull=True).update(read_at=timezone.now())
+            message.refresh_from_db(fields=["read_at"])
+        return Response({"id": message.pk, "read_at": message.read_at})
+
+
+class ReplySerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=500)
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("اكتب ردك.")
+        return value
+
+
+def _message_row(m):
+    replies = list(m.replies.all())
+    return {
+        "id": m.id, "kind": m.kind, "kind_label": m.get_kind_display(),
+        "title": m.title, "body": m.body, "created_at": m.created_at, "read_at": m.read_at,
+        "replies": [{"id": r.id, "body": r.body, "created_at": r.created_at} for r in replies],
+        "can_reply": len(replies) < MAX_REPLIES_PER_MESSAGE,
+    }
+
+
+class GuardianReplyView(APIView):
+    """A guardian answers a teacher message about their own child: a short text, a few per message, and a
+    per-child hourly cap. The teacher reads it beside the message; it goes nowhere else (not to the student)."""
+
+    permission_classes = [IsParent]
+    throttle_classes = [GuardianReplyRateThrottle]
+
+    def post(self, request, pk):
+        ser = ReplySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        enrollment = request.user.enrollment
+        with transaction.atomic():
+            # Locked so two taps cannot slip a 4th reply past the limit.
+            message = get_object_or_404(
+                GuardianMessage.objects.select_for_update(), pk=pk, enrollment=enrollment)
+            if message.replies.count() >= MAX_REPLIES_PER_MESSAGE:
+                raise serializers.ValidationError(
+                    {"detail": "وصلت للحد الأقصى من الردود على هذه الرسالة.", "code": "reply_limit"})
+            reply = GuardianReply.objects.create(
+                environment_id=message.environment_id, message=message, enrollment=enrollment,
+                body=ser.validated_data["body"])
+        return Response({"id": reply.pk, "body": reply.body, "created_at": reply.created_at},
+                        status=status.HTTP_201_CREATED)
+
+
 class GuardianOverviewView(APIView):
     """Everything a guardian may see, in one read.
 
-    Attendance, recitation, payments, monthly evaluation — and the same
+    Attendance, recitation, payments, monthly evaluation, exam scores, the teacher's own messages about
+    the child — and the same
     notifications the student received, so a guardian is not told less than
     their child. Private teacher notes are excluded by construction: this view
     never touches that table.
@@ -251,6 +319,14 @@ class GuardianOverviewView(APIView):
                              "amount": str(p.amount), "paid_at": p.paid_at} for p in payments],
             },
             "evaluation": evaluation,
+            "exams": exam_results(enrollment),
+            "schedule": class_schedule(enrollment),
+            "videos": video_watching(enrollment),
+            "quizzes": quiz_results(enrollment),
+            "trend": monthly_trend(enrollment),
+            "messages": [_message_row(m) for m in GuardianMessage.objects.filter(enrollment=enrollment)
+                         .prefetch_related("replies")[:MESSAGES_SHOWN]],
+            "rank": group_rank(enrollment),
             "notifications": [{
                 "id": n.id, "type": n.type, "type_label": n.get_type_display(),
                 "title": n.title, "body": n.body, "created_at": n.created_at,
