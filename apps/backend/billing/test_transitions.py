@@ -22,7 +22,7 @@ class ConfirmedFailureOnRenewalTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(self.env_a, plan=self.plan, state=Subscription.State.ACTIVE)
         now = timezone.now()
         start = now - timezone.timedelta(days=40)
@@ -59,7 +59,7 @@ class ConfirmedFailureOnCheckoutTests(TenantTestCase):
     subscription; the teacher may retry checkout."""
 
     def test_a_checkout_attempts_failure_does_not_touch_the_subscription(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = _make_subscription(self.env_a, state=Subscription.State.TRIAL)
         attempt = PaymentAttempt.objects.create(
             environment=self.env_a, subscription=subscription, billing_period=None,
@@ -80,7 +80,7 @@ class AmbiguousOutcomeTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(self.env_a, plan=self.plan, state=Subscription.State.ACTIVE)
         self.attempt = PaymentAttempt.objects.create(
             environment=self.env_a, subscription=self.subscription, billing_period=None,
@@ -153,7 +153,7 @@ class FailureAfterSuccessTests(TenantTestCase):
     """AC-BILL-029-4."""
 
     def test_a_failure_after_success_for_the_same_attempt_is_not_applied(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = _make_subscription(self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         attempt = PaymentAttempt.objects.create(
             environment=self.env_a, subscription=subscription, billing_period=None,
@@ -169,7 +169,7 @@ class FailureAfterSuccessTests(TenantTestCase):
         self.assertEqual(subscription.state, Subscription.State.ACTIVE)
 
     def test_an_ambiguous_outcome_after_success_is_also_not_applied(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = _make_subscription(self.env_a, plan=plan)
         attempt = PaymentAttempt.objects.create(
             environment=self.env_a, subscription=subscription, billing_period=None,
