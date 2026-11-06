@@ -68,11 +68,12 @@ class ExternalSTTError(Exception):
     turns the category into a message from `_STT_FAILURE_MESSAGES`."""
     category = "error"
 
-    def __init__(self, message, *, category=None, status=None):
+    def __init__(self, message, *, category=None, status=None, hint=None):
         super().__init__(message)
         if category:
             self.category = category
         self.status = status
+        self.hint = hint  # "no_ffmpeg": too big only because the audio could not be pulled out of the video
         self.elapsed_ms = None
 
 
@@ -144,6 +145,27 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+_AUDIO_BITRATE = 64_000  # bits per second of the mono mp3 we send (8000 bytes of audio per second)
+
+
+def _ffmpeg_path():
+    """The ffmpeg to use, or None. In order: FFMPEG_BINARY (settings), the one on PATH, then the copy bundled
+    with the `imageio-ffmpeg` package (so a machine with no system ffmpeg still works after `pip install`)."""
+    configured = (getattr(settings, "FFMPEG_BINARY", "") or "").strip()
+    if configured and os.path.isfile(configured):
+        return configured
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+
+        bundled = imageio_ffmpeg.get_ffmpeg_exe()
+        return bundled if bundled and os.path.isfile(bundled) else None
+    except Exception:  # not installed / no binary for this platform
+        return None
+
+
 def _extract_audio(path):
     """-> (audio_path, is_temp_file). Shrinks the upload to a small, mono,
     low-bitrate mp3 — well under the external API's size limit even for a long
@@ -152,13 +174,13 @@ def _extract_audio(path):
     path and fixed flags). Falls back to the original file, untouched, when
     ffmpeg is unavailable: the external API also accepts common video
     containers directly, just at a larger upload size."""
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _ffmpeg_path()
     if not ffmpeg:
         return path, False
     fd, dst = tempfile.mkstemp(suffix=".mp3", prefix="stt-")
     os.close(fd)
     cmd = [ffmpeg, "-nostdin", "-y", "-v", "error", "-i", path,
-           "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", dst]
+           "-vn", "-ac", "1", "-ar", "16000", "-b:a", str(_AUDIO_BITRATE // 1000) + "k", dst]
     try:
         ok = subprocess.run(cmd, capture_output=True, timeout=600, check=False).returncode == 0
     except (subprocess.SubprocessError, OSError):
@@ -168,6 +190,46 @@ def _extract_audio(path):
             os.remove(dst)
         return path, False
     return dst, True
+
+
+def _split_audio(audio_path, max_bytes):
+    """Cut a long mp3 into pieces that each fit under `max_bytes`: -> [(piece_path, start_offset_seconds)].
+    The piece length is derived from the fixed bitrate with a 20% margin, and every piece is checked afterwards.
+    Raises ExternalSTTError("too_large") if ffmpeg cannot do it. The caller removes the pieces."""
+    ffmpeg = _ffmpeg_path()
+    if not ffmpeg:
+        raise ExternalSTTError("Cannot split the audio: ffmpeg is unavailable.", category="too_large", hint="no_ffmpeg")
+    seconds = max(1, int(max_bytes * 0.8 / (_AUDIO_BITRATE / 8)))
+    workdir = tempfile.mkdtemp(prefix="stt-parts-")
+    pattern = os.path.join(workdir, "part%04d.mp3")
+    try:
+        ok = subprocess.run(
+            [ffmpeg, "-nostdin", "-y", "-v", "error", "-i", audio_path, "-f", "segment",
+             "-segment_time", str(seconds), "-c", "copy", pattern],
+            capture_output=True, timeout=600, check=False).returncode == 0
+    except (subprocess.SubprocessError, OSError):
+        ok = False
+    parts = sorted(os.path.join(workdir, n) for n in os.listdir(workdir))
+    if not ok or not parts or any(os.path.getsize(p) > max_bytes for p in parts):
+        for p in parts:
+            os.remove(p)
+        os.rmdir(workdir)
+        raise ExternalSTTError("Could not split the audio into pieces under the upload limit.", category="too_large")
+    return [(p, i * seconds) for i, p in enumerate(parts)]
+
+
+def _remove_files(paths):
+    for p in paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+        parent = os.path.dirname(p)
+        if os.path.basename(parent).startswith("stt-parts-"):
+            try:
+                os.rmdir(parent)
+            except OSError:
+                pass
 
 
 def _parse_groq_error(raw):
@@ -252,37 +314,71 @@ class GroqWhisperTranscriber(Transcriber):
             raise ExternalSTTError("GROQ_API_KEY is not set.", category="config")
         started = time.monotonic()
         audio_path, is_temp = _extract_audio(path)
+        temps = [audio_path] if is_temp else []
         try:
             with open(audio_path, "rb") as fh:
                 # One byte past the limit is enough to know: a huge video is never loaded into memory.
                 audio_bytes = fh.read(self._max_upload_bytes + 1)
+            limit_mb = self._max_upload_bytes // (1024 * 1024)
+            if len(audio_bytes) <= self._max_upload_bytes:
+                pieces = [(audio_bytes, 0)]
+                extracted = time.monotonic()
+            elif not is_temp:
+                # This is still the whole VIDEO: its audio could not be pulled out. Without ffmpeg that is the
+                # usual reason, and it is a server fix, not something the teacher can do by trimming the video.
+                raise ExternalSTTError(
+                    f"The file is over the {limit_mb} MB upload limit and its audio could not be extracted.",
+                    category="too_large", hint=None if _ffmpeg_path() else "no_ffmpeg")
+            else:
+                # A long lecture: the audio alone is over the limit, so send it in several pieces.
+                split = _split_audio(audio_path, self._max_upload_bytes)
+                temps += [p for p, _ in split]
+                extracted = time.monotonic()
+                pieces = []
+                for piece_path, offset in split:
+                    with open(piece_path, "rb") as fh:
+                        pieces.append((fh.read(), offset))
+            fields = {"model": self._model, "response_format": "verbose_json"}
+            if language:
+                fields["language"] = language
+            # Groq's Cloudflare edge answers urllib's default User-Agent with 403 (error code 1010).
+            headers = {"Authorization": f"Bearer {self._api_key}", "User-Agent": "Madar-Backend/1.0"}
+            results = []
+            for data, offset in pieces:
+                call_started = time.monotonic()
+                status, resp_headers, raw = self._transport(
+                    self.API_URL, headers, fields, "audio.mp3", data, self._timeout)
+                if status != 200:
+                    err = self._error_for(status, resp_headers, raw)
+                    err.elapsed_ms = _ms(time.monotonic() - call_started)
+                    raise err
+                results.append((self._parse(raw), offset))
+            called = time.monotonic()
         finally:
-            if is_temp:
-                try:
-                    os.remove(audio_path)
-                except OSError:
-                    pass
-        extracted = time.monotonic()
-        if len(audio_bytes) > self._max_upload_bytes:
-            raise ExternalSTTError(
-                f"The audio is over the {self._max_upload_bytes // (1024 * 1024)} MB upload limit.", category="too_large")
-        fields = {"model": self._model, "response_format": "verbose_json"}
-        if language:
-            fields["language"] = language
-        # Groq's Cloudflare edge answers urllib's default User-Agent with 403 (error code 1010).
-        headers = {"Authorization": f"Bearer {self._api_key}", "User-Agent": "Madar-Backend/1.0"}
-        status, resp_headers, raw = self._transport(
-            self.API_URL, headers, fields, "audio.mp3", audio_bytes, self._timeout)
-        called = time.monotonic()
-        if status != 200:
-            err = self._error_for(status, resp_headers, raw)
-            err.elapsed_ms = _ms(called - extracted)
-            raise err
-        result = self._parse(raw)
-        result["audio_bytes"] = len(audio_bytes)
+            _remove_files(temps)
+        result = self._merge(results)
+        result["audio_bytes"] = sum(len(d) for d, _ in pieces)
+        result["parts"] = len(pieces)
         result["timings_ms"] = {"audio_extract": _ms(extracted - started), "api_call": _ms(called - extracted),
                                 "total": _ms(time.monotonic() - started)}
         return result
+
+    @staticmethod
+    def _merge(results):
+        """One result from the per-piece results: texts joined in order, segment times moved to where the piece
+        sits in the whole lecture. A single piece is returned unchanged."""
+        if len(results) == 1:
+            return results[0][0]
+        text, segments, language, duration = [], [], "", 0.0
+        for res, offset in results:
+            if res["text"]:
+                text.append(res["text"])
+            language = language or res.get("language") or ""
+            for seg in res["segments"]:
+                segments.append({**seg, "start": round(seg["start"] + offset, 2), "end": round(seg["end"] + offset, 2)})
+            if res.get("duration"):
+                duration = max(duration, offset + float(res["duration"]))
+        return {"text": " ".join(text), "language": language, "duration": duration or None, "segments": segments}
 
     def _error_for(self, status, headers, raw):
         message = _parse_groq_error(raw)
@@ -371,6 +467,9 @@ _TRANSCRIBERS = {
 
 _STT_BUSY = "خدمة تحويل الفيديو إلى نص غير متاحة حاليًا. حاول مرة أخرى بعد قليل."
 _STT_NOT_CONFIGURED = "خدمة تحويل الفيديو إلى نص غير مهيأة على الخادم. تواصل مع الدعم الفني."
+# The video is too big to send as it is and the server has no ffmpeg to pull the audio out of it.
+_STT_NO_FFMPEG = ("هذا الفيديو كبير، والخادم يفتقد أداة معالجة الصوت (ffmpeg) اللازمة لتصغيره قبل تحويله إلى نص. "
+                  "تواصل مع الدعم الفني.")
 _STT_FAILURE_MESSAGES = {
     "config": _STT_NOT_CONFIGURED, "auth": _STT_NOT_CONFIGURED,
     "rate_limit": "تم بلوغ الحد المسموح لخدمة تحويل الفيديو إلى نص. حاول مرة أخرى لاحقًا.",
@@ -411,9 +510,10 @@ def run_transcription(transcript_id) -> None:
         _fail(transcript_id, str(exc))
         return
     except ExternalSTTError as exc:
-        log.warning("transcription failed transcript=%s category=%s status=%s: %s",
-                    transcript_id, exc.category, exc.status, exc)
-        _fail(transcript_id, _STT_FAILURE_MESSAGES.get(exc.category, _STT_BUSY))
+        log.warning("transcription failed transcript=%s category=%s status=%s hint=%s: %s",
+                    transcript_id, exc.category, exc.status, exc.hint, exc)
+        message = _STT_NO_FFMPEG if exc.hint == "no_ffmpeg" else _STT_FAILURE_MESSAGES.get(exc.category, _STT_BUSY)
+        _fail(transcript_id, message)
         return
     except Exception:
         log.exception("transcription failed for transcript %s", transcript_id)
