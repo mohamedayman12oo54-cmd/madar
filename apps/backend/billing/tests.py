@@ -301,41 +301,25 @@ class PlanSeedDataTests(TestCase):
 
     def test_exactly_three_plans_exist_with_the_decided_numbers(self):
         self.assertEqual(Plan.objects.count(), 3)
-
-        plan_1 = Plan.objects.get(key=Plan.Key.PLAN_1)
-        self.assertEqual(plan_1.price_minor_units, 100000)  # EGP 1,000
-        self.assertEqual(plan_1.currency, "EGP")
-        self.assertEqual(plan_1.max_students, 400)
-
-        plan_2 = Plan.objects.get(key=Plan.Key.PLAN_2)
-        self.assertEqual(plan_2.price_minor_units, 150000)  # EGP 1,500
-        self.assertEqual(plan_2.max_students, 800)
-
-        plan_3 = Plan.objects.get(key=Plan.Key.PLAN_3)
-        self.assertEqual(plan_3.price_minor_units, 200000)  # EGP 2,000
-        self.assertIsNone(plan_3.max_students)  # no plan-level numerical cap
+        for key, price, days in ((Plan.Key.MONTHLY, 185000, 30), (Plan.Key.TERM, 450000, 180), (Plan.Key.YEARLY, 1000000, 365)):
+            plan = Plan.objects.get(key=key)
+            self.assertEqual((plan.price_minor_units, plan.period_days, plan.currency), (price, days, "EGP"), key)
+            self.assertIsNone(plan.max_students)  # no plan has a student cap
 
     def test_all_three_plans_are_active(self):
         self.assertEqual(Plan.objects.filter(is_active=True).count(), 3)
 
-    def test_the_billing_period_is_the_same_30_days_for_every_plan(self):
-        """There is no per-Plan period field (by design — see
-        capabilities.py) because commercial-model.md §Plans gives every
-        plan the identical '30 elapsed days' period; this asserts that
-        single shared constant rather than a Plan-model field."""
-        from .capabilities import BILLING_PERIOD_DAYS
+    def test_each_plan_carries_its_own_period_length(self):
+        """The period is a per-plan field now: monthly 30, term 180, yearly 365 elapsed days."""
+        self.assertEqual(dict(Plan.objects.values_list("key", "period_days")), {"monthly": 30, "term": 180, "yearly": 365})
 
-        self.assertEqual(BILLING_PERIOD_DAYS, 30)
-
-    def test_rerunning_seed_plans_updates_rather_than_duplicates(self):
-        """Calling the migration's own seed function again (as if the
-        migration ran twice, or a DB was hand-seeded first) must update the
-        existing three rows in place, never create duplicates — `Plan.key`
-        is unique, and the function uses `update_or_create` keyed by it."""
+    def test_rerunning_the_plan_migration_updates_rather_than_duplicates(self):
+        """Calling the migration's own function again (as if it ran twice) must update the three rows in
+        place, never create duplicates — `Plan.key` is unique and the function uses `update_or_create`."""
         import importlib
 
-        seed_module = importlib.import_module("billing.migrations.0002_seed_plans")
-        seed_module.seed_plans(apps=_RealAppsShim(), schema_editor=None)
+        migration = importlib.import_module("billing.migrations.0005_plans_by_duration")
+        migration.to_duration_plans(apps=_RealAppsShim(), schema_editor=None)
         self.assertEqual(Plan.objects.count(), 3)
 
 
@@ -356,50 +340,24 @@ class CapabilityRegistryTests(TestCase):
     """BILL-WU-009 — AC-BILL-009-2: the registry maps each plan and the
     trial to exactly the feature sets commercial-model.md describes."""
 
-    def test_plan_1_has_only_quiz_from_video(self):
-        from .capabilities import AI_QUIZ_FROM_VIDEO, PLAN_CAPABILITIES
-        from .models import Plan as PlanModel
+    def test_every_plan_grants_every_capability(self):
+        from .capabilities import ALL_CAPABILITIES, PLAN_CAPABILITIES
 
-        self.assertEqual(PLAN_CAPABILITIES[PlanModel.Key.PLAN_1], frozenset({AI_QUIZ_FROM_VIDEO}))
+        self.assertEqual(dict(PLAN_CAPABILITIES), {k: ALL_CAPABILITIES for k in ("monthly", "term", "yearly")})
 
-    def test_plan_2_is_plan_1_plus_video_content_chat(self):
-        from .capabilities import AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT, PLAN_CAPABILITIES
-        from .models import Plan as PlanModel
+    def test_trial_grants_every_capability_with_its_own_250_cap(self):
+        from .capabilities import ALL_CAPABILITIES, TRIAL_CAPABILITIES, TRIAL_STUDENT_CAP
 
-        self.assertEqual(
-            PLAN_CAPABILITIES[PlanModel.Key.PLAN_2],
-            frozenset({AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT}),
-        )
-
-    def test_plan_3_is_plan_2_plus_performance_analysis(self):
-        from .capabilities import (
-            AI_PERFORMANCE_ANALYSIS, AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT, PLAN_CAPABILITIES,
-        )
-        from .models import Plan as PlanModel
-
-        self.assertEqual(
-            PLAN_CAPABILITIES[PlanModel.Key.PLAN_3],
-            frozenset({AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT, AI_PERFORMANCE_ANALYSIS}),
-        )
-
-    def test_trial_equals_plan_3_feature_set_with_its_own_250_cap(self):
-        from .capabilities import PLAN_CAPABILITIES, TRIAL_CAPABILITIES, TRIAL_STUDENT_CAP
-        from .models import Plan as PlanModel
-
-        self.assertEqual(TRIAL_CAPABILITIES, PLAN_CAPABILITIES[PlanModel.Key.PLAN_3])
+        self.assertEqual(TRIAL_CAPABILITIES, ALL_CAPABILITIES)
         self.assertEqual(TRIAL_STUDENT_CAP, 250)
-        # The trial cap is independent of (and smaller than) every plan cap,
-        # including Plan 3's absence of a plan-level cap.
-        plan_1 = Plan.objects.get(key=PlanModel.Key.PLAN_1)
-        plan_2 = Plan.objects.get(key=PlanModel.Key.PLAN_2)
-        self.assertLess(TRIAL_STUDENT_CAP, plan_1.max_students)
-        self.assertLess(TRIAL_STUDENT_CAP, plan_2.max_students)
+        # No plan has a student cap, so the trial's 250 is the only cap in the whole commercial model.
+        self.assertEqual(set(Plan.objects.values_list("max_students", flat=True)), {None})
 
     def test_capabilities_for_plan_helper_matches_the_table(self):
         from .capabilities import PLAN_CAPABILITIES, capabilities_for_plan
         from .models import Plan as PlanModel
 
-        for key in (PlanModel.Key.PLAN_1, PlanModel.Key.PLAN_2, PlanModel.Key.PLAN_3):
+        for key in (PlanModel.Key.MONTHLY, PlanModel.Key.TERM, PlanModel.Key.YEARLY):
             self.assertEqual(capabilities_for_plan(key), PLAN_CAPABILITIES[key])
 
     def test_capabilities_for_plan_rejects_an_unknown_key(self):
@@ -446,7 +404,7 @@ class PaidPeriodBoundaryTests(TestCase):
     def setUp(self):
         self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
         self.end = self.start + timezone.timedelta(days=30)
-        self.plan = _plan(Plan.Key.PLAN_1)
+        self.plan = _plan(Plan.Key.MONTHLY)
         self.subscription = make_subscription(plan=self.plan)
         self.period = BillingPeriod.objects.create(
             environment=self.subscription.environment, subscription=self.subscription,
@@ -491,7 +449,7 @@ class CancelAtPeriodEndTests(TestCase):
     def setUp(self):
         self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
         self.end = self.start + timezone.timedelta(days=30)
-        self.plan = _plan(Plan.Key.PLAN_2)
+        self.plan = _plan(Plan.Key.TERM)
         self.subscription = make_subscription(plan=self.plan, cancel_at_period_end=True)
         self.period = BillingPeriod.objects.create(
             environment=self.subscription.environment, subscription=self.subscription,
@@ -520,7 +478,7 @@ class FailedRenewalNoTerminationTests(TestCase):
     def setUp(self):
         self.start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
         self.end = self.start + timezone.timedelta(days=30)
-        self.plan = _plan(Plan.Key.PLAN_1)
+        self.plan = _plan(Plan.Key.MONTHLY)
         self.subscription = make_subscription(plan=self.plan)
         self.period = BillingPeriod.objects.create(
             environment=self.subscription.environment, subscription=self.subscription,
@@ -559,7 +517,7 @@ class CapabilitiesAndCapFollowPlanTests(TestCase):
     def test_each_plan_reports_its_own_capabilities_and_cap(self):
         start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
         end = start + timezone.timedelta(days=30)
-        for plan_key in (Plan.Key.PLAN_1, Plan.Key.PLAN_2, Plan.Key.PLAN_3):
+        for plan_key in (Plan.Key.MONTHLY, Plan.Key.TERM, Plan.Key.YEARLY):
             plan = _plan(plan_key)
             subscription = make_subscription(plan=plan)
             period = BillingPeriod.objects.create(
@@ -579,7 +537,7 @@ class CapabilitiesAndCapFollowPlanTests(TestCase):
         start = timezone.datetime(2026, 1, 1, tzinfo=timezone.get_current_timezone())
         subscription = make_subscription(trial_started_at=start)
         decision = entitlements.decide(subscription.environment, now=start)
-        self.assertEqual(decision.capabilities, capabilities.PLAN_CAPABILITIES[Plan.Key.PLAN_3])
+        self.assertEqual(decision.capabilities, capabilities.PLAN_CAPABILITIES[Plan.Key.YEARLY])
         self.assertEqual(decision.student_cap, 250)
 
 
