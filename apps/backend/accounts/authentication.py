@@ -1,6 +1,8 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 
+from .session_revocation import is_session_revoked
+
 
 class MadarJWTAuthentication(JWTAuthentication):
     """The existing SimpleJWT authentication, plus one check: the token's
@@ -17,6 +19,8 @@ class MadarJWTAuthentication(JWTAuthentication):
     def get_user(self, validated_token):
         user = super().get_user(validated_token)
         if validated_token.get("sv", 0) != user.session_version:
+            raise AuthenticationFailed("انتهت الجلسة، برجاء تسجيل الدخول مرة أخرى.", code="session_revoked")
+        if is_session_revoked(validated_token.get("sid")):  # this login was logged out
             raise AuthenticationFailed("انتهت الجلسة، برجاء تسجيل الدخول مرة أخرى.", code="session_revoked")
         if user.role == "student":
             # Checked on EVERY request (not only at login) so a teacher
