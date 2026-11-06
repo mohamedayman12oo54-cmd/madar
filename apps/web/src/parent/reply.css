@@ -1,0 +1,19 @@
+/* A guardian's answer to a teacher message: the same look in the guardian portal and in the teacher's dialog. */
+.pp-reply {
+  margin-block-start: 8px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--line-2);
+  font-size: 0.9rem;
+}
+.pp-reply small {
+  color: var(--muted);
+}
+.pp-replybox {
+  margin-block-start: 8px;
+  display: grid;
+  gap: 8px;
+}
+.pp-replybox-actions {
+  display: flex;
+  gap: 8px;
+}
