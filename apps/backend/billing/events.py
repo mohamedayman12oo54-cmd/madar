@@ -138,7 +138,7 @@ def apply_success(attempt, *, provider_transaction_id="", provider_order_id="", 
                 environment=attempt.environment, subscription=subscription,
                 card_token=card_token, kashier_agreement_id=agreement_ref or None, mode=mode,
             )
-            start, end = periods.next_period(now)
+            start, end = periods.next_period(now, attempt.plan.period_days if attempt.plan_id else None)
             period = BillingPeriod.objects.create(
                 environment=attempt.environment, subscription=subscription, period_start=start, period_end=end,
             )
