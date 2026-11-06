@@ -1,6 +1,7 @@
 // Web Push (browser notifications while the app is closed). The server holds the VAPID key; this module
 // asks the user for permission, subscribes this device and tells the server about it.
 import { api } from "./api.js";
+import { withTimeout } from "./timeout.js";
 
 const optInKey = (userId) => `madar:push-optin:${userId}`;
 const getOptIn = (userId) => {
@@ -35,8 +36,14 @@ const keyToBytes = (b64) => {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
+// `serviceWorker.ready` never settles when no service worker is registered (dev server, a blocked or failed
+// registration, some private modes). Waiting on it forever froze everything that touched push — sign-out included.
 async function registration() {
-  return navigator.serviceWorker.ready;
+  // No registration at all (dev server, blocked): answer at once. Registered but still installing: wait, bounded.
+  if (!(await withTimeout(navigator.serviceWorker.getRegistration?.(), 1500, null))) throw new Error("service worker not ready");
+  const reg = await withTimeout(navigator.serviceWorker.ready, 4000, null);
+  if (!reg) throw new Error("service worker not ready");
+  return reg;
 }
 export async function currentSubscription() {
   if (!pushSupported()) return null;
@@ -86,7 +93,7 @@ export async function syncPush(userId) {
 export async function detachDevice() {
   try {
     const sub = await currentSubscription();
-    if (sub) await api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint });
+    if (sub) await withTimeout(api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint }), 4000);
   } catch {
     /* best effort */
   }
