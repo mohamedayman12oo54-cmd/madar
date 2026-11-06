@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from accounts.testing import make_enrollment
+from billing import entitlements
 from billing.entitlements import StudentCapReached
 from billing.models import AmountOwed, BillingPeriod, PaymentAttempt, Plan, Subscription
 from environments.models import current_academic_year
@@ -92,7 +93,7 @@ def create_student(environment, *, name, phone, grade, is_active=True):
 
 
 class CapByPlanTests(TenantTestCase):
-    """AC-BILL-012-1: trial 250 / Plan 1 400 / Plan 2 800 / Plan 3 none."""
+    """The free trial is capped at 250 active students; no paid plan has a cap."""
 
     def setUp(self):
         super().setUp()
@@ -106,23 +107,25 @@ class CapByPlanTests(TenantTestCase):
         with self.assertRaises(StudentCapReached):
             create_student(self.env_a, name="جديد", phone="201090000001", grade=self.grade)
 
-    def test_plan_1_rejects_the_401st_active_student(self):
-        grant_plan(self.env_a, Plan.Key.PLAN_1)
-        bulk_active_students(self.env_a, self.grade, 400, "p1")
+    def _paid_plan_accepts_one_more(self, key, phone):
+        grant_plan(self.env_a, key)
+        bulk_active_students(self.env_a, self.grade, 3, "p")
+        enrollment, created = create_student(self.env_a, name="جديد", phone=phone, grade=self.grade)
+        self.assertTrue(created)
+        self.assertIsNone(entitlements.decide(self.env_a).student_cap)
 
-        with self.assertRaises(StudentCapReached):
-            create_student(self.env_a, name="جديد", phone="201090000002", grade=self.grade)
+    def test_the_monthly_plan_has_no_student_cap(self):
+        self._paid_plan_accepts_one_more(Plan.Key.MONTHLY, "201090001000")
 
-    def test_plan_2_rejects_the_801st_active_student(self):
-        grant_plan(self.env_a, Plan.Key.PLAN_2)
-        bulk_active_students(self.env_a, self.grade, 800, "p2")
+    def test_the_term_plan_has_no_student_cap(self):
+        self._paid_plan_accepts_one_more(Plan.Key.TERM, "201090001001")
 
-        with self.assertRaises(StudentCapReached):
-            create_student(self.env_a, name="جديد", phone="201090000003", grade=self.grade)
+    def test_the_yearly_plan_has_no_student_cap(self):
+        self._paid_plan_accepts_one_more(Plan.Key.YEARLY, "201090001002")
 
-    def test_plan_3_accepts_beyond_800(self):
-        grant_plan(self.env_a, Plan.Key.PLAN_3)
-        bulk_active_students(self.env_a, self.grade, 800, "p3")
+    def test_a_paid_plan_accepts_far_beyond_the_old_400_and_800_limits(self):
+        grant_plan(self.env_a, Plan.Key.MONTHLY)
+        bulk_active_students(self.env_a, self.grade, 800, "big")
 
         enrollment, created = create_student(self.env_a, name="جديد", phone="201090000004", grade=self.grade)
         self.assertTrue(created)
