@@ -8,7 +8,7 @@ export default function Students() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">للطلاب</div>
-          <h2 className="h2">تعلّم أوضح، رحلة أهدأ.</h2>
+          <h1 className="h2">تعلّم أوضح، رحلة أهدأ.</h1>
           <p className="lead">كل ما يخصّ الطالب في مكان واحد — للهاتف أولًا.</p>
         </div>
       </div>
