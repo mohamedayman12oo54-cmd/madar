@@ -345,6 +345,7 @@ export default function SessionsPage() {
         </select>
         <select
           className="inp"
+          aria-label="الحالة"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
