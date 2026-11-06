@@ -12,6 +12,7 @@ psycopg[binary]==3.3.6
 # on first use). Decodes audio itself, so ffmpeg is NOT required for this step — it IS
 # used, optionally, to shrink the upload before calling the external STT API (see
 # content/transcription.py); when ffmpeg is absent that step is simply skipped.
+# FROZEN: nothing imports this while Groq is the only transcription provider (content/transcription.py).
 faster-whisper==1.2.1
 # faster-whisper 1.2.1 breaks on PyAV >= 17 (av.open no longer takes metadata_errors).
 av>=16,<17
