@@ -23,7 +23,8 @@ const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 9, 20, 12, 0, 0);
 const iso = (offsetDays) => new Date(NOW + offsetDays * DAY).toISOString();
 const sub = (basis, extra = {}, ent = {}) => ({
-  plan_key: "plan_2",
+  plan_key: "term",
+  period_days: 180,
   trial_end: null,
   current_period_end: null,
   cancel_at_period_end: false,
@@ -33,7 +34,7 @@ const sub = (basis, extra = {}, ent = {}) => ({
     basis,
     reason_code: basis,
     capabilities: [],
-    student_cap: 800,
+    student_cap: null,
     ...ent,
   },
   ...extra,
@@ -53,11 +54,15 @@ test("daysLeft rounds UP and never goes negative", () => {
   assert.equal(daysLeft(null, NOW), 0);
 });
 
-test("cycleInfo: the trial is 16 ticks, a paid period 30, anything else nothing", () => {
+test("cycleInfo: the trial is 16 ticks, a paid period is the PLAN's length, anything else nothing", () => {
   const trial = cycleInfo(sub("trial", { trial_end: iso(6) }), NOW);
   assert.deepEqual([trial.kind, trial.total, trial.left, trial.elapsed], ["trial", 16, 6, 10]);
   const paid = cycleInfo(sub("paid_active", { current_period_end: iso(12) }), NOW);
-  assert.deepEqual([paid.kind, paid.total, paid.left, paid.elapsed], ["paid", 30, 12, 18]);
+  assert.deepEqual([paid.kind, paid.total, paid.left, paid.elapsed], ["paid", 180, 12, 168]); // a term
+  const monthly = cycleInfo(sub("paid_active", { plan_key: "monthly", period_days: 30, current_period_end: iso(12) }), NOW);
+  assert.deepEqual([monthly.total, monthly.left, monthly.elapsed], [30, 12, 18]);
+  const old = cycleInfo(sub("paid_active", { period_days: undefined, current_period_end: iso(12) }), NOW);
+  assert.equal(old.total, 30); // a status without period_days falls back to 30
   assert.equal(cycleInfo(sub("none", {}, { access_granted: false }), NOW), null);
   assert.equal(cycleInfo(null, NOW), null);
   assert.equal(cycleInfo(sub("trial", { trial_end: iso(40) }), NOW).elapsed, 0); // clamped
@@ -74,7 +79,7 @@ test("accessSummary speaks for every server basis and never invents a state", ()
   );
   assert.match(
     accessSummary(sub("paid_active", { current_period_end: iso(9) }), NOW).title,
-    /الباقة الثانية/
+    /باقة الترم/
   );
   assert.equal(
     accessSummary(sub("cancelled_but_paid_through", { current_period_end: iso(9) }), NOW).tone,
@@ -163,13 +168,12 @@ test("error codes become actionable Arabic messages", () => {
 });
 
 test("plans are shown in a fixed order and plan 3 includes everything", () => {
-  const plans = sortPlans([{ key: "plan_3" }, { key: "plan_1" }, { key: "plan_2" }]);
+  const plans = sortPlans([{ key: "yearly" }, { key: "monthly" }, { key: "term" }]);
   assert.deepEqual(
     plans.map((p) => p.key),
-    ["plan_1", "plan_2", "plan_3"]
+    ["monthly", "term", "yearly"]
   );
-  assert.equal(PLAN_FEATURES.plan_3.length, FEATURES.length);
-  assert.ok(PLAN_FEATURES.plan_1.length < PLAN_FEATURES.plan_2.length);
+  for (const key of ["monthly", "term", "yearly"]) assert.equal(PLAN_FEATURES[key].length, FEATURES.length, key); // one feature set for every plan
 });
 
 test("bannerFor appears only when the teacher needs to act", () => {
