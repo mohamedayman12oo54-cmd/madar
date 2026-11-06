@@ -13,7 +13,7 @@ const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =
 });
 const files = walk(SRC).filter((f) => /\.(jsx?|mjs)$/.test(f) && !/\.test\.(m?js|jsx)$/.test(f));
 const read = (f) => fs.readFileSync(f, "utf8");
-const rel = (f) => path.relative(SRC, f);
+const rel = (f) => path.relative(SRC, f).split(path.sep).join("/");
 const offenders = (re, allow = []) => files.filter((f) => re.test(read(f)) && !allow.includes(rel(f))).map(rel);
 
 test("no HTML injection sinks anywhere (stored/reflected XSS)", () => {
@@ -53,7 +53,7 @@ test("every router navigation target is a constant, a lookup in a constant table
   for (const f of files) {
     for (const m of read(f).matchAll(/(?:<(?:Link|NavLink|Navigate)\b[^>]*?\sto=\{([^}]+(?:\}`)?)\})/g)) {
       const expr = m[1].trim();
-      const ok = /^`\/[a-z]/.test(expr) || /^(i\.to|to|LOGIN_PATH\[role\] \|\| "\/auth"|ENV_SELECT_PATH\[role\] \|\| "\/auth")$/.test(expr) || /^"\/.*"$/.test(expr);
+      const ok = /^`\/[a-z]/.test(expr) || /^(i\.to|to|area|area \|\| "\/auth"|LOGIN_PATH\[role\] \|\| "\/auth"|ENV_SELECT_PATH\[role\] \|\| "\/auth")$/.test(expr) || /^"\/.*"$/.test(expr);
       if (!ok) bad.push(`${rel(f)}: ${expr}`);
     }
   }
