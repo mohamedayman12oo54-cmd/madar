@@ -227,6 +227,16 @@ export const notificationsApi = {
   retryFailed: () => api.post("/notifications/retry-failed/", {}, T),
 };
 
+// Warnings / notes the teacher sends to ONE student's guardian (read in the guardian portal).
+export const guardianMessagesApi = {
+  history: (enrollment) => api.get(`/guardian-messages/${qs({ enrollment })}`, T),
+  send: (payload) => api.post("/guardian-messages/", payload, T),
+  unreadReplies: () => api.get("/guardian-messages/unread/", T),
+  readReplies: (enrollment_id) => api.post("/guardian-messages/read-replies/", { enrollment_id }, T),
+  alertSettings: () => api.get("/guardian-messages/settings/", T),
+  saveAlertSettings: (payload) => api.put("/guardian-messages/settings/", payload, T),
+};
+
 // Billing (teacher owner only). The server decides everything: prices, caps, trial dates, whether a
 // payment succeeded. The client sends a plan KEY and nothing else (no amount, no environment id).
 export const billingApi = {
