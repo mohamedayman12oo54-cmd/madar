@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, BookOpen, Check, ChevronDown, Copy, RotateCcw, Sparkles } from "lucide-react";
 import { studentApi } from "../lib/studentApi.js";
 import { AI_TERMINAL } from "../lib/aiApi.js";
-import { pollUntilDone } from "../lib/poll.js";
+import { AI_POLL, pollUntilDone } from "../lib/poll.js";
 import { ApiError } from "../lib/api.js";
 import { PageHeader } from "../dashboard/common.jsx";
 import { fmtDateTime } from "../lib/dates.js";
@@ -193,6 +193,7 @@ export default function AssistantPage() {
           isDone: (o) => AI_TERMINAL.has(o.status),
           onUpdate: setOp,
           signal: controller.signal,
+          ...AI_POLL,
         });
         if (outcome.status === "timeout") setTimedOut(true);
         if (outcome.status === "done") {
