@@ -29,7 +29,7 @@
   min-height: 36px;
   padding: 0 12px 0 14px;
   border: 1px solid var(--line-2);
-  border-radius: 999px;
+  border-radius: 100px;
   background: var(--panel);
   color: var(--navy);
   font-size: 0.84rem;
@@ -95,7 +95,7 @@
   min-height: 38px;
   padding: 0 16px;
   border: 1.5px solid var(--line-2);
-  border-radius: 999px;
+  border-radius: 100px;
   background: var(--panel);
   color: var(--navy);
   font-size: 0.86rem;
@@ -397,7 +397,7 @@
 }
 .qz-opt-tag {
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 100px;
   background: rgba(255, 255, 255, 0.75);
   font-size: 0.72rem;
   font-weight: 700;
@@ -640,7 +640,7 @@
   align-items: center;
   gap: 5px;
   padding: 4px 11px;
-  border-radius: 999px;
+  border-radius: 100px;
   font-size: 0.76rem;
   font-weight: 700;
 }
