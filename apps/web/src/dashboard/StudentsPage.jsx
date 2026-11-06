@@ -1,16 +1,17 @@
 import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, UserRoundPlus, Pencil, QrCode } from "lucide-react";
+import { Search, UserRoundPlus, Pencil, QrCode, MessageSquareWarning } from "lucide-react";
 import { Field, TextInput, PhoneInput, Btn, Banner, Modal } from "../auth/ui.jsx";
 import { enrollmentsApi, groupsApi } from "../lib/academicsApi.js";
 import { ApiError } from "../lib/api.js";
 import { isEntitlementError } from "../lib/billing.js";
 import { formatPhone, phoneError } from "../lib/phone.js";
 import QRCode from "qrcode";
-import { scannerApi } from "../lib/dashboardApi.js";
+import { guardianMessagesApi, scannerApi } from "../lib/dashboardApi.js";
 import { qrImageSrc } from "../lib/qr.js";
 import { useGrades } from "./useGrades.js";
 import RegistrationQrModal from "./RegistrationQrModal.jsx";
+import GuardianMessageModal from "./GuardianMessageModal.jsx";
 import { Confirm, Empty, PageHeader, SearchSelect, useDebounced } from "./common.jsx";
 
 const listOf = (d) => (Array.isArray(d) ? d : d?.results || []);
@@ -248,6 +249,16 @@ export default function StudentsPage() {
   const [confirm, setConfirm] = useState(null); // enrollment being toggled
   const [notice, setNotice] = useState(null);
   const [badge, setBadge] = useState(null);
+  const [guardianMsg, setGuardianMsg] = useState(null); // enrollment whose guardian is being written to
+  const [unreplied, setUnreplied] = useState({}); // enrollment id -> guardian replies not opened yet
+  const loadUnreplied = () =>
+    guardianMessagesApi
+      .unreadReplies()
+      .then((r) => setUnreplied(r.counts || {}))
+      .catch(() => {}); // a badge is a convenience, never an error on the students list
+  useEffect(() => {
+    loadUnreplied();
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -348,6 +359,7 @@ export default function StudentsPage() {
         <div className="dash-search">
           <Search size={16} />
           <input
+            aria-label="بحث بالاسم أو رقم الهاتف"
             placeholder="ابحث بالاسم أو رقم الهاتف"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -355,6 +367,7 @@ export default function StudentsPage() {
         </div>
         <select
           className="inp"
+          aria-label="الصف"
           value={gradeFilter}
           onChange={(e) => setGradeFilter(e.target.value)}
         >
@@ -367,6 +380,7 @@ export default function StudentsPage() {
         </select>
         <select
           className="inp"
+          aria-label="حالة الطالب"
           value={activeFilter}
           onChange={(e) => setActiveFilter(e.target.value)}
         >
@@ -448,6 +462,16 @@ export default function StudentsPage() {
                       <button className="mini-btn" onClick={() => setForm(e)}>
                         <Pencil size={13} /> تعديل
                       </button>
+                      {e.parent_phone && (
+                        <button className="mini-btn" onClick={() => setGuardianMsg(e)}>
+                          <MessageSquareWarning size={13} /> رسالة لولي الأمر
+                          {unreplied[e.id] > 0 && (
+                            <span className="chip-s warn" aria-label={`${unreplied[e.id]} رد جديد`}>
+                              {unreplied[e.id]}
+                            </span>
+                          )}
+                        </button>
+                      )}
                       <button className="mini-btn" onClick={() => setBadge(e)}>
                         <QrCode size={13} /> بادچ <code className="badge-chip">{e.qr_token}</code>
                       </button>
@@ -485,6 +509,16 @@ export default function StudentsPage() {
           enrollment={form === "add" ? null : form}
           onClose={() => setForm(null)}
           onSaved={onSaved}
+        />
+      )}
+      {guardianMsg && (
+        <GuardianMessageModal
+          enrollment={guardianMsg}
+          onClose={() => {
+            setGuardianMsg(null);
+            loadUnreplied();
+          }}
+          onRead={loadUnreplied}
         />
       )}
       {badge && <BadgeModal enrollment={badge} onClose={() => setBadge(null)} onRotated={reload} />}
