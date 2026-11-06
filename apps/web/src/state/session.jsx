@@ -14,6 +14,7 @@ import { isAuthenticated, refreshAccessToken } from "../lib/api.js";
 import { clearAllDrafts } from "../lib/quizDraft.js";
 import { startKeepAlive } from "../lib/keepalive.js";
 import { detachDevice, syncPush } from "../lib/push.js";
+import { withTimeout } from "../lib/timeout.js";
 
 const SessionContext = createContext(null);
 
@@ -64,10 +65,14 @@ export function SessionProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await detachDevice(); // this device must stop receiving the signed-out user's notifications
-    await authApi.logout();
-    clearAllDrafts();
-    setState({ status: "anonymous", user: null, offline: false });
+    try {
+      // this device must stop receiving the signed-out user's notifications — but never at the cost of signing out
+      await withTimeout(detachDevice(), 5000);
+      await authApi.logout();
+    } finally {
+      clearAllDrafts();
+      setState({ status: "anonymous", user: null, offline: false });
+    }
   }, []);
 
   // Signed in: re-attach this device to the account if the user enabled notifications here before.
