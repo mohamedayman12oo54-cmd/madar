@@ -87,7 +87,7 @@
 }
 .dtp-quick button {
   padding: 6px 14px;
-  border-radius: 99px;
+  border-radius: 100px;
   border: 1px solid var(--line-2);
   background: var(--fill);
   color: var(--navy);
@@ -186,7 +186,7 @@
 .dtp-head button {
   width: 36px;
   height: 36px;
-  border-radius: 11px;
+  border-radius: 12px;
   border: 1px solid var(--line-2);
   background: var(--panel);
   color: var(--navy);
@@ -285,7 +285,7 @@
 }
 .dtp-chips button {
   padding: 9px 0;
-  border-radius: 11px;
+  border-radius: 12px;
   border: 1.5px solid var(--line);
   background: var(--panel);
   color: var(--ink);

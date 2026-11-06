@@ -6,7 +6,7 @@ export default function About() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">عن مدار</div>
-          <h2 className="h2">أكثر من منصة. طريقة أوضح للتدريس.</h2>
+          <h1 className="h2">أكثر من منصة. طريقة أوضح للتدريس.</h1>
         </div>
       </div>
       <section className="section">

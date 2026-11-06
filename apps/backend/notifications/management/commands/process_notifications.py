@@ -13,11 +13,7 @@ import argparse
 import time
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.utils import timezone
-
-from notifications.models import Notification
-from notifications.providers import get_provider
+from notifications.delivery import deliver_pending
 
 
 class Command(BaseCommand):
@@ -39,22 +35,7 @@ class Command(BaseCommand):
             time.sleep(options["interval"])
 
     def run_once(self, options):
-        provider = get_provider()
-        pending = Notification.objects.filter(delivery_status=Notification.DeliveryStatus.PENDING)[: options["limit"]]
-
-        sent = failed = 0
-        for notification in pending:
-            result = provider.send(notification)
-            with transaction.atomic():
-                if result.success:
-                    notification.delivery_status = Notification.DeliveryStatus.SENT
-                    notification.delivered_at = timezone.now()
-                    notification.delivery_error = ""
-                    sent += 1
-                else:
-                    notification.delivery_status = Notification.DeliveryStatus.FAILED
-                    notification.delivery_error = result.error[:255]
-                    failed += 1
-                notification.save(update_fields=["delivery_status", "delivered_at", "delivery_error"])
-
-        self.stdout.write(self.style.SUCCESS(f"Processed {sent + failed} notification(s): {sent} sent, {failed} failed."))
+        r = deliver_pending(limit=options["limit"])
+        self.stdout.write(self.style.SUCCESS(
+            f"Processed {r['sent'] + r['failed'] + r['expired']} notification(s): "
+            f"{r['sent']} sent, {r['failed']} failed" + (f", {r['expired']} expired." if r["expired"] else ".")))

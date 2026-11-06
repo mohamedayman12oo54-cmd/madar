@@ -18,7 +18,7 @@ from .models import PaymentAttempt, Plan
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plan
-        fields = ["key", "name", "price_minor_units", "currency", "max_students"]
+        fields = ["key", "name", "price_minor_units", "currency", "max_students", "period_days"]
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
@@ -61,6 +61,7 @@ class SubscriptionStatusSerializer(serializers.Serializer):
     needs the plan key and the dates, not row ids."""
 
     plan_key = serializers.CharField(allow_null=True)
+    period_days = serializers.IntegerField(allow_null=True)  # length of one paid period of the current plan
     trial_end = serializers.DateTimeField(allow_null=True)
     current_period_end = serializers.DateTimeField(allow_null=True)
     cancel_at_period_end = serializers.BooleanField()

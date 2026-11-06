@@ -6,7 +6,7 @@ export default function Terms() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">قانوني</div>
-          <h2 className="h2">شروط الاستخدام</h2>
+          <h1 className="h2">شروط الاستخدام</h1>
           <p className="lead">
             هذا نصّ توضيحي مبدئي للواجهة، ويُستبدل لاحقًا بالنص القانوني المعتمد.
           </p>

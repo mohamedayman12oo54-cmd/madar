@@ -13,10 +13,11 @@ def api_exception_handler(exc, context):
 
     if isinstance(exc, Throttled):
         wait = int(exc.wait) if exc.wait is not None else None
-        locked = getattr(exc, "default_code", "") == "locked_out"
+        code = getattr(exc, "default_code", "")
+        own_message = code in ("locked_out", "upload_cooldown")  # these carry their own wording
         response.data = {
-            "detail": str(exc.detail) if locked else "محاولات كثيرة جدًا، برجاء الانتظار قليلًا قبل المحاولة مرة أخرى.",
-            "code": "locked_out" if locked else "throttled",
+            "detail": str(exc.detail) if own_message else "محاولات كثيرة جدًا، برجاء الانتظار قليلًا قبل المحاولة مرة أخرى.",
+            "code": code if own_message else "throttled",
             "retry_after_seconds": wait,
         }
         return response

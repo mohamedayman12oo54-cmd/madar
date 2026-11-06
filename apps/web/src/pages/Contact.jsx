@@ -11,7 +11,7 @@ export default function Contact() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">تواصل معنا</div>
-          <h2 className="h2">نحبّ أن نسمع منك.</h2>
+          <h1 className="h2">نحبّ أن نسمع منك.</h1>
         </div>
       </div>
       <section className="section">
@@ -31,6 +31,7 @@ export default function Contact() {
             >
               <input
                 required
+                aria-label="الاسم الكامل"
                 placeholder="الاسم الكامل"
                 value={form.name}
                 onChange={on("name")}
@@ -39,6 +40,7 @@ export default function Contact() {
               <input
                 required
                 type="email"
+                aria-label="البريد الإلكتروني"
                 placeholder="البريد الإلكتروني"
                 value={form.email}
                 onChange={on("email")}
@@ -46,6 +48,7 @@ export default function Contact() {
               />
               <textarea
                 required
+                aria-label="رسالتك"
                 placeholder="رسالتك"
                 rows={5}
                 value={form.message}

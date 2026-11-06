@@ -192,3 +192,17 @@ class PendingAuth(models.Model):
 
     def __str__(self):
         return f"{self.purpose} · {self.target} · {self.id}"
+
+
+class RevokedSession(models.Model):
+    """A login session that was logged out. Every token of one login carries the same `sid` claim (it is minted
+    at login and survives refresh rotation), so recording the `sid` here cuts off the access token that was
+    issued alongside the refresh token — which blacklisting the refresh token alone leaves valid until it
+    expires. Only that one device's session ends; `User.session_version` is the all-devices switch.
+    A row is only needed while some refresh token of the session could still be alive (`expires_at`)."""
+    sid = models.CharField(max_length=32, unique=True)
+    expires_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"revoked session {self.sid[:8]}"

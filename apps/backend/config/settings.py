@@ -227,15 +227,26 @@ else:
 
 # Which ai/providers.py implementation the worker uses.
 #   "stub" — rule-based placeholders (default; needs no credentials).
-#   "llm"  — AI Quiz generation through the LLM client (ai/quiz_generation.py);
-#            needs GEMINI_API_KEY / GEMINI_MODEL and QUIZ_LANGUAGE below. The
-#            Study Assistant and State Recommendation still use the stub rules.
+#   "llm"  — the real model through the LLM client (ai/quiz_generation.py): quiz generation AND the Study
+#            Assistant's answers; needs GEMINI_API_KEY / GEMINI_MODEL and QUIZ_LANGUAGE below. The monthly
+#            State suggestion stays a transparent rule on the attendance/recitation counts (no model).
 AI_PROVIDER = env_str("AI_PROVIDER", "stub")
 # Tests must be hermetic: a developer .env that selects the real LLM must never make
 # the suite call the network (cost, data leakage, flaky results). Tests that need the
 # llm provider opt in with override_settings.
 if "test" in sys.argv:
     AI_PROVIDER = "stub"
+
+# Who runs an AI operation once it is saved (ai/dispatch.py).
+#   "thread"   — (default) this process starts it immediately in a small pool, so the Study Assistant and
+#                "quiz me" answer with no separate worker to run. `process_ai_operations` may still run beside it.
+#   "external" — only `manage.py process_ai_operations` (cron / --loop) works on operations.
+AI_WORKER_MODE = env_str("AI_WORKER_MODE", "thread")
+if AI_WORKER_MODE not in ("thread", "external"):
+    raise ImproperlyConfigured("AI_WORKER_MODE must be 'thread' or 'external'.")
+AI_INLINE_WORKERS = env_int("AI_INLINE_WORKERS", 4)   # simultaneous provider calls from this process
+if "test" in sys.argv:
+    AI_WORKER_MODE = "external"  # tests drive the worker by hand; threads would race the test transaction
 
 # --- AI Quiz generation (ai/quiz_contract.py, ai/quiz_prompt.py) ---------------
 # The quiz LANGUAGE has no default: Madar has no language policy yet, so the
@@ -254,6 +265,13 @@ QUIZ_MIN_SOURCE_CHARS = env_int("QUIZ_MIN_SOURCE_CHARS", 400)
 # a quiz from every transcript regardless of content, as before this setting
 # existed.
 QUIZ_CONTENT_VALIDATION_ENABLED = env_bool("QUIZ_CONTENT_VALIDATION_ENABLED", True)
+# Speed: run that check AT THE SAME TIME as the first generation attempt instead of before it, so the student
+# waits for one model call, not two. A NON_EDUCATIONAL verdict still discards the quiz and no corrective retry is
+# started once it is known. Set False to keep the strict "check first, generate after" order.
+QUIZ_VALIDATION_PARALLEL = env_bool("QUIZ_VALIDATION_PARALLEL", True)
+# The classifier only needs to recognise WHAT the lesson is, not read every minute of it: above this many
+# characters it sees the beginning, middle and end (a third each). 0 = always the whole transcript.
+QUIZ_VALIDATION_SAMPLE_CHARS = env_int("QUIZ_VALIDATION_SAMPLE_CHARS", 9000)
 
 # --- LLM client foundation (ai/llm.py, ai/gemini.py) --------------------------
 # The low-level "send text, get text" seam a future real AIProvider will sit
@@ -264,6 +282,11 @@ QUIZ_CONTENT_VALIDATION_ENABLED = env_bool("QUIZ_CONTENT_VALIDATION_ENABLED", Tr
 LLM_PROVIDER = env_str("LLM_PROVIDER", "gemini")
 GEMINI_API_KEY = env_str("GEMINI_API_KEY", "")
 GEMINI_MODEL = env_str("GEMINI_MODEL", "")
+# Optional "how much the model thinks before answering" (Gemini). Thinking models are noticeably slower; for quiz
+# writing and short tutor answers little or none is enough. Blank = do not send anything (the model's default).
+# A whole number is a token budget (Gemini 2.5: 0 = off); minimal/low/medium/high is a level (Gemini 3.x).
+# Check a change with `manage.py check_llm_provider` — a model that does not accept the field answers 400.
+GEMINI_THINKING = env_str("GEMINI_THINKING", "")
 # Per socket operation (connect / read), not a total deadline.
 LLM_TIMEOUT_SECONDS = env_int("LLM_TIMEOUT_SECONDS", 60)
 # 0 = do not send a limit; use the provider's own default.
@@ -365,6 +388,7 @@ REST_FRAMEWORK = {
         # --- per authenticated user ---
         "scan": "240/min",
         "video-upload": "20/hour",
+        "video-upload-chunk": "600/min",   # chunks of a running upload (not attempts)
         "exam-answer": "240/min",   # autosave while sitting an exam
         "exam-event": "60/min",     # integrity events reported by the exam page
         "student-add": "300/hour",
@@ -374,6 +398,8 @@ REST_FRAMEWORK = {
         "billing-status": "120/min",
         "billing-webhook": "600/min",
         "broadcast": "20/hour",
+        "guardian-message": "120/hour",
+        "guardian-reply": "20/hour",
         "password-change": "10/hour",
         "token-refresh": "300/hour",
     },
@@ -498,6 +524,9 @@ MEDIA_ROOT = os.environ.get("MEDIA_ROOT") or str(BASE_DIR / "private-media")
 MEDIA_URL = None  # deliberately unset: there is no public media URL
 
 VIDEO_MAX_BYTES = env_int("VIDEO_MAX_BYTES", 4 * 1024 * 1024 * 1024)  # 4 GB — uploads are chunked and resumable
+# Starting a video upload: this many tries, then a cooldown with a visible timer, then the allowance is full again.
+VIDEO_UPLOAD_ATTEMPTS = env_int("VIDEO_UPLOAD_ATTEMPTS", 5)
+VIDEO_UPLOAD_COOLDOWN_SECONDS = env_int("VIDEO_UPLOAD_COOLDOWN_SECONDS", 5 * 60)
 DOCUMENT_MAX_BYTES = env_int("DOCUMENT_MAX_BYTES", 50 * 1024 * 1024)  # PDF study files, single request
 FILE_UPLOAD_MAX_MEMORY_SIZE = env_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 2 * 1024 * 1024)
 # Uploaded files must never be executable, and the private dir must not be
@@ -522,19 +551,19 @@ VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
 VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
 
 # --- Lesson transcription (content/transcription.py) ------------------------
-# "groq_whisper_api" (default): hosted Whisper via Groq's free-tier,
-# OpenAI-compatible REST API, with automatic fallback to local faster-whisper
-# when the API is unconfigured, rate limited (429), times out, or is
-# otherwise unavailable.
-# "faster_whisper": local only, no network call, no API key — the model is
-# downloaded once on first use. Bigger = more accurate and slower:
-# tiny / base / small / medium / large-v3.
+# "groq_whisper_api" is the only active provider: hosted Whisper via Groq's
+# OpenAI-compatible REST API. If it is unconfigured, rate limited (429), times
+# out, or is otherwise unavailable, the transcript fails and can be retried.
+# Local faster-whisper is FROZEN: "faster_whisper" is not accepted here.
 TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "groq_whisper_api")
 # Blank during test runs regardless of the environment (same reasoning as
 # VIDEO_TRANSCODE below): the suite must never place a real network call.
 GROQ_API_KEY = env_str("GROQ_API_KEY", "") if "test" not in sys.argv else ""
 GROQ_STT_MODEL = env_str("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 GROQ_STT_TIMEOUT_SECONDS = env_int("GROQ_STT_TIMEOUT_SECONDS", 120)
+# Groq's per-file limit: 25 MB on the free tier, 100 MB on the dev tier.
+GROQ_STT_MAX_UPLOAD_MB = env_int("GROQ_STT_MAX_UPLOAD_MB", 25)
+# Frozen with faster-whisper: nothing reads the next three until it is registered again.
 TRANSCRIPTION_MODEL = env_str("TRANSCRIPTION_MODEL", "small")
 # cpu works everywhere. "cuda" needs the NVIDIA CUDA/cuBLAS libraries installed; "auto" picks
 # cuda whenever a GPU is present and then fails if those libraries are missing.
@@ -781,3 +810,22 @@ LOGGING = {
 VAPID_PUBLIC_KEY = env_str("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = env_str("VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = env_str("VAPID_CONTACT", "mailto:admin@example.com")
+# Blank during test runs regardless of the developer .env (same reasoning as GROQ_API_KEY): the suite must never
+# push to a real device, and tests that need keys opt in with override_settings.
+if "test" in sys.argv:
+    VAPID_PUBLIC_KEY = VAPID_PRIVATE_KEY = ""
+# Who delivers notifications once they are saved (notifications/dispatch.py).
+#   "thread"   — (default) this process starts delivery immediately, so pushes go out with no separate worker.
+#   "external" — only `manage.py process_notifications` (cron / --loop) delivers. The two can run together.
+NOTIFICATION_WORKER_MODE = env_str("NOTIFICATION_WORKER_MODE", "thread")
+if NOTIFICATION_WORKER_MODE not in ("thread", "external"):
+    raise ImproperlyConfigured("NOTIFICATION_WORKER_MODE must be 'thread' or 'external'.")
+if "test" in sys.argv:
+    NOTIFICATION_WORKER_MODE = "external"  # tests drive delivery by hand; a thread would race the test transaction
+# A notification older than this is not pushed any more (it stays in the in-app inbox, marked failed: expired).
+NOTIFICATION_MAX_AGE_HOURS = env_int("NOTIFICATION_MAX_AGE_HOURS", 48)
+# The only hosts a push subscription may point at (the server POSTs to it): Chrome/Android/Brave/Samsung (FCM),
+# Firefox, Edge (WNS) and Safari. Anything else is refused at subscribe time (SSRF guard).
+PUSH_ENDPOINT_HOST_SUFFIXES = tuple(s.strip().lower() for s in env_list(
+    "PUSH_ENDPOINT_HOST_SUFFIXES",
+    "fcm.googleapis.com,push.services.mozilla.com,notify.windows.com,push.apple.com") if s.strip())

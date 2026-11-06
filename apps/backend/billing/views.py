@@ -80,6 +80,7 @@ class SubscriptionStatusView(APIView):
 
         data = {
             "plan_key": subscription.plan.key if subscription is not None and subscription.plan_id else None,
+            "period_days": subscription.plan.period_days if subscription is not None and subscription.plan_id else None,
             "trial_end": trial_end,
             "current_period_end": subscription.current_period_end if subscription is not None else None,
             "cancel_at_period_end": bool(subscription is not None and subscription.cancel_at_period_end),

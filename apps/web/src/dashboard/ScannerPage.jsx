@@ -204,6 +204,7 @@ export default function ScannerPage() {
           >
             <select
               className="inp"
+              aria-label="الجلسة المفتوحة"
               value={sessionId}
               onChange={(e) => setSessionId(e.target.value)}
             >
@@ -254,6 +255,7 @@ export default function ScannerPage() {
           >
             <input
               className="inp code-input"
+              aria-label="رمز الطالب"
               value={token}
               maxLength={8}
               inputMode="text"

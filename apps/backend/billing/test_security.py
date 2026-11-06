@@ -82,7 +82,7 @@ class _Fixture(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.subscription = grant_plan(self.env_a, Plan.Key.PLAN_1)
+        self.subscription = grant_plan(self.env_a, Plan.Key.MONTHLY)
         self.agreement = RecurringAgreement.objects.create(
             environment=self.env_a, subscription=self.subscription, card_token="super-secret-opaque-token",
             kashier_agreement_id="agr_shouldnotleak", mode=RecurringAgreement.Mode.TEST,
@@ -105,7 +105,7 @@ class HorizontalPrivilegeTests(_Fixture):
             ("get", SUBSCRIPTION_URL, None),
             ("get", HISTORY_URL, None),
             ("post", CANCEL_URL, None),
-            ("post", CHECKOUT_URL, {"plan_key": Plan.Key.PLAN_1}),
+            ("post", CHECKOUT_URL, {"plan_key": Plan.Key.MONTHLY}),
         ]:
             with self.subTest(url=url):
                 self.assert_cross_tenant_denied(method, url, body=body)
@@ -150,7 +150,7 @@ class VerticalPrivilegeTests(_Fixture):
             ("get", SUBSCRIPTION_URL, None),
             ("get", HISTORY_URL, None),
             ("post", CANCEL_URL, None),
-            ("post", CHECKOUT_URL, {"plan_key": Plan.Key.PLAN_1}),
+            ("post", CHECKOUT_URL, {"plan_key": Plan.Key.MONTHLY}),
         ]:
             with self.subTest(url=url):
                 fn = getattr(self.sc, method)
@@ -224,7 +224,7 @@ class WebhookForgeryTests(TestCase):
 
     def test_an_amount_mismatched_event_is_received_but_never_applied(self):
         teacher_env = _FakeTenant.make()
-        subscription = grant_plan(teacher_env, Plan.Key.PLAN_1)
+        subscription = grant_plan(teacher_env, Plan.Key.MONTHLY)
         attempt = PaymentAttempt.objects.create(
             environment=teacher_env, subscription=subscription, merchant_order_id="sec-amount-mismatch",
             amount_minor_units=100000, currency="EGP", status=PaymentAttempt.Status.INITIATED,
@@ -288,14 +288,14 @@ class MassAssignmentTests(_Fixture):
         r = self.client_b.post(
             CHECKOUT_URL,
             {
-                "plan_key": Plan.Key.PLAN_1, "amount_minor_units": 1, "currency": "USD", "status": "succeeded",
+                "plan_key": Plan.Key.MONTHLY, "amount_minor_units": 1, "currency": "USD", "status": "succeeded",
                 "environment_id": self.env_a.id, "student_cap": 999999,
             },
             format="json", **self.with_env(self.env_b.id),
         )
         self.assertEqual(r.status_code, 201, r.content)
         attempt = PaymentAttempt.objects.get(pk=r.json()["attempt_id"])
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.assertEqual(attempt.amount_minor_units, plan.price_minor_units)
         self.assertEqual(attempt.currency, plan.currency)
         self.assertEqual(attempt.environment_id, self.env_b.id)

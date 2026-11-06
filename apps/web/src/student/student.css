@@ -893,6 +893,7 @@
     margin-block-end: 10px;
     flex-wrap: nowrap;
   }
+  .vd-head .dash-section-head h1,
   .vd-head .dash-section-head h2 {
     font-size: 0;
   }
@@ -968,7 +969,7 @@
     gap: 6px;
     height: 36px;
     padding: 0 14px;
-    border-radius: 999px;
+    border-radius: 100px;
     border: 0;
     background: var(--fill);
     color: var(--navy);
@@ -1175,7 +1176,7 @@
     height: 30px;
     padding: 0 10px;
     background: rgba(0, 0, 0, 0.45);
-    border-radius: 999px;
+    border-radius: 100px;
     font-size: 0.74rem;
     pointer-events: auto;
   }

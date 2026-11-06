@@ -9,7 +9,7 @@ from . import transcription
 from .models import Transcript
 from .test_video import _Base, video
 from .transcription import (
-    ExternalSTTError, FallbackTranscriber, GroqWhisperTranscriber, Transcriber,
+    ExternalSTTError, FallbackTranscriber, FasterWhisperTranscriber, GroqWhisperTranscriber, Transcriber,
     TranscriptionError, run_transcription,
 )
 
@@ -38,7 +38,7 @@ def url(pk):
 
 class GroqWhisperTranscriberTests(SimpleTestCase):
     """The external-API adapter: request shape and HTTP-status -> category
-    mapping, independent of the fallback decision (tested separately below)."""
+    mapping."""
 
     def _client(self, status, body, transport_error=None):
         def fake_transport(url, headers, fields, filename, file_bytes, timeout):
@@ -60,7 +60,7 @@ class GroqWhisperTranscriberTests(SimpleTestCase):
         self.assertEqual(result["duration"], 12.5)
         self.assertEqual(len(result["segments"]), 2)
 
-    def test_rate_limit_is_categorised_for_the_fallback_decision(self):
+    def test_rate_limit_is_categorised(self):
         client = self._client(429, {"error": {"message": "Rate limit exceeded"}})
         with mock.patch.object(transcription, "_extract_audio", return_value=("/tmp/x.mp3", False)), \
                 mock.patch("builtins.open", mock.mock_open(read_data=b"fake-audio")):
@@ -86,6 +86,31 @@ class GroqWhisperTranscriberTests(SimpleTestCase):
         self.assertEqual(ctx.exception.category, "auth")
         self.assertNotIn("gsk_test", str(ctx.exception))
 
+    def test_payload_too_large_is_categorised(self):
+        client = self._client(413, {"error": {"message": "Request Entity Too Large"}})
+        with mock.patch.object(transcription, "_extract_audio", return_value=("/tmp/x.mp3", False)), \
+                mock.patch("builtins.open", mock.mock_open(read_data=b"fake-audio")):
+            with self.assertRaises(ExternalSTTError) as ctx:
+                client.transcribe("/tmp/video.mp4")
+        self.assertEqual((ctx.exception.category, ctx.exception.status), ("too_large", 413))
+
+    def test_audio_over_the_upload_limit_is_refused_without_any_network_call(self):
+        client = GroqWhisperTranscriber(
+            api_key="gsk_test", max_upload_mb=1, transport=mock.Mock(side_effect=AssertionError("called")))
+        with mock.patch.object(transcription, "_extract_audio", return_value=("/tmp/x.mp3", False)), \
+                mock.patch("builtins.open", mock.mock_open(read_data=b"x" * (1024 * 1024 + 1))):
+            with self.assertRaises(ExternalSTTError) as ctx:
+                client.transcribe("/tmp/video.mp4")
+        self.assertEqual(ctx.exception.category, "too_large")
+
+    def test_audio_exactly_at_the_upload_limit_is_sent(self):
+        transport = mock.Mock(return_value=(200, {}, json.dumps({"text": "ok"}).encode()))
+        client = GroqWhisperTranscriber(api_key="gsk_test", max_upload_mb=1, transport=transport)
+        with mock.patch.object(transcription, "_extract_audio", return_value=("/tmp/x.mp3", False)), \
+                mock.patch("builtins.open", mock.mock_open(read_data=b"x" * (1024 * 1024))):
+            client.transcribe("/tmp/video.mp4")
+        transport.assert_called_once()
+
     def test_unset_api_key_raises_a_config_error_without_any_network_call(self):
         client = GroqWhisperTranscriber(api_key="", transport=mock.Mock(side_effect=AssertionError("called")))
         with self.assertRaises(ExternalSTTError) as ctx:
@@ -94,8 +119,8 @@ class GroqWhisperTranscriberTests(SimpleTestCase):
 
 
 class FallbackTranscriberTests(SimpleTestCase):
-    """The chain: external API first, local transcriber only when the
-    primary is unavailable — this is the behaviour requested in the task."""
+    """FROZEN with faster-whisper: the chain stays correct for when it is
+    registered again, but the product does not use it (GetTranscriberTests)."""
 
     def test_primary_success_is_used_as_is(self):
         primary, fallback = FakeTranscriber(), BrokenTranscriber()
@@ -140,23 +165,16 @@ class FallbackTranscriberTests(SimpleTestCase):
 
 
 class GetTranscriberTests(SimpleTestCase):
-    def test_default_provider_is_the_external_api_with_local_fallback(self):
-        transcriber = transcription.get_transcriber()
-        self.assertIsInstance(transcriber, FallbackTranscriber)
+    def test_default_provider_is_groq_alone(self):
+        self.assertIs(type(transcription.get_transcriber()), GroqWhisperTranscriber)
+
+    def test_groq_is_the_only_registered_provider(self):
+        self.assertEqual(list(transcription._TRANSCRIBERS), ["groq_whisper_api"])
 
     @override_settings(TRANSCRIPTION_PROVIDER="faster_whisper")
-    def test_can_be_pinned_to_local_only(self):
-        transcriber = transcription.get_transcriber()
-        self.assertEqual(transcriber.name, "faster_whisper")
-
-    @override_settings(GROQ_API_KEY="gsk_configured")
-    def test_primary_is_built_only_when_an_api_key_is_configured(self):
-        transcriber = transcription.get_transcriber()
-        self.assertIsNotNone(transcriber._primary)
-
-    def test_primary_is_none_without_an_api_key(self):
-        transcriber = transcription.get_transcriber()
-        self.assertIsNone(transcriber._primary)
+    def test_frozen_local_provider_cannot_be_selected(self):
+        with self.assertRaises(TranscriptionError):
+            transcription.get_transcriber()
 
 
 @override_settings(TRANSCRIPTION_BACKGROUND="worker")  # no thread: tests run the worker step by hand
@@ -179,7 +197,7 @@ class TranscriptTests(_Base):
     def test_worker_completes_it_with_text_and_timestamps(self):
         self.upload()
         row = Transcript.objects.get(item=self.item)
-        with mock.patch.dict(transcription._TRANSCRIBERS, {"faster_whisper": FakeTranscriber}):
+        with mock.patch.dict(transcription._TRANSCRIBERS, {"groq_whisper_api": FakeTranscriber}):
             run_transcription(row.pk)
         body = self.get().json()
         self.assertEqual(body["status"], "completed")
@@ -192,7 +210,7 @@ class TranscriptTests(_Base):
     def test_failure_is_explicit_and_retryable(self):
         self.upload()
         row = Transcript.objects.get(item=self.item)
-        with mock.patch.dict(transcription._TRANSCRIBERS, {"faster_whisper": BrokenTranscriber}):
+        with mock.patch.dict(transcription._TRANSCRIBERS, {"groq_whisper_api": BrokenTranscriber}):
             run_transcription(row.pk)
         body = self.get().json()
         self.assertEqual((body["status"], body["text"]), ("failed", ""))
@@ -202,7 +220,7 @@ class TranscriptTests(_Base):
     def test_replacing_the_video_discards_the_old_text(self):
         self.upload()
         row = Transcript.objects.get(item=self.item)
-        with mock.patch.dict(transcription._TRANSCRIBERS, {"faster_whisper": FakeTranscriber}):
+        with mock.patch.dict(transcription._TRANSCRIBERS, {"groq_whisper_api": FakeTranscriber}):
             run_transcription(row.pk)
         self.upload()
         body = self.get().json()
@@ -214,14 +232,46 @@ class TranscriptTests(_Base):
         self.assertEqual(r.status_code, 204)
         self.assertFalse(Transcript.objects.filter(item=self.item).exists())
 
-    def test_missing_library_gives_an_actionable_message(self):
+    def _fail_with(self, category, status=None):
         self.upload()
         row = Transcript.objects.get(item=self.item)
-        with mock.patch.dict("sys.modules", {"faster_whisper": None}):
+
+        class Failing(Transcriber):
+            name = "groq_whisper_api"
+
+            def transcribe(self, path, language=""):
+                raise ExternalSTTError("boom gsk_secret", category=category, status=status)
+
+        with mock.patch.dict(transcription._TRANSCRIBERS, {"groq_whisper_api": Failing}), \
+                mock.patch.object(FasterWhisperTranscriber, "transcribe",
+                                  side_effect=AssertionError("the frozen local model ran")):
             run_transcription(row.pk)
         row.refresh_from_db()
+        return row
+
+    def test_groq_rate_limit_fails_the_row_without_touching_the_local_model(self):
+        row = self._fail_with("rate_limit", 429)
+        self.assertEqual((row.status, row.text), ("failed", ""))
+        self.assertEqual(row.error, transcription._STT_FAILURE_MESSAGES["rate_limit"])
+        self.assertEqual(self.post().json()["status"], "pending")
+
+    def test_every_groq_failure_shows_a_safe_message(self):
+        for category in ("config", "auth", "rate_limit", "too_large", "bad_request",
+                         "timeout", "network", "provider", "malformed_response"):
+            with self.subTest(category=category):
+                row = self._fail_with(category)
+                self.assertEqual(row.status, "failed")
+                self.assertTrue(row.error)
+                self.assertNotIn("boom", row.error)
+                self.assertNotIn("gsk_secret", row.error)
+
+    def test_missing_api_key_fails_with_an_actionable_message(self):
+        self.upload()
+        row = Transcript.objects.get(item=self.item)
+        run_transcription(row.pk)
+        row.refresh_from_db()
         self.assertEqual(row.status, "failed")
-        self.assertIn("faster-whisper", row.error)
+        self.assertEqual(row.error, transcription._STT_FAILURE_MESSAGES["config"])
 
     def test_another_teacher_cannot_read_it(self):
         self.upload()

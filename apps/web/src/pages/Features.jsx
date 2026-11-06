@@ -9,7 +9,7 @@ export default function Features() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">المميزات</div>
-          <h2 className="h2">كل ما تحتاجه، في نظام واحد.</h2>
+          <h1 className="h2">كل ما تحتاجه، في نظام واحد.</h1>
           <p className="lead">من إدارة الطلاب إلى الذكاء الاستشاري — متماسكًا ومتّصلًا.</p>
         </div>
       </div>

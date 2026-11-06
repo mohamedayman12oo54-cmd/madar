@@ -42,7 +42,7 @@ class SuccessActivatesCheckoutTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = Subscription.objects.create(environment=self.env_a, plan=self.plan, state=Subscription.State.TRIAL)
         self.attempt = _make_attempt(self.env_a, self.subscription, self.plan, "chk-ac1")
 
@@ -89,7 +89,7 @@ class RenewalSuccessTests(TenantTestCase):
     exist yet); applying SUCCESS only marks it satisfied."""
 
     def test_a_renewal_success_marks_the_pre_created_period_satisfied(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         now = timezone.now()
         period = BillingPeriod.objects.create(
@@ -119,7 +119,7 @@ class IdempotentReapplicationTests(TenantTestCase):
     """AC-BILL-021-2."""
 
     def test_applying_the_same_event_twice_changes_nothing_the_second_time(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_attempt(self.env_a, subscription, plan, "chk-ac2")
         event = _make_event(
@@ -146,7 +146,7 @@ class OutOfOrderSequenceTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = Subscription.objects.create(environment=self.env_a, plan=self.plan, state=Subscription.State.TRIAL)
         self.attempt = _make_attempt(self.env_a, self.subscription, self.plan, "chk-seq")
 
@@ -200,7 +200,7 @@ class PayEventFailureTests(TenantTestCase):
     """AC-BILL-021-4."""
 
     def test_event_pay_status_failure_is_treated_as_failure(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         now = timezone.now()
         period = BillingPeriod.objects.create(
@@ -238,7 +238,7 @@ class AmountCurrencyMismatchTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = Subscription.objects.create(environment=self.env_a, plan=self.plan, state=Subscription.State.TRIAL)
         self.attempt = _make_attempt(self.env_a, self.subscription, self.plan, "chk-mismatch")
 
@@ -273,7 +273,7 @@ class RefundLikeEventsTests(TenantTestCase):
     """AC-BILL-021-8."""
 
     def test_a_refund_event_is_stored_and_not_applied(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         attempt = _make_attempt(self.env_a, subscription, plan, "chk-refund", status=PaymentAttempt.Status.SUCCEEDED)
 
@@ -313,7 +313,7 @@ class CrashDuringApplicationTests(TransactionTestCase):
         self.env = Environment.objects.create(owner=self.teacher, name="env")
         EnvironmentMembership.objects.create(user=self.teacher, environment=self.env, role=EnvironmentMembership.Role.OWNER)
         self.plan, _ = Plan.objects.get_or_create(
-            key=Plan.Key.PLAN_1,
+            key=Plan.Key.MONTHLY,
             defaults={"name": "Plan 1", "price_minor_units": 100000, "currency": "EGP", "max_students": 400},
         )
         self.subscription = Subscription.objects.create(environment=self.env, plan=self.plan, state=Subscription.State.TRIAL)

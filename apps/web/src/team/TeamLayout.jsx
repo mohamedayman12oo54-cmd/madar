@@ -11,7 +11,7 @@ export default function TeamLayout() {
 
   const onLogout = async () => {
     await logout();
-    nav("/auth/team/login", { replace: true });
+    nav("/", { replace: true });
   };
 
   return (

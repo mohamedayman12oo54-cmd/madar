@@ -471,6 +471,9 @@ class ResumableUploadTests(_Base):
         self.assertEqual(r.status_code, 204)
         self.assertFalse(os.path.exists(full), "partial bytes must not linger")
 
+    # The tries-then-cooldown rule (content/test_upload_cooldown.py) has the same number, 5; lift it here so this
+    # test keeps proving the separate "too many uploads running at once" rule.
+    @override_settings(VIDEO_UPLOAD_ATTEMPTS=100)
     def test_too_many_concurrent_uploads_are_refused(self):
         for _ in range(5):
             self.assertEqual(self.start().status_code, 201)

@@ -105,7 +105,7 @@ const trialSub = (daysLeft) => ({
   },
 });
 const paidSub = (extra = {}) => ({
-  plan_key: "plan_2",
+  plan_key: "term",
   trial_end: null,
   current_period_end: inDays(12),
   cancel_at_period_end: false,
@@ -115,7 +115,7 @@ const paidSub = (extra = {}) => ({
     basis: "paid_active",
     reason_code: "paid_active",
     capabilities: [],
-    student_cap: 800,
+    student_cap: null,
   },
   ...extra,
 });
@@ -380,27 +380,9 @@ const ROUTES = {
   "/billing/plans/": {
     count: 3,
     results: [
-      {
-        key: "plan_1",
-        name: "الباقة الأولى",
-        price_minor_units: 100000,
-        currency: "EGP",
-        max_students: 400,
-      },
-      {
-        key: "plan_2",
-        name: "الباقة الثانية",
-        price_minor_units: 150000,
-        currency: "EGP",
-        max_students: 800,
-      },
-      {
-        key: "plan_3",
-        name: "الباقة الثالثة",
-        price_minor_units: 200000,
-        currency: "EGP",
-        max_students: null,
-      },
+      { key: "monthly", name: "شهري", price_minor_units: 185000, currency: "EGP", max_students: null, period_days: 30 },
+      { key: "term", name: "كل ترم", price_minor_units: 450000, currency: "EGP", max_students: null, period_days: 180 },
+      { key: "yearly", name: "سنوي", price_minor_units: 1000000, currency: "EGP", max_students: null, period_days: 365 },
     ],
   },
   "/billing/subscription/": () => SUB,
@@ -698,6 +680,25 @@ const ROUTES = {
       },
     ],
   },
+  "/guardian-messages/unread/": { counts: { 1: 2 } },
+  "/guardian-messages/settings/": (init) => ({
+    enabled: true,
+    absence_threshold: 3,
+    exam_percent_below: 50,
+    unpaid_after_day: 10,
+    show_rank: false,
+    ...(init?.method === "PUT" ? JSON.parse(init.body) : {}),
+  }),
+  "/guardian-messages/": (init) =>
+    init?.method === "POST"
+      ? {
+          ...JSON.parse(init.body),
+          id: 9,
+          kind_label: "تحذير",
+          created_at: NOW,
+          guardian_can_view: true,
+        }
+      : { results: [] },
   "/parent/overview/": {
     student: { name: "ابن", grade: "أول", teacher_environment: "بيئة" },
     attendance: {
@@ -720,6 +721,54 @@ const ROUTES = {
       history: [{ month: MONTH, status: "paid", amount: "200.00", paid_at: NOW }],
     },
     evaluation: [{ month: MONTH, state: "good", state_label: "جيد", rating: 4 }],
+    exams: {
+      finished: 1,
+      total: 2,
+      average_percent: 85,
+      results: [
+        { id: 1, title: "امتحان الوحدة", state: "finished", closes_at: NOW, score: 17, max_score: 20, percent: 85 },
+        { id: 2, title: "امتحان فات", state: "missed", closes_at: NOW, score: null, max_score: null, percent: null },
+      ],
+    },
+    videos: {
+      total: 2,
+      completed: 1,
+      started: 1,
+      recent: [
+        { id: 1, title: "درس الجمع", percent: 100, completed: true, last_watched_at: NOW },
+        { id: 2, title: "درس الطرح", percent: 0, completed: false, last_watched_at: null },
+      ],
+    },
+    quizzes: {
+      taken: 1,
+      average_percent: 80,
+      recent: [{ title: "كويز الجمع", score: 4, total: 5, percent: 80, submitted_at: NOW }],
+    },
+    trend: [
+      { month: "2026-06", attendance_percent: null, exam_percent: null, rating: null },
+      { month: "2026-07", attendance_percent: 90, exam_percent: 70, rating: 4 },
+      { month: "2026-08", attendance_percent: 75, exam_percent: null, rating: null },
+      { month: "2026-09", attendance_percent: 80, exam_percent: 85, rating: 5 },
+    ],
+    schedule: {
+      weekly: [
+        { group: "G1", weekday: 5, weekday_label: "السبت", start_time: "18:00", end_time: "19:30" },
+      ],
+      upcoming: [{ group: "G1", scheduled_at: NOW, ends_at: null, status: "planned" }],
+    },
+    messages: [
+      {
+        id: 1,
+        kind: "warning",
+        kind_label: "تحذير",
+        title: "غياب متكرر",
+        body: "غاب ثلاث حصص.",
+        created_at: NOW,
+        replies: [],
+        can_reply: true,
+      },
+    ],
+    rank: { position: 3, of: 12, basis: "exam_average" },
     notifications: [
       {
         id: 1,
@@ -1056,6 +1105,19 @@ test("guardian portal renders one child's read-only follow-up and never offers a
     const text = m.container.textContent;
     assert.match(text, /متابعة ابن/);
     assert.match(text, /المدفوعات/);
+    assert.match(text, /درجات الامتحانات/);
+    assert.match(text, /مواعيد الحصص/);
+    assert.match(text, /الترتيب/);
+    assert.match(text, /من 12 في متوسط الامتحانات/);
+    assert.match(text, /أكمل 1 من 2/);
+    assert.match(text, /درس الطرح/);
+    assert.match(text, /المتوسط 80%/);
+    assert.ok(m.container.querySelector("svg[role='img'] polyline"), "the trend chart draws its lines");
+    assert.equal(m.container.querySelectorAll("svg[role='img'] polyline").length, 3, "a month without data breaks the line");
+    assert.match(text, /السبت 18:00 – 19:30/);
+    assert.match(text, /الحصص القادمة/);
+    assert.match(text, /17 \/ 20/);
+    assert.match(text, /غياب متكرر/);
     assert.doesNotMatch(text, /Invalid|undefined|NaN/);
     assert.equal(
       m.container.querySelectorAll("input, textarea, form").length,
@@ -1063,6 +1125,43 @@ test("guardian portal renders one child's read-only follow-up and never offers a
       "guardian portal must be read-only"
     );
   } finally {
+    sessionStorage.removeItem("madar.parent.session");
+    await m.done();
+  }
+});
+
+test("guardian portal: a server that has not been updated (sections missing) still shows the page, not a blank screen", async () => {
+  sessionStorage.setItem(
+    "madar.parent.session",
+    JSON.stringify({ children: [{ token: "t1", student_name: "ابن", grade: "أول" }], active: 0, expires_at: Date.now() + 60000 })
+  );
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/parent/overview/")) {
+      // exactly what the portal received before exams, schedule, videos, quizzes, trend and messages existed
+      return new Response(
+        JSON.stringify({
+          student: { name: "ابن", grade: "أول", teacher_environment: "بيئة" },
+          attendance: { present: 2, absent: 1, total: 3, recent: [] },
+          recitation: { studied: 1, not_studied: 1, total: 2, recent: [] },
+          payments: { this_month: { month: MONTH, status: "paid", amount: "200.00" }, history: [] },
+          evaluation: [],
+          notifications: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    return origFetch(url, init);
+  };
+  const m = await mount("/parent", React.createElement(ParentPortal));
+  try {
+    const text = m.container.textContent;
+    assert.match(text, /متابعة ابن/, "the page renders");
+    assert.match(text, /درجات الامتحانات/);
+    assert.match(text, /لا توجد امتحانات بعد/, "a missing section reads as empty");
+    assert.doesNotMatch(text, /Invalid|undefined|NaN/);
+  } finally {
+    globalThis.fetch = origFetch;
     sessionStorage.removeItem("madar.parent.session");
     await m.done();
   }
@@ -1269,12 +1368,16 @@ test("billing: the trial shows its remaining days and the plan ladder with serve
     assert.ok(container.querySelector(".bl-ring-fg"), "depleting ring");
     assert.equal(container.querySelectorAll(".bl-timer b").length, 3, "days:hours:minutes timer");
     assert.equal(container.querySelector(".bl-days-n").textContent, "٥");
-    assert.match(text, /١٬٠٠٠ ج\.م/);
-    assert.match(text, /١٬٥٠٠ ج\.م/);
-    assert.match(text, /٢٬٠٠٠ ج\.م/);
+    assert.match(text, /١٬٨٥٠ ج\.م/); // monthly
+    assert.match(text, /٤٬٥٠٠ ج\.م/); // term
+    assert.match(text, /١٠٬٠٠٠ ج\.م/); // yearly
+    assert.match(text, /كل شهر \(٣٠ يومًا\)/);
+    assert.match(text, /كل ترم \(١٨٠ يومًا\)/);
+    assert.match(text, /كل سنة \(٣٦٥ يومًا\)/);
     assert.match(text, /بدون حد/);
+    assert.doesNotMatch(text, /الباقة الثالثة|الباقة الأولى|حتى ٤٠٠|حتى ٨٠٠/); // the old student-cap tiers are gone
     assert.equal(container.querySelectorAll(".bl-plan").length, 3);
-    assert.ok(buttonWith(container, "اشترك في الباقة الأولى"));
+    assert.ok(buttonWith(container, "اشترك في الباقة الشهرية"));
     assert.match(text, /لا نخزّن رقم بطاقتك/);
   } finally {
     await unmount();
@@ -1293,12 +1396,12 @@ test("billing: choosing a plan sends ONLY the plan key and redirects to the trus
   };
   const { container, unmount } = await mountBilling("/app/billing");
   try {
-    await press(buttonWith(container, "اشترك في الباقة الثانية"));
+    await press(buttonWith(container, "اشترك في باقة الترم"));
     const post = calls.find(
       (c) => c.url.includes("/billing/checkout/") && c.init?.method === "POST"
     );
     assert.ok(post, "checkout was not called");
-    assert.deepEqual(JSON.parse(post.init.body), { plan_key: "plan_2" }); // no amount, no environment id
+    assert.deepEqual(JSON.parse(post.init.body), { plan_key: "term" }); // no amount, no environment id
     assert.deepEqual(REDIRECTS, ["https://payments.kashier.io/session/abc"]);
   } finally {
     globalThis.fetch = orig;
@@ -1318,7 +1421,7 @@ test("billing: a checkout URL on an untrusted host is never followed", async () 
     CHECKOUT_RESPONSE = { session_url: evil, attempt_id: 7 };
     const { container, unmount } = await mountBilling("/app/billing");
     try {
-      await press(buttonWith(container, "اشترك في الباقة الأولى"));
+      await press(buttonWith(container, "اشترك في الباقة الشهرية"));
       assert.deepEqual(REDIRECTS, [], `followed ${evil}`);
       assert.match(container.textContent, /لم يُسحب أي مبلغ/);
     } finally {
@@ -1374,11 +1477,11 @@ test("billing: an active subscription disables every plan button and offers canc
   };
   const { container, unmount } = await mountBilling("/app/billing");
   try {
-    assert.match(container.textContent, /باقتك الحالية: الباقة الثانية/);
+    assert.match(container.textContent, /باقتك الحالية: باقة الترم/);
     assert.ok(container.querySelector(".bl-ring-fg"), "depleting ring");
     assert.equal(buttonWith(container, "باقتك الحالية").disabled, true);
-    assert.equal(buttonWith(container, "اشترك في الباقة الأولى").disabled, true);
-    assert.equal(buttonWith(container, "اشترك في الباقة الثالثة").disabled, true);
+    assert.equal(buttonWith(container, "اشترك في الباقة الشهرية").disabled, true);
+    assert.equal(buttonWith(container, "اشترك في الباقة السنوية").disabled, true);
     await press(buttonWith(container, "إلغاء التجديد التلقائي"));
     assert.equal(
       calls.some((c) => c.url.includes("/cancel/")),
@@ -1401,13 +1504,13 @@ test("billing: a checkout in progress for another plan blocks switching but can 
   ME = TEACHER;
   SUB = {
     ...trialSub(10),
-    pending_checkout: { attempt_id: 7, status: "initiated", plan_key: "plan_2" },
+    pending_checkout: { attempt_id: 7, status: "initiated", plan_key: "term" },
   };
   const { container, unmount } = await mountBilling("/app/billing");
   try {
     assert.ok(buttonWith(container, "أكمل الدفع"), "same plan can be resumed");
-    assert.equal(buttonWith(container, "اشترك في الباقة الأولى").disabled, true);
-    assert.equal(buttonWith(container, "اشترك في الباقة الثالثة").disabled, true);
+    assert.equal(buttonWith(container, "اشترك في الباقة الشهرية").disabled, true);
+    assert.equal(buttonWith(container, "اشترك في الباقة السنوية").disabled, true);
   } finally {
     await unmount();
   }
@@ -1433,7 +1536,7 @@ test("billing: an expired trial explains that data is kept and plans are purchas
   try {
     assert.match(container.textContent, /انتهت الفترة التجريبية/);
     assert.match(container.textContent, /بياناتك محفوظة/);
-    assert.equal(buttonWith(container, "اشترك في الباقة الأولى").disabled, false);
+    assert.equal(buttonWith(container, "اشترك في الباقة الشهرية").disabled, false);
   } finally {
     await unmount();
     SUB = trialSub(10);
@@ -1693,6 +1796,55 @@ test("content hub (teacher): the PDF form takes a file with a size limit and val
     assert.ok(!net.calls.some((c) => c.init?.method === "POST"));
   } finally {
     net.restore();
+    await m.done();
+  }
+});
+
+test("content hub (teacher): when uploads are locked the area is disabled and a timer counts down", async () => {
+  ME = TEACHER;
+  const orig = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const u = new URL(String(url), "http://x");
+    if (init?.method === "POST" && u.pathname.endsWith("/content/")) {
+      return new Response(JSON.stringify({ id: 77, title: "درس", kind: "video", source: "none" }), { status: 201, headers: { "content-type": "application/json" } });
+    }
+    if (init?.method === "POST" && u.pathname.endsWith("/content/77/uploads/")) {
+      return new Response(
+        JSON.stringify({ detail: "x", code: "upload_cooldown", retry_after_seconds: 300 }),
+        { status: 429, headers: { "content-type": "application/json" } }
+      );
+    }
+    return orig(url, init);
+  };
+  const m = await mount("/app/content", React.createElement(AppRoutes));
+  try {
+    const add = buttonWith(m.container, "إضافة محتوى");
+    assert.ok(add, "the add button");
+    await clickEl(add);
+    await act(async () => {
+      await tick(100);
+    });
+    const modal = [...w.document.querySelectorAll("[role=dialog]")].pop();
+    const input = modal.querySelector("input[type=file]");
+    assert.ok(input, "a video file picker");
+    const file = new w.File([new Uint8Array(16)], "lesson.mp4", { type: "video/mp4" });
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new w.Event("change", { bubbles: true }));
+      await tick(200);
+    });
+    const timer = modal.querySelector(".upload-cooldown");
+    assert.ok(timer, "the cooldown notice is shown");
+    assert.match(timer.querySelector(".upload-cooldown-clock").textContent, /^٥:٠٠$|^٤:٥٩$/);
+    assert.match(timer.textContent, /استخدمت محاولات الرفع/);
+    assert.ok(modal.querySelector(".upload-drop.is-locked"), "the drop area is disabled");
+    assert.equal(modal.querySelector("input[type=file]").disabled, true);
+    assert.doesNotMatch(modal.textContent, /محاولات كثيرة جدًا/, "no raw error text beside the timer");
+    assert.doesNotMatch(modal.textContent, /undefined|NaN|Invalid/);
+  } finally {
+    globalThis.fetch = orig;
     await m.done();
   }
 });
@@ -2216,6 +2368,228 @@ test("notifications (student): an exam notification is badged as an exam and ope
     assert.ok(m.container.querySelector("a[href='/learn/materials/1']"), "a file or summary opens its page");
     assert.ok(m.container.querySelector(".chip-s.is-exam"));
   } finally {
+    await m.done();
+  }
+});
+
+test("teacher: a warning to the guardian is written in a dialog and sent for that student only", async () => {
+  ME = TEACHER;
+  const calls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return origFetch(url, init);
+  };
+  const m = await mount("/app/students", React.createElement(AppRoutes));
+  try {
+    const intro = [...w.document.querySelectorAll("button")].find((b) => b.textContent.trim() === "فهمت");
+    if (intro) await press(intro); // the first-visit explainer
+    await press(buttonWith(m.container, "رسالة لولي الأمر"));
+    assert.match(buttonWith(m.container, "رسالة لولي الأمر").textContent, /2/, "two unread replies show as a badge");
+    const dialog = w.document.querySelector("[role='dialog']");
+    assert.ok(dialog, "the dialog opens");
+    assert.match(dialog.textContent, /رسالة لولي أمر أحمد/);
+    const setValue = (el, v) =>
+      act(async () => {
+        const proto = el.tagName === "TEXTAREA" ? w.HTMLTextAreaElement : w.HTMLInputElement;
+        Object.getOwnPropertyDescriptor(proto.prototype, "value").set.call(el, v);
+        el.dispatchEvent(new w.Event("input", { bubbles: true }));
+      });
+    await setValue(dialog.querySelector("input.inp"), "غياب متكرر");
+    await setValue(dialog.querySelector("textarea"), "غاب ثلاث حصص.");
+    await act(async () => {
+      dialog.querySelector("form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+      await tick(60);
+    });
+    const sent = calls.find((c) => c.url.endsWith("/guardian-messages/") && c.init?.method === "POST");
+    assert.ok(sent, "posted to the guardian-messages endpoint");
+    assert.deepEqual(JSON.parse(sent.init.body), {
+      enrollment_id: 1,
+      kind: "warning",
+      title: "غياب متكرر",
+      body: "غاب ثلاث حصص.",
+    });
+    assert.match(dialog.textContent, /تم الإرسال/);
+    assert.match(dialog.textContent, /الرسائل السابقة/);
+  } finally {
+    globalThis.fetch = origFetch;
+    await m.done();
+  }
+});
+
+test("settings: the teacher sees the automatic guardian-warning limits and they are saved as typed", async () => {
+  ME = TEACHER;
+  const calls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return origFetch(url, init);
+  };
+  const m = await mount("/app/settings", React.createElement(AppRoutes));
+  try {
+    const text = m.container.textContent;
+    assert.match(text, /تنبيهات أولياء الأمور التلقائية/);
+    assert.match(text, /عدد الغيابات في الشهر/);
+    const box = m.container.querySelector("input[type='number']");
+    assert.equal(box.value, "3", "the saved limit is shown");
+    const form = box.closest("form");
+    await act(async () => {
+      form.dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+      await tick(60);
+    });
+    const put = calls.find((c) => c.url.endsWith("/guardian-messages/settings/") && c.init?.method === "PUT");
+    assert.ok(put, "saved through PUT");
+    assert.deepEqual(JSON.parse(put.init.body), {
+      enabled: true,
+      absence_threshold: 3,
+      exam_percent_below: 50,
+      unpaid_after_day: 10,
+      show_rank: false,
+    });
+    assert.match(m.container.textContent, /تم حفظ إعدادات التنبيهات/);
+    assert.match(m.container.textContent, /ترتيب ابنه بين زملاء مجموعته/);
+  } finally {
+    globalThis.fetch = origFetch;
+    await m.done();
+  }
+});
+
+test("guardian portal trend chart: hover shows every series for the month, and the table view has the same figures", async () => {
+  sessionStorage.setItem(
+    "madar.parent.session",
+    JSON.stringify({ children: [{ token: "t1", student_name: "ابن", grade: "أول" }], active: 0, expires_at: Date.now() + 60000 })
+  );
+  const m = await mount("/parent", React.createElement(ParentPortal));
+  try {
+    const hits = m.container.querySelectorAll("svg[role='img'] .tc-hit");
+    assert.equal(hits.length, 4, "one hit column per month");
+    await act(async () => {
+      hits[1].dispatchEvent(new w.MouseEvent("mouseover", { bubbles: true }));
+      hits[1].dispatchEvent(new w.FocusEvent("focus", { bubbles: false }));
+    });
+    const tip = m.container.querySelector(".tc-tip");
+    assert.ok(tip, "tooltip appears");
+    assert.match(tip.textContent, /90%/);
+    assert.match(tip.textContent, /70%/);
+    assert.match(tip.textContent, /★ 4/);
+    await press(buttonWith(m.container, "عرض كجدول"));
+    const rows = [...m.container.querySelectorAll(".tc table tbody tr")].map((r) => r.textContent);
+    assert.equal(rows.length, 4);
+    assert.match(rows[1], /90/);
+    assert.match(rows[1], /70/);
+    assert.match(rows[1], /4 \/ 5/);
+  } finally {
+    sessionStorage.removeItem("madar.parent.session");
+    await m.done();
+  }
+});
+
+test("guardian portal: opening it marks unread messages as read, still badges them new, and offers a print button", async () => {
+  sessionStorage.setItem(
+    "madar.parent.session",
+    JSON.stringify({ children: [{ token: "t1", student_name: "ابن", grade: "أول" }], active: 0, expires_at: Date.now() + 60000 })
+  );
+  const calls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return origFetch(url, init);
+  };
+  const printed = [];
+  w.print = () => printed.push(1);
+  const m = await mount("/parent", React.createElement(ParentPortal));
+  try {
+    const read = calls.filter((c) => /\/parent\/messages\/\d+\/read\/$/.test(c.url));
+    assert.equal(read.length, 1, "the one unread message is marked read");
+    assert.equal(read[0].init.method, "POST");
+    assert.equal(read[0].init.headers.Authorization, "Parent t1", "sent with the guardian token");
+    assert.ok(m.container.querySelector(".pp-new"), "it keeps its 'جديد' badge for this visit");
+    await press(buttonWith(m.container, "طباعة"));
+    assert.equal(printed.length, 1, "the print button opens the browser's print dialog");
+  } finally {
+    globalThis.fetch = origFetch;
+    sessionStorage.removeItem("madar.parent.session");
+    await m.done();
+  }
+});
+
+test("guardian portal: a reply box is hidden until asked for, and a sent reply appears under the message", async () => {
+  sessionStorage.setItem(
+    "madar.parent.session",
+    JSON.stringify({ children: [{ token: "t1", student_name: "ابن", grade: "أول" }], active: 0, expires_at: Date.now() + 60000 })
+  );
+  const calls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (/\/parent\/messages\/1\/reply\/$/.test(String(url)))
+      return new Response(JSON.stringify({ id: 7, body: JSON.parse(init.body).body, created_at: NOW }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    return origFetch(url, init);
+  };
+  const m = await mount("/parent", React.createElement(ParentPortal));
+  try {
+    assert.equal(m.container.querySelectorAll("textarea, input").length, 0, "no input until the guardian asks to reply");
+    await press(buttonWith(m.container, "رد على المدرس"));
+    const box = m.container.querySelector("textarea");
+    assert.ok(box, "the reply box opens");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value").set.call(box, "حاضر، سأتابعه");
+      box.dispatchEvent(new w.Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      box.closest("form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+      await tick(60);
+    });
+    const sent = calls.find((c) => /\/reply\/$/.test(c.url));
+    assert.ok(sent, "posted to the reply endpoint");
+    assert.equal(sent.init.headers.Authorization, "Parent t1");
+    assert.deepEqual(JSON.parse(sent.init.body), { body: "حاضر، سأتابعه" });
+    assert.match(m.container.textContent, /ردّك/);
+    assert.match(m.container.textContent, /حاضر، سأتابعه/);
+    assert.equal(m.container.querySelectorAll("textarea").length, 0, "the box closes after sending");
+  } finally {
+    globalThis.fetch = origFetch;
+    sessionStorage.removeItem("madar.parent.session");
+    await m.done();
+  }
+});
+
+test("a page that crashes shows a message and a reload button instead of a blank white screen, and recovers on navigation", async () => {
+  const ErrorBoundary = (await load("/src/components/ErrorBoundary.jsx")).default;
+  const { Routes, Route, Link } = await import("react-router-dom");
+  const Boom = () => {
+    throw new Error("boom: something broke while rendering");
+  };
+  const origError = console.error;
+  console.error = () => {}; // React reports the caught render error here; expected in this test
+  const m = await mount(
+    "/bad",
+    React.createElement(
+      ErrorBoundary,
+      null,
+      React.createElement(
+        Routes,
+        null,
+        React.createElement(Route, { path: "/bad", element: React.createElement(Boom) }),
+        React.createElement(Route, {
+          path: "/good",
+          element: React.createElement("div", null, "GOOD-PAGE"),
+        })
+      ),
+      React.createElement(Link, { to: "/good" }, "go")
+    )
+  );
+  try {
+    const text = m.container.textContent;
+    assert.ok(text.length > 0, "never blank");
+    assert.match(text, /حدث خطأ غير متوقع/);
+    assert.match(text, /boom: something broke/, "the reason is visible for support");
+    assert.ok(buttonWith(m.container, "إعادة تحميل الصفحة"), "offers a reload");
+  } finally {
+    console.error = origError;
     await m.done();
   }
 });

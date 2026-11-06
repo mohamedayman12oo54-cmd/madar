@@ -23,7 +23,7 @@ WEBHOOK = "/api/v1/billing/webhooks/kashier/"
 def past_due_on_plan_1(environment):
     """A teacher whose last paid period ended and whose renewal FAILED (access still granted, with
     Plan 1's capabilities, until BILL-DEC-05 defines grace)."""
-    plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+    plan = Plan.objects.get(key=Plan.Key.MONTHLY)
     now = timezone.now()
     sub = Subscription.objects.create(
         environment=environment, plan=plan, state=Subscription.State.PAST_DUE,
@@ -40,36 +40,36 @@ def past_due_on_plan_1(environment):
 
 
 class StartingCheckoutNeverGrantsAPlanTests(TenantTestCase):
-    def test_starting_a_plan_3_checkout_during_grace_does_not_upgrade_capabilities_or_cap(self):
+    def test_starting_a_yearly_checkout_during_grace_does_not_change_the_plan_or_the_paid_through_date(self):
         """BUG (fixed): start_checkout used to write Subscription.plan BEFORE payment, and decide()
-        derives capabilities/cap from that field — so a past-due Plan 1 teacher got Plan 3 features and
-        unlimited students just by pressing the button."""
+        derives everything from that field — so a past-due monthly teacher was moved onto the yearly plan
+        just by pressing the button. The plan may only change on a VERIFIED payment."""
         sub = past_due_on_plan_1(self.env_a)
         before = entitlements.decide(self.env_a)
-        self.assertEqual(before.student_cap, 400)
+        self.assertIsNone(before.student_cap)
 
-        r = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.PLAN_3}, format="json", **self.with_env(self.env_a.id))
+        r = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.YEARLY}, format="json", **self.with_env(self.env_a.id))
 
         self.assertEqual(r.status_code, 201, r.content)
         sub.refresh_from_db()
-        self.assertEqual(sub.plan.key, Plan.Key.PLAN_1)
+        self.assertEqual(sub.plan.key, Plan.Key.MONTHLY)
         after = entitlements.decide(self.env_a)
-        self.assertEqual((after.capabilities, after.student_cap), (before.capabilities, 400))
-        self.assertNotIn("ai.performance_analysis", after.capabilities)
+        self.assertEqual((after.capabilities, after.student_cap, after.period_end),
+                         (before.capabilities, before.student_cap, before.period_end))
 
     def test_the_attempt_remembers_the_plan_it_buys(self):
-        r = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id))
+        r = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.TERM}, format="json", **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 201, r.content)
-        self.assertEqual(PaymentAttempt.objects.get(environment=self.env_a).plan.key, Plan.Key.PLAN_2)
+        self.assertEqual(PaymentAttempt.objects.get(environment=self.env_a).plan.key, Plan.Key.TERM)
 
     def test_resuming_the_same_plan_returns_the_same_attempt(self):
-        a = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id))
-        b = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id))
+        a = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.TERM}, format="json", **self.with_env(self.env_a.id))
+        b = self.client_a.post(CHECKOUT, {"plan_key": Plan.Key.TERM}, format="json", **self.with_env(self.env_a.id))
         self.assertEqual(a.json()["attempt_id"], b.json()["attempt_id"])
 
     def test_two_live_checkouts_for_one_subscription_are_structurally_impossible(self):
         sub = Subscription.objects.create(environment=self.env_a)
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         make = lambda oid: PaymentAttempt.objects.create(
             environment=self.env_a, subscription=sub, merchant_order_id=oid, amount_minor_units=1, plan=plan)
         make("chk_1")
@@ -78,7 +78,7 @@ class StartingCheckoutNeverGrantsAPlanTests(TenantTestCase):
 
     def test_a_finished_checkout_does_not_block_a_new_one(self):
         sub = Subscription.objects.create(environment=self.env_a)
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         PaymentAttempt.objects.create(environment=self.env_a, subscription=sub, merchant_order_id="chk_old",
                                       amount_minor_units=1, plan=plan, status=PaymentAttempt.Status.FAILED)
         PaymentAttempt.objects.create(environment=self.env_a, subscription=sub, merchant_order_id="chk_new",
@@ -100,7 +100,7 @@ def kashier_event(attempt, *, amount_minor=None, status="SUCCESS", currency="EGP
 
 @override_settings(**CONFIG)
 class EndToEndThroughTheRealAdapterTests(TenantTestCase):
-    def start(self, plan_key=Plan.Key.PLAN_2):
+    def start(self, plan_key=Plan.Key.TERM):
         # Session creation uses the fake (no network); only WEBHOOK verification uses the real adapter.
         with self.settings(PAYMENT_PROVIDER="fake"):
             self.client_a.post(CHECKOUT, {"plan_key": plan_key}, format="json", **self.with_env(self.env_a.id))
@@ -112,7 +112,7 @@ class EndToEndThroughTheRealAdapterTests(TenantTestCase):
     def test_a_signed_success_activates_the_purchased_plan_and_stores_the_real_token(self):
         """BUG (fixed): the stored payload is redacted, so the agreement reference used for renewals
         was a MASKED string (`*****7890`). The real references now travel in dedicated fields."""
-        attempt = self.start(Plan.Key.PLAN_2)
+        attempt = self.start(Plan.Key.TERM)
         body, sig = kashier_event(attempt)
 
         r = self.post(body, sig)
@@ -121,12 +121,12 @@ class EndToEndThroughTheRealAdapterTests(TenantTestCase):
         attempt.refresh_from_db()
         sub = Subscription.objects.get(environment=self.env_a)
         self.assertEqual(attempt.status, PaymentAttempt.Status.SUCCEEDED)
-        self.assertEqual((sub.state, sub.plan.key), (Subscription.State.ACTIVE, Plan.Key.PLAN_2))
-        self.assertEqual(sub.current_period_end - sub.current_period_start, timedelta(days=30))
+        self.assertEqual((sub.state, sub.plan.key), (Subscription.State.ACTIVE, Plan.Key.TERM))
+        self.assertEqual(sub.current_period_end - sub.current_period_start, timedelta(days=180))  # a term, not 30 days
         agreement = RecurringAgreement.objects.get(subscription=sub)
         self.assertEqual((agreement.card_token, agreement.kashier_agreement_id),
                          ("tok-REAL-1234567890", "agr-REAL-0987654321"))
-        self.assertEqual(entitlements.decide(self.env_a).student_cap, 800)
+        self.assertIsNone(entitlements.decide(self.env_a).student_cap)  # no plan has a student cap
 
     def test_the_stored_event_never_keeps_the_token_and_is_scrubbed_after_applying(self):
         attempt = self.start()
@@ -167,7 +167,7 @@ class EndToEndThroughTheRealAdapterTests(TenantTestCase):
     def test_underpaying_is_never_credited(self):
         """Signed but for the wrong amount (e.g. a cheaper plan's session paid against a dearer
         attempt): stored, flagged for a human, and NO access is granted."""
-        attempt = self.start(Plan.Key.PLAN_3)
+        attempt = self.start(Plan.Key.YEARLY)
         body, sig = kashier_event(attempt, amount_minor=attempt.amount_minor_units - 100000)
         self.assertEqual(self.post(body, sig).status_code, 200)
         attempt.refresh_from_db()

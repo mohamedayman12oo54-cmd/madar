@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from academics.models import Enrollment
 from accounts.models import User
 from accounts.permissions import IsStudent, IsTeacher
-from accounts.throttles import UserRateThrottle
+from accounts.throttles import AttemptCooldown, UserRateThrottle, VideoUploadStartThrottle
 from environments.tenancy import IsEnvironmentMember
 
 from .models import ContentItem, Transcript, VideoProgress
@@ -65,7 +65,10 @@ class VideoUploadView(APIView):
     """
     permission_classes = IS_ENV_OWNER
     parser_classes = [MultiPartParser, FormParser]
-    throttle_classes = [VideoUploadRateThrottle]
+    throttle_classes = [VideoUploadStartThrottle]
+
+    def throttled(self, request, wait):
+        raise AttemptCooldown(wait, VideoUploadStartThrottle().limit)
 
     def put(self, request, pk):
         item = _owned_item(request, pk)

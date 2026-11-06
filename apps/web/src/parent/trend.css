@@ -1,0 +1,143 @@
+/* Trend chart (guardian portal). Colours are roles; the series pair is the validated categorical slots 1-2
+   (blue, orange), stepped separately for a dark surface. */
+.tc {
+  --tc-s1: #2a78d6;
+  --tc-s2: #eb6834;
+  --tc-ink: var(--ink);
+  --tc-muted: var(--muted);
+  --tc-grid: var(--line);
+  --tc-surface: var(--panel);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .tc {
+    --tc-s1: #3987e5;
+    --tc-s2: #d95926;
+    --tc-surface: #1a1a19;
+  }
+}
+:root[data-theme="dark"] .tc {
+  --tc-s1: #3987e5;
+  --tc-s2: #d95926;
+  --tc-surface: #1a1a19;
+}
+
+.tc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-block-end: 8px;
+}
+.tc-legend {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--tc-ink);
+  font-size: 0.85rem;
+}
+.tc-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tc-key {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.tc-key.s1,
+.tc-line.s1 {
+  stroke: var(--tc-s1);
+}
+.tc-key.s2,
+.tc-line.s2 {
+  stroke: var(--tc-s2);
+}
+
+/* Capped: a 360-unit-wide drawing stretched across a desktop screen turns its 10px labels into 24px ones. */
+.tc-plot {
+  position: relative;
+  max-width: 640px;
+}
+.tc-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tc-grid {
+  stroke: var(--tc-grid);
+  stroke-width: 1;
+}
+.tc-tick {
+  fill: var(--tc-muted);
+  font-size: 10px;
+}
+.tc-cross {
+  stroke: var(--tc-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.tc-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tc-dot {
+  stroke: var(--tc-surface);
+  stroke-width: 2;
+}
+.tc-dot.s1 {
+  fill: var(--tc-s1);
+}
+.tc-dot.s2 {
+  fill: var(--tc-s2);
+}
+.tc-val {
+  fill: var(--tc-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.tc-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.tc-hit:focus-visible {
+  outline: 2px solid var(--tc-ink);
+  outline-offset: -2px;
+}
+
+.tc-tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  min-width: 132px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--tc-surface);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+  pointer-events: none;
+  z-index: 1;
+}
+.tc-tip-month {
+  color: var(--tc-muted);
+  margin-block-end: 4px;
+}
+.tc-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tc-muted);
+}
+.tc-tip-row strong {
+  color: var(--tc-ink);
+}
+.tc-rate {
+  fill: var(--tc-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+}

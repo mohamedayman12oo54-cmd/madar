@@ -20,7 +20,7 @@
 /* ---------- the list ---------- */
 .xs-list { display: grid; gap: 12px; }
 .xs-card { display: grid; gap: 14px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 18px; }
-.xs-state { justify-self: start; padding: 2px 10px; border-radius: 99px; background: var(--fill); color: var(--navy); font-size: 0.78rem; font-weight: 700; }
+.xs-state { justify-self: start; padding: 2px 10px; border-radius: 100px; background: var(--fill); color: var(--navy); font-size: 0.78rem; font-weight: 700; }
 .xs-state.is-open { background: var(--ok-bg); color: #1f6b34; }
 .xs-state.is-in_progress { background: var(--warn-bg); color: var(--warn); }
 .xs-state.is-closed { color: var(--soft); }
@@ -29,7 +29,7 @@
 .xs-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--soft); font-size: 0.86rem; }
 .xs-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .xs-note { color: var(--soft); font-size: 0.84rem; }
-.xs-flag { justify-self: start; padding: 3px 10px; border-radius: 99px; background: var(--warn-bg); color: var(--warn); font-size: 0.8rem; font-weight: 600; }
+.xs-flag { justify-self: start; padding: 3px 10px; border-radius: 100px; background: var(--warn-bg); color: var(--warn); font-size: 0.8rem; font-weight: 600; }
 .xs-side { display: grid; gap: 12px; }
 .xs-best { display: flex; align-items: center; gap: 12px; font-weight: 700; color: var(--ink); }
 .xs-best span { display: grid; line-height: 1.5; }
@@ -54,7 +54,7 @@
 .xi-card .abtn { inline-size: 100%; min-block-size: 52px; font-size: 1rem; }
 .xi-retake { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn); font-size: 0.88rem; font-weight: 600; }
 .xi-facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.xi-facts li { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px; background: var(--fill); color: var(--navy); font-size: 0.88rem; font-weight: 600; }
+.xi-facts li { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 100px; background: var(--fill); color: var(--navy); font-size: 0.88rem; font-weight: 600; }
 .xi-rules { padding: 14px 16px; border-radius: 14px; background: var(--fill); }
 .xi-rules ul { margin: 8px 0 0; padding-inline-start: 18px; display: grid; gap: 6px; font-size: 0.92rem; line-height: 1.8; }
 
@@ -67,7 +67,7 @@
 .xr-title { display: grid; min-inline-size: 0; line-height: 1.4; }
 .xr-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xr-title span { font-size: 0.78rem; color: var(--soft); }
-.xr-timer { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 99px; background: var(--fill); font-variant-numeric: tabular-nums; font-weight: 800; color: var(--navy); }
+.xr-timer { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 100px; background: var(--fill); font-variant-numeric: tabular-nums; font-weight: 800; color: var(--navy); }
 .xr-timer.is-low { background: var(--bad-bg); color: var(--bad); }
 .xr-strikes { display: inline-flex; align-items: center; gap: 7px; color: var(--soft); font-size: 0.82rem; font-weight: 600; }
 .xr-strikes-l { white-space: nowrap; }
@@ -83,7 +83,7 @@
 .xr-toast { padding: 10px 14px; border-radius: 12px; background: var(--navy); color: var(--cream); font-size: 0.9rem; }
 .xr-card { display: grid; gap: 16px; padding: 20px 18px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 22px; }
 .xr-qhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.xr-qno { padding: 3px 12px; border-radius: 99px; background: var(--navy); color: var(--cream); font-size: 0.82rem; font-weight: 700; }
+.xr-qno { padding: 3px 12px; border-radius: 100px; background: var(--navy); color: var(--cream); font-size: 0.82rem; font-weight: 700; }
 .xr-pts { color: var(--soft); font-size: 0.85rem; }
 .xr-text { margin: 0; font-size: 1.2rem; line-height: 2; font-weight: 700; overflow-wrap: anywhere; }
 .xr-choices { display: grid; gap: 10px; }

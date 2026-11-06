@@ -131,12 +131,13 @@ export default function FinancialsPage() {
         <div className="dash-search">
           <Search size={16} />
           <input
+            aria-label="بحث بالاسم"
             placeholder="ابحث بالاسم"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select className="inp" value={gradeId} onChange={(e) => setGradeId(e.target.value)}>
+        <select className="inp" aria-label="الصف" value={gradeId} onChange={(e) => setGradeId(e.target.value)}>
           <option value="">كل الصفوف</option>
           {grades.map((g) => (
             <option key={g.id} value={g.id}>
@@ -144,7 +145,7 @@ export default function FinancialsPage() {
             </option>
           ))}
         </select>
-        <select className="inp" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+        <select className="inp" aria-label="المجموعة" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
           <option value="">كل المجموعات</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
@@ -154,6 +155,7 @@ export default function FinancialsPage() {
         </select>
         <select
           className="inp"
+          aria-label="حالة الدفع"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >

@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { SessionProvider } from "./state/session.jsx";
 import { EnvironmentProvider } from "./state/environment.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import "./index.css";
 
@@ -21,7 +22,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <SessionProvider>
         <EnvironmentProvider>
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
           <InstallPrompt />
         </EnvironmentProvider>
       </SessionProvider>

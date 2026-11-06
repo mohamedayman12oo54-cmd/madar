@@ -24,8 +24,13 @@ Three keying strategies:
   * user      — for authenticated endpoints, keyed on the user id
 """
 import hashlib
+import math
+import time
 
-from rest_framework.throttling import SimpleRateThrottle
+from django.conf import settings
+from django.core.cache import cache
+from rest_framework.exceptions import Throttled
+from rest_framework.throttling import BaseThrottle, SimpleRateThrottle
 
 from .models import normalize_phone
 
@@ -156,6 +161,10 @@ class BroadcastRateThrottle(UserRateThrottle):
     scope = "broadcast"
 
 
+class GuardianMessageRateThrottle(UserRateThrottle):
+    scope = "guardian-message"
+
+
 class PasswordChangeRateThrottle(UserRateThrottle):
     scope = "password-change"
 
@@ -209,6 +218,19 @@ class GuardianCodeRateThrottle(SimpleRateThrottle):
             return None
         digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:32]
         return self.cache_format % {"scope": self.scope, "ident": digest}
+
+
+class GuardianReplyRateThrottle(SimpleRateThrottle):
+    """A guardian's replies to the teacher. A guardian has no user row (their `pk` is None, which would put
+    every guardian in ONE shared bucket), so the bucket is the child's enrolment."""
+
+    scope = "guardian-reply"
+
+    def get_cache_key(self, request, view):
+        enrollment_id = getattr(getattr(request, "user", None), "enrollment_id", None)
+        if enrollment_id is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": enrollment_id}
 
 
 # ---- session self check-in (public, unauthenticated) -------------------------
@@ -266,3 +288,89 @@ class RegisterLinkRateThrottle(SimpleRateThrottle):
             return None
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
         return self.cache_format % {"scope": self.scope, "ident": digest}
+
+
+# ---- attempts, then a cooldown ---------------------------------------------
+class AttemptCooldownThrottle(BaseThrottle):
+    """"N tries, then wait": the first `limit` requests go through; the moment the last allowed one is
+    used a cooldown of `cooldown` seconds starts, during which every request is refused with the exact
+    time left (the UI shows it as a timer). When it ends the allowance is full again.
+
+    Unlike the sliding-window rates above this is a lock the person can SEE and wait out, which is what a
+    teacher needs after several failed uploads. Keyed on the user; settings (`limit_setting`,
+    `cooldown_setting`) decide the numbers so ops can tune them without a deploy of code."""
+
+    scope = "attempt-cooldown"
+    limit_setting = "ATTEMPT_COOLDOWN_LIMIT"
+    cooldown_setting = "ATTEMPT_COOLDOWN_SECONDS"
+    default_limit = 5
+    default_cooldown = 300
+
+    def __init__(self):
+        self.limit = max(1, int(getattr(settings, self.limit_setting, self.default_limit)))
+        self.cooldown = max(1, int(getattr(settings, self.cooldown_setting, self.default_cooldown)))
+        self._wait = None
+
+    def _ident(self, request):
+        user = getattr(request, "user", None)
+        return user.pk if user is not None and user.is_authenticated else self.get_ident(request)
+
+    def allow_request(self, request, view):
+        ident = self._ident(request)
+        lock_key = f"throttle_{self.scope}_lock_{ident}"
+        count_key = f"throttle_{self.scope}_count_{ident}"
+        now = time.time()
+
+        locked_until = cache.get(lock_key)
+        if locked_until and locked_until > now:
+            self._wait = locked_until - now
+            return False
+
+        # The counter forgets itself after one cooldown of silence, so slow, occasional tries never add up.
+        if cache.add(count_key, 1, timeout=self.cooldown):
+            count = 1
+        else:
+            try:
+                count = cache.incr(count_key)
+            except ValueError:  # expired between add() and incr()
+                cache.set(count_key, 1, timeout=self.cooldown)
+                count = 1
+
+        if count >= self.limit:  # that was the last allowed try: the cooldown starts now
+            cache.set(lock_key, now + self.cooldown, timeout=self.cooldown)
+            cache.delete(count_key)
+        return True
+
+    def wait(self):
+        return self._wait
+
+
+class AttemptCooldown(Throttled):
+    """429 whose body says how long to wait (code `upload_cooldown`, `retry_after_seconds`)."""
+
+    default_code = "upload_cooldown"
+
+    def __init__(self, wait, limit):
+        seconds = max(1, int(math.ceil(wait or 1)))
+        minutes, rest = divmod(seconds, 60)
+        left = f"{minutes}:{rest:02d}"
+        super().__init__(
+            wait=seconds,
+            detail=f"استخدمت محاولات الرفع المتاحة ({limit}). يمكنك المحاولة مرة أخرى بعد {left} دقيقة.",
+        )
+        self.limit = limit
+
+
+class VideoUploadStartThrottle(AttemptCooldownThrottle):
+    """Starting a video upload: ATTEMPTS tries, then a COOLDOWN (defaults 5 and 5 minutes)."""
+
+    scope = "video-upload-start"
+    limit_setting = "VIDEO_UPLOAD_ATTEMPTS"
+    cooldown_setting = "VIDEO_UPLOAD_COOLDOWN_SECONDS"
+
+
+class VideoUploadChunkThrottle(UserRateThrottle):
+    """The chunks of an upload that is already running. They are NOT upload attempts, so they must not eat the
+    attempts allowance (a 1 GB video is ~60 chunks); this only stops a runaway client."""
+
+    scope = "video-upload-chunk"

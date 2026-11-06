@@ -68,7 +68,7 @@ class LongTranscriptTests(TranscriptQuizBase):
         self.assertEqual(self.request(item).status_code, 202)
 
         provider = RecordingProvider()
-        with mock.patch("ai.management.commands.process_ai_operations.get_provider", return_value=provider):
+        with mock.patch("ai.processing.get_provider", return_value=provider):
             call_command("process_ai_operations")
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual(provider.calls[0], ("درس الخلية", full))
@@ -201,7 +201,7 @@ class AuthorizationUnchangedTests(TranscriptQuizBase):
             def generate_quiz(self, title, text):
                 raise AIProviderError("upstream unavailable")
 
-        with mock.patch("ai.management.commands.process_ai_operations.get_provider", return_value=Boom()):
+        with mock.patch("ai.processing.get_provider", return_value=Boom()):
             call_command("process_ai_operations")
         op = self.get(f"quizzes/operations/{op_id}/").json()
         self.assertEqual((op["status"], op["quiz_id"]), ("failed", None))

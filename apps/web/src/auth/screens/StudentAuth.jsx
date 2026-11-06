@@ -332,8 +332,10 @@ export function StudentClaim() {
           <Head title="أنشئ كلمة مرور لحسابك" sub="ستدخل بها لاحقًا برقم هاتفك المسجّل في مدار." />
           <div className="auth-body">
             {pwErr && <Banner tone="err">{pwErr}</Banner>}
-            <Field label="كلمة المرور" required>
+            <Field label="كلمة المرور" required htmlFor="claim-pw">
               <PasswordInput
+                id="claim-pw"
+                aria-required="true"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 placeholder="أدخل كلمة المرور"
@@ -519,8 +521,10 @@ export function StudentForgot() {
             <Head title="إنشاء كلمة مرور جديدة" />
             <div className="auth-body">
               {err && <Banner tone="err">{err}</Banner>}
-              <Field label="كلمة المرور الجديدة" required>
+              <Field label="كلمة المرور الجديدة" required htmlFor="new-pw">
                 <PasswordInput
+                  id="new-pw"
+                  aria-required="true"
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
                   placeholder="أدخل كلمة المرور الجديدة"

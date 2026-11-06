@@ -6,17 +6,16 @@ from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from rest_framework.exceptions import APIException
 
 from .delivery import OTPDeliveryError, deliver, mask_email, mask_phone
 from .models import PendingAuth, User
-from .session_revocation import revoke_all_sessions
+from .session_revocation import logout_session, revoke_all_sessions
 from .serializers import (
     OTPVerifySerializer,
+    RevocationAwareRefreshSerializer,
     ResendOTPSerializer,
     StudentClaimActivateSerializer,
     StudentClaimRequestSerializer,
@@ -457,6 +456,7 @@ class SignOutEverywhereView(APIView):
 
 class ThrottledTokenRefreshView(TokenRefreshView):
     throttle_classes = [RefreshRateThrottle]
+    serializer_class = RevocationAwareRefreshSerializer
 
 
 class LogoutView(APIView):
@@ -475,9 +475,6 @@ class LogoutView(APIView):
         refresh = request.data.get("refresh") if isinstance(request.data, dict) else None
         if not refresh or not isinstance(refresh, str):
             return Response({"detail": "الحقل refresh مطلوب."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            token = RefreshToken(refresh)
-            token.blacklist()
-        except TokenError:
+        if not logout_session(refresh):
             return Response({"detail": "رمز غير صالح."}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_205_RESET_CONTENT)

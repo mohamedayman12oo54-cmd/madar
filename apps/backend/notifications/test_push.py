@@ -68,6 +68,23 @@ class SubscriptionApiTests(PushBase):
         self.client_a.post(B + "subscribe/", sub, format="json")
         self.assertNotEqual(PushSubscription.objects.get().user_id, self.user.pk)
 
+    def test_only_real_push_services_are_accepted_so_the_server_cannot_be_aimed_at_internal_hosts(self):
+        for bad in ("https://169.254.169.254/latest/meta-data", "https://localhost/x", "https://127.0.0.1:8000/x",
+                    "https://10.0.0.5/x", "https://evil.example/x", "https://fcm.googleapis.com.evil.example/x",
+                    "https://evilfcm.googleapis.com.attacker.io/x", "https://notfcm.googleapis.org/x"):
+            with self.subTest(endpoint=bad):
+                r = self.student.post(B + "subscribe/", {**browser_sub(), "endpoint": bad}, format="json")
+                self.assertEqual(r.status_code, 400, bad)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_every_browser_vendors_push_service_is_accepted(self):
+        for n, good in enumerate((
+                "https://fcm.googleapis.com/fcm/send/abc", "https://updates.push.services.mozilla.com/wpush/v2/abc",
+                "https://wns2-par02p.notify.windows.com/w/?token=abc", "https://web.push.apple.com/abc")):
+            with self.subTest(endpoint=good):
+                r = self.student.post(B + "subscribe/", {**browser_sub(), "endpoint": good}, format="json")
+                self.assertEqual(r.status_code, 201, good)
+
     def test_non_https_or_credentialed_endpoints_are_refused(self):
         for bad in ("http://fcm.googleapis.com/x", "https://user:pw@evil.example/x", "ftp://x/y", "javascript:alert(1)"):
             r = self.student.post(B + "subscribe/", {**browser_sub(), "endpoint": bad}, format="json")

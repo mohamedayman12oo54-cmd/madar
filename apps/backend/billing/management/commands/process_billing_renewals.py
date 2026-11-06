@@ -93,8 +93,8 @@ def claim_due_subscription(subscription_id, now):
             return None
 
         current = periods.current_period(subscription, now)
-        start, end = periods.next_period(current.period_end if current is not None else now)
         plan = subscription.plan  # price FROM THE PLAN ROW AT THIS MOMENT — price-change policy is OUT OF SCOPE (BILL-WU-042)
+        start, end = periods.next_period(current.period_end if current is not None else now, plan.period_days)
 
         period = BillingPeriod.objects.create(
             environment=subscription.environment, subscription=subscription, period_start=start, period_end=end,

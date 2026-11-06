@@ -14,7 +14,7 @@
 2. **الإنتاج**: `DJANGO_DEBUG=False` + مفتاح قوي (≥ 50 حرفًا) + `DJANGO_ALLOWED_HOSTS` + `CORS_ALLOWED_ORIGINS` بـ https. السيرفر **يرفض الإقلاع** بمفتاح ضعيف (مُختبَر)، و`manage.py check --deploy` ينجح بالإعدادات الصحيحة.
 3. **الـ frontend في الإنتاج**: `VITE_API_URL` يجب أن يكون `https://…` وإلا يتوقف التطبيق عند التحميل (أضفتُ هذا الحماية).
 4. قدّم الواجهة والـ API خلف HTTPS، وأضف ترويسات: `Content-Security-Policy` (لا `unsafe-inline` للسكربت) و`X-Content-Type-Options` و`Referrer-Policy` على الـ reverse proxy.
-5. شغّل يوميًا: `python manage.py purge_pending_auth` (حذف تدفقات OTP المنتهية) و`process_notifications` و`process_ai_operations` كعمليات worker.
+5. شغّل يوميًا: `python manage.py purge_pending_auth` (حذف تدفقات OTP المنتهية) و`process_notifications` كعملية worker. (`process_ai_operations` اختياري الآن: المعالجة تتم داخل الخادم افتراضيًا، والأمر شبكة أمان.)
 
 ## ✅ تم إصلاحه في هذا التسليم
 

@@ -60,7 +60,7 @@ function UserMenu() {
     setOpen(false);
     env.clear();
     await logout();
-    nav("/auth/teacher/login", { replace: true });
+    nav("/", { replace: true });
   };
 
   return (

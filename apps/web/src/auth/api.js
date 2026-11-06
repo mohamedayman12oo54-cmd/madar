@@ -3,6 +3,7 @@
 // environments/urls.py) — screens call these instead of touching
 // apiFetch directly.
 import { api, setTokens, clearTokens, getTokens } from "../lib/api.js";
+import { withTimeout } from "../lib/timeout.js";
 
 export const authApi = {
   teamLogin: (identifier, password) => api.post("/auth/team/login/", { identifier, password }),
@@ -34,7 +35,9 @@ export const authApi = {
       // The refresh token is the credential for logout (no access token
       // needed), so this still revokes it when the access token has expired.
       try {
-        await api.post("/auth/logout/", { refresh: tokens.refresh });
+        // Bounded: a stalled connection must not keep the person signed in. If the server cannot be reached the
+        // tokens are still removed from this device below.
+        await withTimeout(api.post("/auth/logout/", { refresh: tokens.refresh }), 6000);
       } catch {
         /* best-effort */
       }

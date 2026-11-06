@@ -179,6 +179,7 @@ with `DEBUG=False` and the placeholder secret key, on purpose.
   python manage.py process_notifications     # تسليم الإشعارات (غير متزامن)
   python manage.py process_ai_operations     # المساعد + اقتراح الحالة
   python manage.py purge_pending_auth        # يوميًا: حذف تدفقات OTP المنتهية
+  python manage.py process_guardian_alerts --loop   # تحذيرات أولياء الأمور التلقائية (كل ساعة افتراضيًا)
   ```
 - نقاط جديدة (كلها داخل بيئة المعلم النشطة `X-Madar-Environment` ومحصورة بها):
   `scheduling/{schedules,sessions/generate,sessions/<id>/roster,attendance/mark,recitation/mark}` •
@@ -194,5 +195,26 @@ with `DEBUG=False` and the placeholder secret key, on purpose.
 ## لوحة الطالب
 - نقاط `/api/v1/student/*` (تتطلب دور طالب + `X-Madar-Environment` لبيئة هو نشط فيها): `overview` • `attendance` • `recitation` • `payments` • `evaluation` • `videos` • `notifications` (+`read-all`, `<id>/read`) • `quizzes` (+`operations/<id>`, `<id>`, `<id>/submit`) • `assistant`.
 - `python manage.py migrate` (يضيف `studentarea` و`ContentItem.quiz_source` وأنواع جديدة في `ai`).
-- الـ worker `process_ai_operations` يولّد الآن الاختبارات أيضًا — شغّله بجانب الخادم.
+- الاختبارات والمساعد الدراسي يُعالَجان داخل الخادم نفسه فور الطلب (`AI_WORKER_MODE=thread`، الافتراضي) فلا حاجة لتشغيل worker منفصل؛ والأمر `process_ai_operations` يبقى متاحًا كشبكة أمان (يلتقط ما فاته أو ما تعطّل) ويمكن تشغيله بجانبه بأمان (كل عملية تُعالَج مرة واحدة فقط).
 - الاختبارات: `python manage.py test` (312).
+
+
+## لوحة ولي الأمر
+ولي الأمر بلا حساب: يدخل برقم هاتفه المسجّل عند المعلم + كود الطالب، فيحصل على جلسة قصيرة مرتبطة بطالب واحد (`Authorization: Parent <token>`). كل ما يلي للقراءة، عدا استثنائين مذكورين.
+- **ما يراه** (`GET /api/v1/parent/overview/`): الحضور والتسميع والمدفوعات والتقييم الشهري • درجات الامتحانات (أعلى محاولة) • الفيديوهات ونسب مشاهدتها • كويزات الذكاء الاصطناعي • مواعيد الحصص والقادمة منها • رسم تطور 6 أشهر • رسائل المعلم وردوده • الترتيب بين الزملاء (إن فعّله المعلم). ملاحظات المعلم الخاصة لا تظهر أبدًا.
+- **ما يكتبه ولي الأمر (الاستثناءان الوحيدان):** `POST parent/messages/<id>/read/` يسجّل وقت فتح رسالة عن ابنه • `POST parent/messages/<id>/reply/` رد قصير (500 حرف، 3 ردود لكل رسالة، 20/ساعة لكل طالب).
+- **المعلم** (داخل بيئته فقط، `X-Madar-Environment`):
+  - `guardian-messages/` — `POST` إرسال تحذير/ملاحظة عن طالب، `GET ?enrollment=<id>` سجل الرسائل مع وقت القراءة والردود.
+  - `guardian-messages/unread/` و`read-replies/` — عدّاد الردود الجديدة لكل طالب وتصفيره.
+  - `guardian-messages/settings/` — `GET/PUT` التحذيرات التلقائية (مغلقة افتراضيًا): حدّ الغياب، نسبة الامتحان، يوم تذكير المصروفات (القيمة 0 تعطّل القاعدة)، وإظهار الترتيب لولي الأمر.
+- **التحذيرات التلقائية** يكتبها `process_guardian_alerts` (آمن للتكرار: رسالة واحدة لكل طالب لكل شهر/امتحان). لا يوجد مُجدوِل منشور في المشروع، فشغّله كخدمة دائمة مع باقي الـ workers.
+- لا يصل لولي الأمر أي إشعار خارج البوابة (لا SMS ولا واتساب) قبل ربط مزوّد في `OTP_SMS_BACKEND`.
+- بعد السحب: `python manage.py migrate` (تطبيق `parents` له جداول الآن).
+
+
+## الذكاء الاصطناعي — السرعة والإعداد
+- `AI_PROVIDER=llm` يفعّل النموذج الحقيقي في **توليد الاختبارات** و**المساعد الدراسي** (إجابته من مواد قاعدة المعرفة المنشورة فقط؛ بلا مادة لا يُستدعى النموذج ويُقال للطالب ذلك). اقتراح حالة الطالب الشهري يبقى قاعدة حسابية شفافة.
+- `AI_WORKER_MODE=thread` (الافتراضي) يبدأ المعالجة لحظة حفظ الطلب؛ `external` يترك كل شيء للأمر `process_ai_operations`. `AI_INLINE_WORKERS=4` حدّ الاتصالات المتزامنة بالنموذج من هذه العملية.
+- `QUIZ_VALIDATION_PARALLEL=True` يشغّل فحص «هل المحتوى تعليمي؟» بالتوازي مع أول محاولة توليد (ينتظر الطالب استدعاءً واحدًا لا اثنين)، مع بقاء القاعدة: لا يصل طالبًا اختبار من محتوى مرفوض. `QUIZ_VALIDATION_SAMPLE_CHARS=9000` يحدّد ما يقرؤه المصنِّف من النص الطويل (البداية والوسط والنهاية).
+- `GEMINI_THINKING` اختياري: النماذج «المفكِّرة» أبطأ؛ جرّب `0` (Gemini 2.5) أو `low`/`minimal` (Gemini 3) ثم `python manage.py check_llm_provider` للتأكد أن النموذج يقبله.
+- أزمنة كل اختبار مولَّد محفوظة في `AIOperation.metadata["timings_ms"]` (`content_check` / `generation` / `total`) للمتابعة.

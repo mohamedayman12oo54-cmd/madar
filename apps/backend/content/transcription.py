@@ -3,14 +3,14 @@ Lesson-video transcription (pipeline step 2: video -> text with timestamps).
 
 Same shape as the other Madar-owned provider interfaces (content/video.py,
 ai/providers.py): the model that does the work is an implementation detail
-behind `Transcriber`. The default pipeline tries the hosted
-`GroqWhisperTranscriber` first (Groq's free-tier, OpenAI-compatible Whisper
-API) and falls back to the local `FasterWhisperTranscriber` (via
-`FallbackTranscriber`) when the API is rate limited, times out, is otherwise
-unavailable, or is not configured — so a lesson is never left untranscribed
-just because the external API had a bad moment. `FasterWhisperTranscriber`
-remains available standalone (no API key, audio never leaves the server) by
-setting TRANSCRIPTION_PROVIDER=faster_whisper.
+behind `Transcriber`. The ONLY active provider is the hosted
+`GroqWhisperTranscriber` (Groq's OpenAI-compatible Whisper API). When it is
+rate limited, unavailable, or not configured the transcript is marked failed
+with a teacher-facing message and can be retried; nothing runs locally.
+
+FROZEN: `FasterWhisperTranscriber` and `FallbackTranscriber` are kept in this
+file but are deliberately absent from `_TRANSCRIBERS`, so the product cannot
+reach them. To unfreeze, register them there again.
 
 Lifecycle (mirrors the AI operations): pending -> processing -> completed |
 failed. The upload returns immediately; the slow part runs in a background
@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -53,15 +54,18 @@ def _redact(text, *secrets):
     return _GROQ_KEY_RE.sub("[redacted]", text)
 
 
+def _ms(seconds):
+    return int(round(seconds * 1000))
+
+
 class TranscriptionError(Exception):
     """A failure whose message is safe and useful to show to the teacher."""
 
 
 class ExternalSTTError(Exception):
     """Internal signal from an external STT adapter (category + HTTP status,
-    for logs only). Never shown to the user directly — a `FallbackTranscriber`
-    catches it and either falls back or lets `TranscriptionError` carry the
-    user-safe message instead."""
+    for logs only). Never shown to the user directly — `run_transcription`
+    turns the category into a message from `_STT_FAILURE_MESSAGES`."""
     category = "error"
 
     def __init__(self, message, *, category=None, status=None):
@@ -69,6 +73,7 @@ class ExternalSTTError(Exception):
         if category:
             self.category = category
         self.status = status
+        self.elapsed_ms = None
 
 
 class Transcriber:
@@ -80,6 +85,7 @@ class Transcriber:
 
 
 class FasterWhisperTranscriber(Transcriber):
+    """FROZEN: not registered in `_TRANSCRIBERS` (see the module docstring)."""
     name = "faster_whisper"
     _model = None
     _lock = threading.Lock()
@@ -102,7 +108,9 @@ class FasterWhisperTranscriber(Transcriber):
         return cls._model
 
     def transcribe(self, path, language=""):
+        started = time.monotonic()
         model = self._load()
+        loaded = time.monotonic()
         try:
             segments, info = model.transcribe(
                 path, language=language or None, vad_filter=True, beam_size=5)
@@ -118,9 +126,12 @@ class FasterWhisperTranscriber(Transcriber):
         except Exception as exc:
             log.exception("faster-whisper failed on %s", path)
             raise TranscriptionError("تعذّر قراءة الصوت من ملف الفيديو.") from exc
+        done = time.monotonic()
         return {
             "text": " ".join(parts), "language": info.language or "",
             "duration": info.duration, "segments": out,
+            "timings_ms": {"model_load": _ms(loaded - started), "decode": _ms(done - loaded),
+                           "total": _ms(done - started)},
         }
 
 
@@ -215,21 +226,22 @@ def _multipart_post(url, headers, fields, filename, file_bytes, timeout):
 
 
 class GroqWhisperTranscriber(Transcriber):
-    """Hosted Whisper transcription via Groq's REST API — the default PRIMARY
+    """Hosted Whisper transcription via Groq's REST API — the only active
     provider. Groq's free tier runs `whisper-large-v3-turbo` (and
     `whisper-large-v3`) behind an OpenAI-compatible endpoint, so this adapter
     is a plain multipart POST, same as `ai.gemini.GeminiClient`'s "no SDK"
     convention. Swapping the vendor later means writing another `Transcriber`
-    and adding it to `_TRANSCRIBERS`, not touching the fallback logic or the
-    quiz pipeline downstream."""
+    and adding it to `_TRANSCRIBERS`, not touching the quiz pipeline
+    downstream."""
     name = "groq_whisper_api"
     API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
-    def __init__(self, *, api_key=None, model=None, timeout=None, transport=None):
+    def __init__(self, *, api_key=None, model=None, timeout=None, transport=None, max_upload_mb=None):
         self._api_key = (api_key if api_key is not None else getattr(settings, "GROQ_API_KEY", "")).strip()
         self._model = (model or getattr(settings, "GROQ_STT_MODEL", "whisper-large-v3-turbo")).strip()
         self._timeout = timeout or getattr(settings, "GROQ_STT_TIMEOUT_SECONDS", 120)
         self._transport = transport or _multipart_post
+        self._max_upload_bytes = (max_upload_mb or getattr(settings, "GROQ_STT_MAX_UPLOAD_MB", 25)) * 1024 * 1024
 
     @classmethod
     def is_configured(cls):
@@ -238,25 +250,39 @@ class GroqWhisperTranscriber(Transcriber):
     def transcribe(self, path, language=""):
         if not self._api_key:
             raise ExternalSTTError("GROQ_API_KEY is not set.", category="config")
+        started = time.monotonic()
         audio_path, is_temp = _extract_audio(path)
         try:
             with open(audio_path, "rb") as fh:
-                audio_bytes = fh.read()
+                # One byte past the limit is enough to know: a huge video is never loaded into memory.
+                audio_bytes = fh.read(self._max_upload_bytes + 1)
         finally:
             if is_temp:
                 try:
                     os.remove(audio_path)
                 except OSError:
                     pass
+        extracted = time.monotonic()
+        if len(audio_bytes) > self._max_upload_bytes:
+            raise ExternalSTTError(
+                f"The audio is over the {self._max_upload_bytes // (1024 * 1024)} MB upload limit.", category="too_large")
         fields = {"model": self._model, "response_format": "verbose_json"}
         if language:
             fields["language"] = language
-        headers = {"Authorization": f"Bearer {self._api_key}"}
+        # Groq's Cloudflare edge answers urllib's default User-Agent with 403 (error code 1010).
+        headers = {"Authorization": f"Bearer {self._api_key}", "User-Agent": "Madar-Backend/1.0"}
         status, resp_headers, raw = self._transport(
             self.API_URL, headers, fields, "audio.mp3", audio_bytes, self._timeout)
+        called = time.monotonic()
         if status != 200:
-            raise self._error_for(status, resp_headers, raw)
-        return self._parse(raw)
+            err = self._error_for(status, resp_headers, raw)
+            err.elapsed_ms = _ms(called - extracted)
+            raise err
+        result = self._parse(raw)
+        result["audio_bytes"] = len(audio_bytes)
+        result["timings_ms"] = {"audio_extract": _ms(extracted - started), "api_call": _ms(called - extracted),
+                                "total": _ms(time.monotonic() - started)}
+        return result
 
     def _error_for(self, status, headers, raw):
         message = _parse_groq_error(raw)
@@ -266,6 +292,8 @@ class GroqWhisperTranscriber(Transcriber):
             return ExternalSTTError(detail, category="auth", status=status)
         if status == 429:
             return ExternalSTTError(detail, category="rate_limit", status=status)
+        if status == 413:
+            return ExternalSTTError(detail, category="too_large", status=status)
         if status == 408 or status >= 500:
             return ExternalSTTError(detail, category="provider", status=status)
         return ExternalSTTError(detail, category="bad_request", status=status)
@@ -295,7 +323,9 @@ class GroqWhisperTranscriber(Transcriber):
 
 
 class FallbackTranscriber(Transcriber):
-    """Primary: an external STT API. Falls back to a local transcriber when
+    """FROZEN: not registered in `_TRANSCRIBERS` (see the module docstring).
+
+    Primary: an external STT API. Falls back to a local transcriber when
     the primary is unconfigured, rate limited, times out, or is otherwise
     unavailable — so a lesson is never left untranscribed over a transient API
     problem. If the fallback also fails, its `TranscriptionError` (a safe,
@@ -307,33 +337,45 @@ class FallbackTranscriber(Transcriber):
         self._fallback = fallback
 
     def transcribe(self, path, language=""):
-        if self._primary is not None:
+        reason, failed_after_ms = "", None
+        if self._primary is None:
+            reason = "groq_not_configured"
+            log.warning("GROQ_API_KEY is not set: transcribing with the local %s model instead.", self._fallback.name)
+        else:
             try:
                 result = self._primary.transcribe(path, language)
                 result.setdefault("provider", self._primary.name)
                 return result
             except ExternalSTTError as exc:
+                reason = f"{exc.category}" + (f":{exc.status}" if exc.status else "")
+                failed_after_ms = exc.elapsed_ms
                 log.warning(
                     "external STT failed (category=%s status=%s), falling back to %s: %s",
                     exc.category, exc.status, self._fallback.name, exc,
                 )
             except Exception:
+                reason = "unexpected_error"
                 log.exception(
                     "external STT raised an unexpected error, falling back to %s", self._fallback.name)
         result = self._fallback.transcribe(path, language)
         result.setdefault("provider", self._fallback.name)
+        result["fallback_reason"] = reason
+        if failed_after_ms is not None:
+            result.setdefault("timings_ms", {})["groq_failed_after"] = failed_after_ms
         return result
 
 
-def _external_with_local_fallback():
-    primary = GroqWhisperTranscriber() if GroqWhisperTranscriber.is_configured() else None
-    fallback = _TRANSCRIBERS[FasterWhisperTranscriber.name]()
-    return FallbackTranscriber(primary, fallback)
-
-
 _TRANSCRIBERS = {
-    FasterWhisperTranscriber.name: FasterWhisperTranscriber,
-    GroqWhisperTranscriber.name: _external_with_local_fallback,
+    GroqWhisperTranscriber.name: GroqWhisperTranscriber,
+}
+
+_STT_BUSY = "خدمة تحويل الفيديو إلى نص غير متاحة حاليًا. حاول مرة أخرى بعد قليل."
+_STT_NOT_CONFIGURED = "خدمة تحويل الفيديو إلى نص غير مهيأة على الخادم. تواصل مع الدعم الفني."
+_STT_FAILURE_MESSAGES = {
+    "config": _STT_NOT_CONFIGURED, "auth": _STT_NOT_CONFIGURED,
+    "rate_limit": "تم بلوغ الحد المسموح لخدمة تحويل الفيديو إلى نص. حاول مرة أخرى لاحقًا.",
+    "too_large": "صوت هذا الفيديو أكبر من الحجم الذي تقبله خدمة تحويل الفيديو إلى نص.",
+    "bad_request": "لم تقبل خدمة تحويل الفيديو إلى نص هذا الملف.",
 }
 
 
@@ -368,12 +410,22 @@ def run_transcription(transcript_id) -> None:
     except TranscriptionError as exc:
         _fail(transcript_id, str(exc))
         return
+    except ExternalSTTError as exc:
+        log.warning("transcription failed transcript=%s category=%s status=%s: %s",
+                    transcript_id, exc.category, exc.status, exc)
+        _fail(transcript_id, _STT_FAILURE_MESSAGES.get(exc.category, _STT_BUSY))
+        return
     except Exception:
         log.exception("transcription failed for transcript %s", transcript_id)
         _fail(transcript_id, "حدث خطأ غير متوقع أثناء تحويل الفيديو إلى نص.")
         return
 
     duration = result.get("duration")
+    log.info(
+        "transcription done transcript=%s provider=%s language=%s audio_s=%s chars=%s fallback_reason=%s timings_ms=%s",
+        transcript_id, result.get("provider") or transcriber.name, result.get("language", ""),
+        int(duration) if duration else None, len(text), result.get("fallback_reason") or "-",
+        result.get("timings_ms"))
     Transcript.objects.filter(pk=transcript_id).update(
         status=Transcript.Status.COMPLETED, text=text, language=result.get("language", ""),
         segments=result.get("segments", []),

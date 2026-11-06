@@ -46,7 +46,7 @@ class WorkerAppliesReceivedEventsTests(TenantTestCase):
     """AC-BILL-022-1."""
 
     def test_a_received_event_is_applied_by_one_run(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_attempt(self.env_a, subscription, plan, "wrk-1")
         event = _make_event("dk-wrk-1", "wrk-1", "txn-wrk-1", plan.price_minor_units, plan.currency)
@@ -87,7 +87,7 @@ class ClaimAtomicityTests(TransactionTestCase):
         self.env = Environment.objects.create(owner=self.teacher, name="env")
         EnvironmentMembership.objects.create(user=self.teacher, environment=self.env, role=EnvironmentMembership.Role.OWNER)
         self.plan, _ = Plan.objects.get_or_create(
-            key=Plan.Key.PLAN_1,
+            key=Plan.Key.MONTHLY,
             defaults={"name": "Plan 1", "price_minor_units": 100000, "currency": "EGP", "max_students": 400},
         )
         self.subscription = Subscription.objects.create(environment=self.env, plan=self.plan, state=Subscription.State.TRIAL)
@@ -121,7 +121,7 @@ class StaleRequeueTests(TenantTestCase):
     """AC-BILL-022-3."""
 
     def test_a_stale_processing_event_is_requeued_and_applied(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_attempt(self.env_a, subscription, plan, "wrk-stale")
         event = _make_event(
@@ -142,7 +142,7 @@ class StaleRequeueTests(TenantTestCase):
         self.assertIn("requeued 1 stale", out)
 
     def test_a_fresh_processing_event_is_left_alone(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_attempt(self.env_a, subscription, plan, "wrk-fresh")
         event = _make_event(
@@ -162,7 +162,7 @@ class PoisonEventTests(TenantTestCase):
     """AC-BILL-022-4."""
 
     def test_a_consistently_failing_event_ends_needs_attention_without_blocking_others(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
 
         poison_attempt = _make_attempt(self.env_a, subscription, plan, "wrk-poison")

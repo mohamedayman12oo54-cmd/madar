@@ -1,7 +1,7 @@
 // Regression tests for the async-operation poller (Phase 5 / AI flow).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pollUntilDone } from "./poll.js";
+import { AI_POLL, aiPollSchedule, pollUntilDone } from "./poll.js";
 
 const noSleep = async () => {};
 const isDone = (op) => op.status === "completed" || op.status === "failed";
@@ -139,3 +139,17 @@ test("an update that arrives after abort is not reported to the (possibly unmoun
   assert.equal(out.status, "aborted");
   assert.deepEqual(updates, []);
 });
+
+test("the AI schedule looks again quickly at first and then every two seconds", async () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 40].map(aiPollSchedule), [500, 700, 900, 1200, 2000, 2000, 2000]);
+  const waits = [];
+  const out = await pollUntilDone(sequence({ status: "pending" }, { status: "pending" }, { status: "pending" }, { status: "completed" }), {
+    isDone,
+    ...AI_POLL,
+    sleep: async (ms) => waits.push(ms),
+  });
+  assert.equal(out.status, "done");
+  assert.deepEqual(waits, [500, 700, 900]);      // the first answer is looked for after half a second, not two
+  assert.ok(AI_POLL.maxAttempts >= 60, "still waits at least as long as before");
+});
+

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { studentApi } from "../lib/studentApi.js";
-import { pollUntilDone } from "../lib/poll.js";
+import { AI_POLL, pollUntilDone } from "../lib/poll.js";
 import { ApiError } from "../lib/api.js";
 
 const newKey = () =>
@@ -27,6 +27,7 @@ export function useQuiz() {
       const out = await pollUntilDone(() => studentApi.quizzes.operation(op.id), {
         isDone: (o) => o.status === "completed" || o.status === "failed",
         signal: controller.signal,
+        ...AI_POLL,
       });
       if (out.status === "done" && out.op.status === "completed" && out.op.quiz_id) {
         delete keys.current[item.id];

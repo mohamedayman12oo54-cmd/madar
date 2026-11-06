@@ -91,7 +91,7 @@ class PlanGatedQuizAndStateRecommendationTests(_StudentFixtureMixin, TenantTestC
 
     def setUp(self):
         super().setUp()
-        grant_plan(self.env_a, Plan.Key.PLAN_1)
+        grant_plan(self.env_a, Plan.Key.MONTHLY)
         self.grade = Grade.objects.create(environment=self.env_a, name="g", fee_amount=1)
         self.group = Group.objects.create(environment=self.env_a, grade=self.grade, name="G1")
         self.enrollment = make_enrollment(self.env_a, self.make_student_in(self.env_a, "201099911111", "s1"), self.grade, self.group)
@@ -106,14 +106,13 @@ class PlanGatedQuizAndStateRecommendationTests(_StudentFixtureMixin, TenantTestC
         r = self.student_cli.post(QUIZ_URL, {"content_id": self.content.id}, format="json", **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 202, r.content)
 
-    def test_state_recommendation_submit_is_refused_on_plan_1(self):
+    def test_state_recommendation_submit_is_allowed_on_every_plan(self):
         month = timezone.now().strftime("%Y-%m")
         r = self.client_a.post(
             STATE_REC_URL, {"enrollment_id": self.enrollment.id, "month": month}, format="json",
             **self.with_env(self.env_a.id),
         )
-        self.assertEqual(r.status_code, 403, r.content)
-        self.assertEqual(r.json()["code"], "capability_not_in_plan")
+        self.assertEqual(r.status_code, 202, r.content)  # every plan has every feature now
 
 
 class TrialGrantsFullPlan3CapabilitySetTests(_StudentFixtureMixin, TenantTestCase):

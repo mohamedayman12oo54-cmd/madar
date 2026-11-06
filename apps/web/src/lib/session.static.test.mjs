@@ -32,9 +32,11 @@ test("a dropped connection never turns into a logout (bootstrap and environment 
   assert.match(env, /e\.status >= 400 && e\.status < 500/);
 });
 
-test("every sign-out button leads back to its own login page", () => {
+test("every sign-out button leads to the Home page", () => {
   const read = (f) => fs.readFileSync(path.join(SRC, f), "utf8");
-  assert.match(read("dashboard/DashboardLayout.jsx"), /nav\("\/auth\/teacher\/login"/);
-  assert.match(read("student/StudentLayout.jsx"), /nav\("\/auth\/student"/);
-  assert.match(read("parent/ParentPortal.jsx"), /clearParentSession\(\);\s*nav\("\/auth\/parent"/);
+  assert.match(read("dashboard/DashboardLayout.jsx"), /await logout\(\);\s*nav\("\/", \{ replace: true \}\)/);
+  assert.match(read("student/StudentLayout.jsx"), /await logout\(\);\s*nav\("\/", \{ replace: true \}\)/);
+  assert.match(read("team/TeamLayout.jsx"), /await logout\(\);\s*nav\("\/", \{ replace: true \}\)/);
+  assert.match(read("auth/screens/AuthStates.jsx"), /await logout\(\);\s*nav\("\/", \{ replace: true \}\)/);
+  assert.match(read("parent/ParentPortal.jsx"), /clearParentSession\(\);\s*nav\("\/"/);
 });

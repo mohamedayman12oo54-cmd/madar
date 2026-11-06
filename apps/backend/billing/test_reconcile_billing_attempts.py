@@ -62,7 +62,7 @@ class UnknownRenewalResolvedAsPaidTests(TenantTestCase):
     """AC-BILL-023-1."""
 
     def test_an_unknown_renewal_attempt_resolved_as_paid_marks_the_period_paid_with_no_second_charge(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         attempt, period = _make_old_renewal_attempt(self.env_a, subscription, plan, "rec-ac1")
 
@@ -87,7 +87,7 @@ class DuplicateChargeGuardTests(TenantTestCase):
     "service check" half of this AC's wording."""
 
     def test_a_second_non_terminal_attempt_for_the_same_period_is_rejected(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         attempt, period = _make_old_renewal_attempt(self.env_a, subscription, plan, "rec-ac2", status=PaymentAttempt.Status.PENDING)
 
@@ -103,7 +103,7 @@ class InconclusiveLookupTests(TenantTestCase):
     """AC-BILL-023-3."""
 
     def test_an_inconclusive_lookup_leaves_state_unchanged(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE)
         attempt, period = _make_old_renewal_attempt(self.env_a, subscription, plan, "rec-ac3")
 
@@ -124,7 +124,7 @@ class AbandonedCheckoutTests(TenantTestCase):
     """AC-BILL-023-4."""
 
     def test_an_abandoned_checkout_attempt_becomes_terminal_and_a_new_checkout_is_then_allowed(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_old_checkout_attempt(
             self.env_a, subscription, plan, "rec-ac4", age_minutes=25 * 60,
@@ -141,12 +141,12 @@ class AbandonedCheckoutTests(TenantTestCase):
 
         # A new checkout is allowed now — not blocked by the abandoned one.
         with mock.patch("billing.management.commands.reconcile_billing_attempts.get_payment_provider", return_value=provider):
-            new_attempt, session_url = start_checkout(self.env_a, Plan.Key.PLAN_1, "https://app.example.com/return")
+            new_attempt, session_url = start_checkout(self.env_a, Plan.Key.MONTHLY, "https://app.example.com/return")
         self.assertNotEqual(new_attempt.pk, attempt.pk)
         self.assertTrue(session_url)
 
     def test_a_not_yet_old_enough_checkout_attempt_is_left_unresolved_not_abandoned(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         subscription = Subscription.objects.create(environment=self.env_a, plan=plan, state=Subscription.State.TRIAL)
         attempt = _make_old_checkout_attempt(self.env_a, subscription, plan, "rec-ac4b", age_minutes=20)
 
@@ -177,7 +177,7 @@ class ConcurrentReconcilersTests(TransactionTestCase):
         self.env = Environment.objects.create(owner=self.teacher, name="env")
         EnvironmentMembership.objects.create(user=self.teacher, environment=self.env, role=EnvironmentMembership.Role.OWNER)
         self.plan, _ = Plan.objects.get_or_create(
-            key=Plan.Key.PLAN_1,
+            key=Plan.Key.MONTHLY,
             defaults={"name": "Plan 1", "price_minor_units": 100000, "currency": "EGP", "max_students": 400},
         )
         self.subscription = Subscription.objects.create(environment=self.env, plan=self.plan, state=Subscription.State.ACTIVE)

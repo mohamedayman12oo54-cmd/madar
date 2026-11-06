@@ -1,0 +1,66 @@
+/* Guardian report on paper / "save as PDF": the browser's print dialog is the whole feature. Controls and chrome
+   are dropped; every section is kept together so a row is never cut across two pages. */
+.pp-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pp-new {
+  margin-inline-end: 6px;
+}
+.print-only {
+  display: none;
+}
+@media print {
+  .no-print,
+  .stu-top {
+    display: none !important;
+  }
+  .print-only {
+    display: block;
+  }
+  html,
+  body,
+  .stu,
+  .stu-body {
+    background: #fff !important;
+  }
+  .stu-body {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .pp-hero {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    border: 1px solid #999;
+  }
+  .pp-hero .pp-meta {
+    color: #333 !important;
+  }
+  .pp-attn {
+    background: #f4f4f4 !important;
+  }
+  .pp-cols {
+    display: block !important;
+  }
+  .pp-col {
+    display: block !important;
+  }
+  .pp-panel,
+  .pp-kpi,
+  .pp-msg {
+    break-inside: avoid;
+    margin-block-end: 12px;
+  }
+  .dash-section-head {
+    break-after: avoid;
+  }
+  * {
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

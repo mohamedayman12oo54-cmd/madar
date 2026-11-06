@@ -27,11 +27,8 @@ status per key is:
   Escalation conditions). It is deliberately **not** listed as a
   capability key below.
 
-`BILLING_PERIOD_DAYS` is a single global constant, not a per-Plan field:
-all three plans share one identical 30-elapsed-day billing period
-(`commercial-model.md` §Plans — every row in that table says "30 elapsed
-days"), so there is nothing to vary per plan. `BillingPeriod` rows (not
-this module) are where that constant is actually applied (BILL-WU-024).
+Every plan grants every capability: the plans (monthly / term / yearly) differ in price and in how long one
+paid period lasts, which is `Plan.period_days` (applied by `BillingPeriod` rows, BILL-WU-024), not in features.
 
 Student-count caps are read directly from `Plan.max_students` / this
 module's `TRIAL_STUDENT_CAP`, not from a separate table — BILL-WU-012 is
@@ -43,29 +40,22 @@ AI_QUIZ_FROM_VIDEO = "ai.quiz_from_video"
 AI_VIDEO_CONTENT_CHAT = "ai.video_content_chat"
 AI_PERFORMANCE_ANALYSIS = "ai.performance_analysis"
 
-# All three plans share one 30-elapsed-day billing period (commercial-model
-# §Plans). Never a calendar month; see BILL-WU-024.
-BILLING_PERIOD_DAYS = 30
+ALL_CAPABILITIES = frozenset({AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT, AI_PERFORMANCE_ANALYSIS})
 
-# Each plan grants everything the plan(s) "below" it grant, plus one more
-# capability — exactly as commercial-model.md §Plans states ("Everything in
-# Plan 1 + ...", "Everything in Plan 2 + ...").
+# One feature set for every plan: whichever way a teacher pays, they get everything.
 PLAN_CAPABILITIES = {
-    Plan.Key.PLAN_1: frozenset({AI_QUIZ_FROM_VIDEO}),
-    Plan.Key.PLAN_2: frozenset({AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT}),
-    Plan.Key.PLAN_3: frozenset({AI_QUIZ_FROM_VIDEO, AI_VIDEO_CONTENT_CHAT, AI_PERFORMANCE_ANALYSIS}),
+    Plan.Key.MONTHLY: ALL_CAPABILITIES,
+    Plan.Key.TERM: ALL_CAPABILITIES,
+    Plan.Key.YEARLY: ALL_CAPABILITIES,
 }
 
-# Trial = Plan 3's full feature set (commercial-model.md §Free trial), with
-# its OWN student cap (250) — independent of, and smaller than, every
-# plan's own cap, including Plan 3's absence of a plan-level cap.
-TRIAL_CAPABILITIES = PLAN_CAPABILITIES[Plan.Key.PLAN_3]
+# The 16-day free trial = every feature, with its OWN student cap (250): the plans themselves have no cap.
+TRIAL_CAPABILITIES = ALL_CAPABILITIES
 TRIAL_STUDENT_CAP = 250
 
 
 def capabilities_for_plan(plan_key):
     """Return the frozenset of capability keys the given Plan.Key grants.
     Raises KeyError for anything that is not one of the three decided plan
-    keys — there is no plan this registry doesn't know about, by design
-    (this unit excludes any additional tier)."""
+    keys — there is no plan this registry doesn't know about, by design."""
     return PLAN_CAPABILITIES[plan_key]

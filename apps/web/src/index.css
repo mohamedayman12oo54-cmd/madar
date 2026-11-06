@@ -27,6 +27,12 @@
   --warn: #8a5a00;
   --warn-bg: #fdf0d5;
   --maxw: 1200px;
+  /* radius scale: sm = chips/inputs, md = buttons/fields, lg = cards, xl = dialogs/panels, pill = capsules */
+  --r-sm: 10px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 100px;
   --pad: clamp(20px, 5vw, 64px);
 }
 
@@ -110,6 +116,15 @@ li {
 .btn {
   min-height: 44px;
 }
+/* the logo link is only 30px tall: widen its hit area without moving anything */
+.brand {
+  position: relative;
+}
+.brand::after {
+  content: "";
+  position: absolute;
+  inset: -8px -6px;
+}
 /* flex children that hold text must be allowed to shrink, not overflow */
 .mrow .who,
 .env-info,
@@ -131,7 +146,7 @@ li {
   padding-inline: var(--pad);
 }
 .section {
-  padding-block: clamp(72px, 11vw, 146px);
+  padding-block: clamp(56px, 7.5vw, 104px);
   position: relative;
 }
 
@@ -1054,7 +1069,7 @@ li {
 
 /* page header (secondary pages) */
 .page-head {
-  padding-block: clamp(120px, 18vh, 190px) clamp(30px, 6vw, 70px);
+  padding-block: clamp(104px, 14vh, 144px) clamp(28px, 4vw, 52px);
   text-align: center;
   background: var(--surface);
   border-block-end: 1px solid var(--line);
@@ -1337,7 +1352,7 @@ li {
 }
 .install-btn {
   border: 0;
-  border-radius: 11px;
+  border-radius: 12px;
   padding: 9px 15px;
   cursor: pointer;
   font: inherit;
@@ -1388,7 +1403,7 @@ li {
 }
 *::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--navy) 24%, transparent);
-  border-radius: 999px;
+  border-radius: 100px;
   /* The border is transparent padding, so the thumb reads as a slim pill
      rather than filling the whole gutter. */
   border: 3px solid transparent;

@@ -27,7 +27,7 @@ class CheckoutInitiationTests(TenantTestCase):
     """AC-BILL-019-1."""
 
     def test_a_teacher_owner_can_start_checkout_for_each_plan(self):
-        for key in (Plan.Key.PLAN_1, Plan.Key.PLAN_2, Plan.Key.PLAN_3):
+        for key in (Plan.Key.MONTHLY, Plan.Key.TERM, Plan.Key.YEARLY):
             plan = Plan.objects.get(key=key)
             r = self.client_a.post(
                 "/api/v1/billing/checkout/", {"plan_key": key}, format="json", **self.with_env(self.env_a.id)
@@ -54,7 +54,7 @@ class CheckoutMassAssignmentTests(TenantTestCase):
         r = self.client_a.post(
             "/api/v1/billing/checkout/",
             {
-                "plan_key": Plan.Key.PLAN_1,
+                "plan_key": Plan.Key.MONTHLY,
                 "amount": 1, "amount_minor_units": 1, "currency": "USD", "status": "succeeded",
                 "environment_id": self.env_b.id,
             },
@@ -62,7 +62,7 @@ class CheckoutMassAssignmentTests(TenantTestCase):
         )
         self.assertEqual(r.status_code, 201, r.content)
         attempt = PaymentAttempt.objects.get(pk=r.json()["attempt_id"])
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.assertEqual(attempt.amount_minor_units, plan.price_minor_units)
         self.assertEqual(attempt.currency, plan.currency)
         self.assertEqual(attempt.status, PaymentAttempt.Status.INITIATED)
@@ -75,7 +75,7 @@ class CheckoutReturnEndpointTests(TenantTestCase):
     def setUp(self):
         super().setUp()
         r = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertEqual(r.status_code, 201, r.content)
         self.attempt_id = r.json()["attempt_id"]
@@ -112,10 +112,10 @@ class CheckoutIdempotencyTests(TenantTestCase):
 
     def test_a_second_checkout_request_returns_the_same_attempt(self):
         r1 = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         r2 = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertEqual(r1.status_code, 201, r1.content)
         self.assertEqual(r2.status_code, 201, r2.content)
@@ -126,15 +126,15 @@ class CheckoutIdempotencyTests(TenantTestCase):
         """Re-using the live attempt would charge the OLD plan's amount for the plan the teacher
         just clicked; voiding it could orphan a payment in progress. So: 409, one attempt."""
         r1 = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         r2 = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.TERM}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertEqual(r1.status_code, 201)
         self.assertEqual((r2.status_code, r2.json()["code"]), (409, "checkout_in_progress"))
         self.assertEqual(PaymentAttempt.objects.filter(environment=self.env_a).count(), 1)
-        self.assertEqual(PaymentAttempt.objects.get(environment=self.env_a).plan.key, Plan.Key.PLAN_1)
+        self.assertEqual(PaymentAttempt.objects.get(environment=self.env_a).plan.key, Plan.Key.MONTHLY)
 
 
 class CheckoutPermissionTests(TenantTestCase):
@@ -142,7 +142,7 @@ class CheckoutPermissionTests(TenantTestCase):
 
     def test_cross_tenant_checkout_is_denied(self):
         self.assert_cross_tenant_denied(
-            "post", "/api/v1/billing/checkout/", body={"plan_key": Plan.Key.PLAN_1}, expect_status=403
+            "post", "/api/v1/billing/checkout/", body={"plan_key": Plan.Key.MONTHLY}, expect_status=403
         )
 
     def test_a_non_owner_member_of_the_same_environment_is_refused(self):
@@ -150,12 +150,12 @@ class CheckoutPermissionTests(TenantTestCase):
         client = APIClient()
         client.force_authenticate(user=student)
         r = client.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertIn(r.status_code, (401, 403))
 
     def test_anonymous_is_refused(self):
-        r = APIClient().post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json")
+        r = APIClient().post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json")
         self.assertEqual(r.status_code, 401)
 
 
@@ -166,7 +166,7 @@ class CheckoutExpiredTrialTests(TenantTestCase):
         long_ago = timezone.now() - timezone.timedelta(days=100)
         Subscription.objects.create(environment=self.env_a, trial_started_at=long_ago)
         r = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertEqual(r.status_code, 201, r.content)
 
@@ -176,7 +176,7 @@ class CheckoutPaidPeriodActiveTests(TenantTestCase):
     (OUT OF SCOPE per this unit; BILL-WU-039)."""
 
     def test_checkout_is_refused_while_a_paid_period_is_active(self):
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         now = timezone.now()
         Subscription.objects.create(
             environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE,
@@ -184,7 +184,7 @@ class CheckoutPaidPeriodActiveTests(TenantTestCase):
             current_period_end=now + timezone.timedelta(days=29),
         )
         r = self.client_a.post(
-            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json", **self.with_env(self.env_a.id)
+            "/api/v1/billing/checkout/", {"plan_key": Plan.Key.TERM}, format="json", **self.with_env(self.env_a.id)
         )
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(r.json()["code"], "paid_period_active")
@@ -224,7 +224,7 @@ class CheckoutProviderCallOutsideTransactionTests(TransactionTestCase):
 
         with patch.object(FakePaymentProvider, "create_recurring_setup_session", spy):
             r = self.client_a.post(
-                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json",
+                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json",
                 **{_HEADER_KWARG: str(self.env.id)},
             )
         self.assertEqual(r.status_code, 201, r.content)
@@ -238,14 +238,14 @@ class PendingCheckoutSurfaceTests(TenantTestCase):
     def test_status_reports_no_pending_checkout_then_the_live_one_without_provider_ids(self):
         url = "/api/v1/billing/subscription/"
         self.assertIsNone(self.client_a.get(url, **self.with_env(self.env_a.id)).json()["pending_checkout"])
-        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json",
+        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.TERM}, format="json",
                            **self.with_env(self.env_a.id))
         body = self.client_a.get(url, **self.with_env(self.env_a.id)).json()["pending_checkout"]
-        self.assertEqual((body["plan_key"], body["status"]), (Plan.Key.PLAN_2, "initiated"))
+        self.assertEqual((body["plan_key"], body["status"]), (Plan.Key.TERM, "initiated"))
         self.assertEqual(set(body), {"attempt_id", "status", "plan_key"})
 
     def test_another_teachers_pending_checkout_is_never_visible(self):
-        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_2}, format="json",
+        self.client_a.post("/api/v1/billing/checkout/", {"plan_key": Plan.Key.TERM}, format="json",
                            **self.with_env(self.env_a.id))
         body = self.client_b.get("/api/v1/billing/subscription/", **self.with_env(self.env_b.id)).json()
         self.assertIsNone(body["pending_checkout"])

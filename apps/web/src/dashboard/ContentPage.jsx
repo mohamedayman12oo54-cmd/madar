@@ -6,6 +6,7 @@ import { contentApi } from "../lib/dashboardApi.js";
 import { extractVideoId, safeEmbedUrl } from "../lib/video.js";
 import { ApiError } from "../lib/api.js";
 import { pollUntilDone } from "../lib/poll.js";
+import { clockText, cooldownSeconds, secondsLeft } from "../lib/cooldown.js";
 import { useGrades } from "./useGrades.js";
 import { useGroups } from "./useGroups.js";
 import ExamsTab from "./ExamsTab.jsx";
@@ -361,7 +362,7 @@ function VideosTab() {
       </PageHeader>
       {notice && <Banner tone={notice.tone}>{notice.text}</Banner>}
       <div className="dash-filters">
-        <select className="inp" value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <select className="inp" aria-label="تصفية" value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="">الكل</option>
           <option value="1">المنشور</option>
           <option value="0">المسودات</option>
@@ -426,7 +427,7 @@ function VideosTab() {
               <button className="mini-btn" onClick={() => setForm(it)}>
                 <Pencil size={13} /> تعديل
               </button>
-              <button className="mini-btn danger" onClick={() => setDel(it)}>
+              <button className="mini-btn danger" aria-label="حذف" onClick={() => setDel(it)}>
                 <Trash2 size={13} />
               </button>
             </div>
@@ -493,7 +494,18 @@ const ACCEPT = "video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov";
 /** Uploads an actual video file to Madar, with real progress.
  *  Client-side checks are a courtesy only — the server re-validates the
  *  extension, the declared type AND the file's leading bytes. */
+// When the server locks uploads ("5 tries, then wait") the deadline lives here, so closing and reopening the
+// dialog does not hide the timer. A reload loses it, but the server still answers with the time that is left.
+let uploadLockUntil = 0;
+
 function VideoUploadField({ item, ensureItem, onUploaded }) {
+  const [lockLeft, setLockLeft] = useState(() => secondsLeft(uploadLockUntil));
+  useEffect(() => {
+    if (lockLeft <= 0) return undefined;
+    const t = setInterval(() => setLockLeft(secondsLeft(uploadLockUntil)), 1000);
+    return () => clearInterval(t);
+  }, [lockLeft > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const locked = lockLeft > 0;
   const [pct, setPct] = useState(null);
   const [uploadedNow, setUploadedNow] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -505,7 +517,7 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
   );
 
   const upload = async (file) => {
-    if (!file || pct !== null) return;
+    if (!file || pct !== null || secondsLeft(uploadLockUntil) > 0) return;
     setErr(null);
     setPct(0);
     try {
@@ -518,7 +530,14 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
       setUploadedNow(true);
       onUploaded?.(target.id);
     } catch (e2) {
-      setErr(e2?.data?.video?.[0] || e2?.data?.detail || e2?.message || "تعذّر رفع الملف.");
+      const wait = cooldownSeconds(e2);
+      if (wait > 0) {
+        uploadLockUntil = Date.now() + wait * 1000;
+        setLockLeft(wait);
+        setErr(null); // the timer banner below says it
+      } else {
+        setErr(e2?.data?.video?.[0] || e2?.data?.detail || e2?.message || "تعذّر رفع الملف.");
+      }
     } finally {
       setPct(null);
     }
@@ -557,10 +576,11 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
         </div>
       )}
       <label
-        className={"upload-drop" + (dragging ? " is-dragging" : "")}
+        className={"upload-drop" + (dragging ? " is-dragging" : "") + (locked ? " is-locked" : "")}
+        aria-disabled={locked || undefined}
         onDragOver={(e) => {
           e.preventDefault();
-          setDragging(true);
+          setDragging(!locked);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
@@ -575,7 +595,7 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
           <strong>اسحب الفيديو هنا</strong> أو اضغط للاختيار
         </span>
         <span className="stat-sub">MP4 · M4V · WEBM · MOV</span>
-        <input type="file" accept={ACCEPT} onChange={pick} hidden disabled={pct !== null} />
+        <input type="file" accept={ACCEPT} onChange={pick} hidden disabled={pct !== null || locked} />
       </label>
       {pct !== null && (
         <div
@@ -591,6 +611,14 @@ function VideoUploadField({ item, ensureItem, onUploaded }) {
       )}
       {pct === null && info?.original_filename && uploadedNow && (
         <Banner tone="info">تم رفع الفيديو. أكمل بقية البيانات ثم اضغط «حفظ التعديلات» أو أغلق النافذة وقتما تشاء.</Banner>
+      )}
+      {locked && (
+        <div className="upload-cooldown" role="timer" aria-live="off">
+          <strong className="upload-cooldown-clock" dir="ltr">{clockText(lockLeft)}</strong>
+          <span>
+            استخدمت محاولات الرفع المتاحة. انتظر حتى ينتهي العدّاد ثم ارفع الفيديو من جديد، ولن تحتاج إلى إعادة إدخال بيانات الدرس.
+          </span>
+        </div>
       )}
       {err && <Banner tone="err">{err}</Banner>}
     </div>

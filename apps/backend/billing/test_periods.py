@@ -99,7 +99,7 @@ class RenewalDueBoundaryTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(self.env_a, plan=self.plan)
         self.start = timezone.now() - timezone.timedelta(days=10)
         self.period = BillingPeriod.objects.create(
@@ -130,7 +130,7 @@ class RenewalDueBoundaryTests(TenantTestCase):
 class CurrentPeriodLookupTests(TenantTestCase):
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(self.env_a, plan=self.plan)
 
     def test_current_period_finds_the_latest_started_period(self):

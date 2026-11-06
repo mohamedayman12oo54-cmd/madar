@@ -48,7 +48,7 @@ export default function StudentLayout() {
   const onLogout = async () => {
     env.clear();
     await logout();
-    nav("/auth/student", { replace: true });
+    nav("/", { replace: true });
   };
 
   return (

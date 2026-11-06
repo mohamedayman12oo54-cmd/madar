@@ -193,7 +193,7 @@
   font-size: 0.8rem;
   background: var(--fill);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 100px;
   padding: 5px 12px;
 }
 .chat-sources summary::-webkit-details-marker {

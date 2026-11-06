@@ -86,7 +86,7 @@ class SubmitAndPollTests(TenantTestCase):
             def generate(self, prompt, context=""):
                 raise AIProviderError("upstream unavailable")
 
-        with mock.patch("ai.management.commands.process_ai_operations.get_provider", return_value=Boom()):
+        with mock.patch("ai.processing.get_provider", return_value=Boom()):
             out = run_worker()
         self.assertIn("0 completed, 1 failed", out)
         failed = self.client_a.get(op_url(op_id), **self.with_env(self.env_a.id)).json()
@@ -101,7 +101,7 @@ class SubmitAndPollTests(TenantTestCase):
             def generate(self, prompt):
                 raise RuntimeError("secret /srv/path api_key=sk-123")
 
-        with mock.patch("ai.management.commands.process_ai_operations.get_provider", return_value=Weird()):
+        with mock.patch("ai.processing.get_provider", return_value=Weird()):
             run_worker()
         failed = self.client_a.get(op_url(op_id), **self.with_env(self.env_a.id)).json()
         self.assertEqual(failed["status"], "failed")
@@ -316,7 +316,7 @@ class WorkerEntitlementRecheckTests(TenantTestCase):
             environment=self.env_a, title="t", description="d" * 60, published_at=timezone.now(),
         )
 
-        plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         now = timezone.now()
         self.subscription = Subscription.objects.create(
             environment=self.env_a, plan=plan, state=Subscription.State.ACTIVE,
