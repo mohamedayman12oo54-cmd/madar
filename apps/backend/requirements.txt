@@ -12,13 +12,13 @@ psycopg[binary]==3.3.6
 # on first use). Decodes audio itself, so ffmpeg is NOT required for this step — it IS
 # used, optionally, to shrink the upload before calling the external STT API (see
 # content/transcription.py); when ffmpeg is absent that step is simply skipped.
-# FROZEN: nothing imports this while Groq is the only transcription provider (content/transcription.py).
+# FROZEN: nothing imports this while Gemini is the only transcription provider (content/transcription.py).
 faster-whisper==1.2.1
 # faster-whisper 1.2.1 breaks on PyAV >= 17 (av.open no longer takes metadata_errors).
 av>=16,<17
 
 # Web Push (browser notifications even when the app is closed). VAPID signing + payload encryption.
 pywebpush==2.5.0
-# ffmpeg binary bundled for the transcription step (extracts a small mono mp3 from the lesson video).
+# ffmpeg binary bundled for the transcription step (extracts a small mono mp3 from the lesson video, which Gemini then transcribes).
 # Used only when no ffmpeg is on PATH; a system ffmpeg is still preferred (content/transcription.py).
 imageio-ffmpeg>=0.5.1

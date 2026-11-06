@@ -532,3 +532,49 @@ class CheckCommandTests(SimpleTestCase):
         with self.assertRaises(CommandError) as ctx:
             self.run_command()
         self.assertIn("GEMINI_API_KEY", str(ctx.exception))
+
+
+class MediaAndKeyFormatTests(SimpleTestCase):
+    """Audio goes to Gemini as base64 `inlineData` ahead of the instruction, and the newer "AQ...." key shape is
+    masked exactly like the classic "AIza..." one."""
+
+    @staticmethod
+    def _random_new_style_key():
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        return "AQ." + "".join(secrets.choice(alphabet) for _ in range(50))
+
+    def test_media_is_sent_first_as_base64_inline_data_then_the_text(self):
+        import base64
+        client, transport, _ = make(ok("{}"))
+        client.complete(LLMRequest(prompt="transcribe this", media=(("audio/mp3", b"\x00\x01abc\xff"),)))
+        parts = transport.last_body["contents"][0]["parts"]
+        self.assertEqual(parts[0], {"inlineData": {"mimeType": "audio/mp3",
+                                                    "data": base64.b64encode(b"\x00\x01abc\xff").decode()}})
+        self.assertEqual(parts[1], {"text": "transcribe this"})
+        self.assertEqual(len(parts), 2)
+
+    def test_a_text_only_request_is_unchanged(self):
+        client, transport, _ = make(ok())
+        client.complete(LLMRequest(prompt="ping"))
+        self.assertEqual(transport.last_body["contents"][0]["parts"], [{"text": "ping"}])
+
+    def test_malformed_media_is_refused_before_any_call(self):
+        for bad in ((("audio/mp3", b""),), (("", b"x"),), (("audio/mp3", "text"),), ("audio/mp3",), (b"x",)):
+            with self.subTest(media=bad), self.assertRaises(LLMBadRequestError):
+                LLMRequest(prompt="x", media=bad)
+
+    def test_a_new_style_key_is_masked_in_text_even_if_it_was_never_registered(self):
+        key = self._random_new_style_key()
+        masked = redact(f"upstream said: bad key {key} sorry")
+        self.assertNotIn(key, masked)
+        self.assertNotIn("AQ.", masked)
+        self.assertIn("[redacted]", masked)
+
+    def test_a_provider_that_echoes_a_new_style_key_does_not_leak_it_through_the_error(self):
+        key = self._random_new_style_key()
+        client, _, _ = make(err(400, f"API key not valid: {key}", status_str="INVALID_ARGUMENT"))
+        with self.assertRaises(LLMAuthError) as ctx:
+            client.complete(LLMRequest(prompt="ping"))
+        self.assertNotIn(key, str(ctx.exception))

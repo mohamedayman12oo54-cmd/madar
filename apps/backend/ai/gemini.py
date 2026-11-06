@@ -16,6 +16,7 @@ repo): the response/error parsing follows Google's published reference and is
 covered by mock tests only. See the README section "AI / LLM provider
 foundation" for the manual live check.
 """
+import base64
 import email.utils
 import http.client
 import json
@@ -184,7 +185,11 @@ class GeminiClient(LLMClient):
 
     # -------------------------------------------------------------- request --
     def _build_body(self, request: LLMRequest) -> dict:
-        body = {"contents": [{"role": "user", "parts": [{"text": request.prompt}]}]}
+        # Media (audio) goes first as `inlineData` (base64), the instruction after it.
+        parts = [{"inlineData": {"mimeType": mime, "data": base64.b64encode(data).decode("ascii")}}
+                 for mime, data in request.media]
+        parts.append({"text": request.prompt})
+        body = {"contents": [{"role": "user", "parts": parts}]}
         if request.system.strip():
             body["systemInstruction"] = {"parts": [{"text": request.system}]}
         config = {}

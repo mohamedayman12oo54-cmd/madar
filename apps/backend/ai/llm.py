@@ -40,9 +40,9 @@ from django.utils.module_loading import import_string
 log = logging.getLogger(__name__)
 
 # Defence in depth for error messages / logs: Google API keys have a fixed
-# shape, so even a key we were never told about is masked if a provider echoes
-# one back.
-_GOOGLE_KEY_RE = re.compile(r"AIza[0-9A-Za-z_\-]{20,}")
+# shape (the classic "AIza..." and the newer "AQ...."), so even a key we were
+# never told about is masked if a provider echoes one back.
+_GOOGLE_KEY_RE = re.compile(r"AIza[0-9A-Za-z_\-]{20,}|AQ\.[0-9A-Za-z_\-]{20,}")
 
 
 def redact(text, *secrets):
@@ -134,10 +134,17 @@ class LLMRequest:
     # Ask the provider for a JSON document (not prose). This only constrains
     # the MIME type; callers must still parse and validate the result.
     json_output: bool = False
+    # Optional media sent with the prompt, as (mime_type, raw bytes) pairs (e.g. an audio clip to transcribe).
+    # Never logged; the adapter encodes it however the provider wants.
+    media: tuple = ()
 
     def __post_init__(self):
         if not isinstance(self.prompt, str) or not self.prompt.strip():
             raise LLMBadRequestError("prompt must be a non-empty string.")
+        for item in self.media:
+            if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str) and item[0]
+                    and isinstance(item[1], (bytes, bytearray)) and item[1]):
+                raise LLMBadRequestError("media must be (mime_type, non-empty bytes) pairs.")
         if self.max_output_tokens is not None and self.max_output_tokens <= 0:
             raise LLMBadRequestError("max_output_tokens must be positive.")
 
