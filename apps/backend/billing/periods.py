@@ -1,7 +1,8 @@
 """
-BILL-WU-024 — billing-period computation (30 elapsed days, server-
-authoritative). A billing period is exactly 30 elapsed days, never a
-calendar month (commercial-model §Billing period) — all arithmetic here
+BILL-WU-024 — billing-period computation (elapsed days, server-
+authoritative). A billing period is a fixed number of elapsed days — 30 for
+the monthly plan, 180 for the term plan, 365 for the yearly plan
+(`Plan.period_days`) — never a calendar month; all arithmetic here
 is on aware UTC instants via `timedelta`, which is immune to a DST-
 induced 23 h or 25 h "day" in any display timezone. `Africa/Cairo`
 (`settings.py`'s `TIME_ZONE`) is used only for display elsewhere; this
@@ -14,11 +15,11 @@ from django.utils import timezone
 PERIOD_LENGTH = timezone.timedelta(days=30)
 
 
-def next_period(start):
-    """`(start, start + 30 elapsed days)`. `start` must be an aware
-    datetime; the return value never depends on any calendar or
-    timezone — only elapsed time."""
-    return start, start + PERIOD_LENGTH
+def next_period(start, days=None):
+    """`(start, start + days elapsed days)` (`days` = the plan's `period_days`; 30 when not given). `start`
+    must be an aware datetime; the return value never depends on any calendar or timezone — only elapsed
+    time."""
+    return start, start + (PERIOD_LENGTH if days is None else timezone.timedelta(days=days))
 
 
 def current_period(subscription, now=None):
