@@ -9,7 +9,7 @@ export default function HowItWorksPage() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">كيف يعمل مدار</div>
-          <h2 className="h2">من بيئة فارغة إلى تدريس واضح.</h2>
+          <h1 className="h2">من بيئة فارغة إلى تدريس واضح.</h1>
           <p className="lead">ست خطوات بسيطة تنقلك من الإعداد إلى المتابعة اليومية.</p>
         </div>
       </div>
