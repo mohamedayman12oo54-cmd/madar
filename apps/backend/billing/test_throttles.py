@@ -13,7 +13,7 @@ CHECKOUT, CANCEL, WEBHOOK = "/api/v1/billing/checkout/", "/api/v1/billing/subscr
 
 class BillingThrottleTests(TenantTestCase):
     def test_checkout_is_limited_per_teacher_and_the_limit_does_not_leak_to_another_teacher(self):
-        body = {"plan_key": Plan.Key.PLAN_1}
+        body = {"plan_key": Plan.Key.MONTHLY}
         with mock.patch.dict(RATES, {"billing-checkout": "3/hour"}):
             codes = [self.client_a.post(CHECKOUT, body, format="json", **self.with_env(self.env_a.id)).status_code
                      for _ in range(5)]
