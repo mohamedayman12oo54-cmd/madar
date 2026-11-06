@@ -1,13 +1,19 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db.models import F
 from django.utils import timezone
 from rest_framework import exceptions, serializers
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenBackendError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.state import token_backend
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import PendingAuth, normalize_phone, supersede_pending  # noqa: F401  (re-exported for tests)
 from .phones import PhoneError, canonical_phone, try_canonical_phone
+from .session_revocation import is_session_revoked
 from .validators import password_meets_rules
 
 User = get_user_model()
@@ -23,7 +29,24 @@ def issue_tokens_for(user):
     # Session version: lets a password reset invalidate every token issued
     # before it (see accounts/authentication.py).
     refresh["sv"] = user.session_version
+    # One id per login, copied into every access token and kept across refresh rotation: lets logout end this
+    # session's access tokens immediately (accounts/session_revocation.py).
+    refresh["sid"] = uuid.uuid4().hex
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+class RevocationAwareRefreshSerializer(TokenRefreshSerializer):
+    """Token refresh that refuses a session which was logged out, even when the refresh token itself was never
+    blacklisted (another tab rotated it a moment before the logout)."""
+
+    def validate(self, attrs):
+        try:
+            payload = token_backend.decode(attrs["refresh"], verify=True)
+        except TokenBackendError as exc:
+            raise InvalidToken("Token is invalid or expired") from exc
+        if is_session_revoked(payload.get("sid")):
+            raise InvalidToken("Token is invalid or expired")
+        return super().validate(attrs)
 
 
 def user_public(user):
