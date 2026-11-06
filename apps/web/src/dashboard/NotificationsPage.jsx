@@ -193,6 +193,7 @@ export default function NotificationsPage() {
           <div className="dash-filters">
             <select
               className="inp"
+              aria-label="نوع الإشعار"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
@@ -207,6 +208,7 @@ export default function NotificationsPage() {
             </select>
             <select
               className="inp"
+              aria-label="حالة الإرسال"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
