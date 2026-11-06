@@ -38,7 +38,7 @@ from .transcode import delete_renditions, schedule_renditions
 from .transcription import request_transcription
 from .uploads import (ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, safe_display_name,
                       storage_path, validate_video_upload)
-from .video_views import VideoUploadRateThrottle
+from accounts.throttles import AttemptCooldown, VideoUploadChunkThrottle, VideoUploadStartThrottle
 
 IS_ENV_OWNER = [IsTeacher, IsEnvironmentMember.for_role("owner")]
 SESSION_TTL_HOURS = 24
@@ -82,10 +82,16 @@ class CreateSessionSerializer(serializers.Serializer):
 
 
 class UploadSessionCreateView(APIView):
-    """Authorise an upload and hand back where to send the bytes."""
+    """Authorise an upload and hand back where to send the bytes.
+
+    This is the only place an upload ATTEMPT is counted: VIDEO_UPLOAD_ATTEMPTS tries, then a
+    VIDEO_UPLOAD_COOLDOWN_SECONDS lock whose remaining time comes back in the 429 body."""
 
     permission_classes = IS_ENV_OWNER
-    throttle_classes = [VideoUploadRateThrottle]
+    throttle_classes = [VideoUploadStartThrottle]
+
+    def throttled(self, request, wait):
+        raise AttemptCooldown(wait, VideoUploadStartThrottle().limit)
 
     def post(self, request, pk):
         item = generics.get_object_or_404(
@@ -131,7 +137,7 @@ class UploadSessionView(APIView):
     """HEAD = where am I; PATCH = continue; DELETE = abandon."""
 
     permission_classes = IS_ENV_OWNER
-    throttle_classes = [VideoUploadRateThrottle]
+    throttle_classes = [VideoUploadChunkThrottle]
 
     def _headers(self, response, session):
         response["Upload-Offset"] = str(session.offset)
