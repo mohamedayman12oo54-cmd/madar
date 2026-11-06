@@ -52,7 +52,7 @@ class _Fixture(TransactionTestCase):
         self.env = Environment.objects.create(owner=self.teacher, name="env")
         EnvironmentMembership.objects.create(user=self.teacher, environment=self.env, role=EnvironmentMembership.Role.OWNER)
         self.plan, _ = Plan.objects.get_or_create(
-            key=Plan.Key.PLAN_1,
+            key=Plan.Key.MONTHLY,
             defaults={"name": "Plan 1", "price_minor_units": 100000, "currency": "EGP", "max_students": 400},
         )
 
