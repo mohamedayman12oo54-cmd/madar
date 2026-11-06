@@ -29,6 +29,11 @@ class SubscribeSerializer(serializers.Serializer):
         # server can never be made to POST to an arbitrary address (SSRF).
         if u.scheme != "https" or not u.hostname or u.username or u.password:
             raise serializers.ValidationError("عنوان غير صالح.")
+        # https alone still allows https://169.254.169.254/ or any internal host: only the browser vendors'
+        # push services (settings.PUSH_ENDPOINT_HOST_SUFFIXES) are ever contacted.
+        host = u.hostname.lower().rstrip(".")
+        if not any(host == s or host.endswith("." + s) for s in settings.PUSH_ENDPOINT_HOST_SUFFIXES):
+            raise serializers.ValidationError("عنوان غير صالح.")
         return v
 
 
