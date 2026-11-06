@@ -4,8 +4,8 @@ import QRCode from "qrcode";
 /**
  * Renders a QR code as an <img> backed by a data: URL.
  *
- * An image can never run script, so — unlike injecting generated SVG markup
- * with dangerouslySetInnerHTML — nothing the encoded text contains can ever
+ * An image can never run script, so — unlike injecting generated SVG markup as raw HTML —
+ * nothing the encoded text contains can ever
  * become executable, now or after a future library change.
  */
 export default function QrImage({ text, size = 220, alt, className, fallback = null }) {
