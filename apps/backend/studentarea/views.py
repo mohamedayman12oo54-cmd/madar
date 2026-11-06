@@ -28,6 +28,7 @@ from rest_framework.views import APIView
 from academics.models import Enrollment
 from accounts.permissions import IsStudent
 from accounts.throttles import AISubmitRateThrottle
+from ai.dispatch import dispatch
 from ai.models import AIOperation
 from ai.quiz_source import QuizSourceError, prepare_quiz_source, teacher_text
 from ai.views import AIOperationDetailView, AIOperationListSubmitView
@@ -402,6 +403,7 @@ class QuizListRequestView(StudentView):
         except IntegrityError:
             op = AIOperation.objects.get(environment=env, requested_by=request.user, idempotency_key=key)
             return Response(_op_payload(op), status=status.HTTP_200_OK)
+        dispatch(op.id)
         return Response(_op_payload(op), status=status.HTTP_202_ACCEPTED)
 
 
