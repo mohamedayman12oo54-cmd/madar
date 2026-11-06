@@ -3,6 +3,7 @@ The only place notifications are created. Always called by domain code INSIDE
 the same transaction.atomic() block as the domain change (ADR-005), never
 from a view directly and never talking to a provider.
 """
+from . import dispatch
 from .models import Notification
 
 T = Notification.Type
@@ -15,10 +16,12 @@ def _fmt_session(session):
 
 
 def notify_enrollment(enrollment, type_, title, body="", session=None, exam=None):
-    return Notification.objects.create(
+    n = Notification.objects.create(
         environment_id=enrollment.environment_id, recipient_id=enrollment.student_id,
         enrollment=enrollment, type=type_, title=title[:150], body=body[:500], session=session, exam=exam,
     )
+    dispatch.kick()  # deliver now (after the surrounding transaction commits), not whenever a worker polls
+    return n
 
 
 def notify_many(enrollments, type_, title, body="", broadcast=None, content_item=None, exam=None):
@@ -33,7 +36,10 @@ def notify_many(enrollments, type_, title, body="", broadcast=None, content_item
             environment_id=e.environment_id, recipient_id=e.student_id, enrollment=e,
             type=type_, title=title[:150], body=body[:500], broadcast=broadcast, content_item=content_item, exam=exam,
         ))
-    return Notification.objects.bulk_create(rows)
+    created = Notification.objects.bulk_create(rows)
+    if created:
+        dispatch.kick()
+    return created
 
 
 def notify_absent(enrollment, session):
