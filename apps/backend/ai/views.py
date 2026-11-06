@@ -9,6 +9,7 @@ from billing import capabilities
 from billing.permissions import RequiresCapability
 from environments.tenancy import IsEnvironmentMember, TenantScopedQuerySetMixin
 
+from .dispatch import dispatch
 from .models import AIOperation
 from academics.models import Enrollment
 from .serializers import AIOperationSerializer, AIOperationSubmitSerializer, StateRecommendationSubmitSerializer
@@ -61,6 +62,7 @@ class AIOperationListSubmitView(TenantScopedQuerySetMixin, generics.ListAPIView)
                 environment=request.environment, requested_by=request.user, idempotency_key=key
             )
             return self._replay(op, prompt)
+        dispatch(op.id)
         return Response(AIOperationSerializer(op).data, status=status.HTTP_202_ACCEPTED)
 
     @staticmethod
@@ -114,6 +116,7 @@ class StateRecommendationSubmitView(APIView):
         except IntegrityError:
             op = AIOperation.objects.get(environment=env, requested_by=request.user, idempotency_key=key)
             return Response(AIOperationSerializer(op).data, status=status.HTTP_200_OK)
+        dispatch(op.id)
         return Response(AIOperationSerializer(op).data, status=status.HTTP_202_ACCEPTED)
 
 
