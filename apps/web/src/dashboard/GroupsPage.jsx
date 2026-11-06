@@ -469,7 +469,7 @@ export default function GroupsPage() {
                 <button className="mini-btn" onClick={() => setModal({ rename: g })}>
                   <Pencil size={13} /> تسمية
                 </button>
-                <button className="mini-btn danger" onClick={() => setModal({ deleteGroup: g })}>
+                <button className="mini-btn danger" aria-label="حذف" onClick={() => setModal({ deleteGroup: g })}>
                   <Trash2 size={13} />
                 </button>
               </div>
