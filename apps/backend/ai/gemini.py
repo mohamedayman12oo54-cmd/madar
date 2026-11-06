@@ -125,6 +125,25 @@ def _parse_error_body(raw):
     return message, status, reasons, retry_delay
 
 
+_THINKING_LEVELS = ("minimal", "low", "medium", "high")
+
+
+def thinking_config(value):
+    """GEMINI_THINKING -> the `thinkingConfig` object, or None to send nothing.
+    "0"/"1024" (a whole number) is a token budget; minimal/low/medium/high is a level."""
+    value = (value or "").strip().lower() if not isinstance(value, int) else value
+    if value in ("", None):
+        return None
+    if isinstance(value, int) or (isinstance(value, str) and value.lstrip("-").isdigit()):
+        budget = int(value)
+        if budget < -1:
+            raise LLMConfigError("GEMINI_THINKING must be -1 (dynamic), 0 (off), a positive token budget, or a level.")
+        return {"thinkingBudget": budget}
+    if value in _THINKING_LEVELS:
+        return {"thinkingLevel": value}
+    raise LLMConfigError(f"GEMINI_THINKING must be a whole number or one of: {', '.join(_THINKING_LEVELS)}.")
+
+
 def _int_or_none(value):
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
@@ -132,7 +151,7 @@ def _int_or_none(value):
 class GeminiClient(LLMClient):
     name = "gemini"
 
-    def __init__(self, *, api_key, model, llm_settings=None, transport=None, **kwargs):
+    def __init__(self, *, api_key, model, llm_settings=None, transport=None, thinking="", **kwargs):
         if not (api_key or "").strip():
             raise LLMConfigError("GEMINI_API_KEY is not set.")
         model = (model or "").strip()
@@ -147,6 +166,7 @@ class GeminiClient(LLMClient):
             raise LLMConfigError("GEMINI_MODEL contains invalid characters.")
         super().__init__(llm_settings or LLMSettings(), model=model, **kwargs)
         self._api_key = api_key.strip()
+        self._thinking = thinking_config(thinking)
         # (url, headers, payload, timeout) -> (status, headers, body). Injected in tests.
         self._transport = transport or _urllib_transport
 
@@ -156,6 +176,7 @@ class GeminiClient(LLMClient):
             api_key=getattr(settings, "GEMINI_API_KEY", ""),
             model=getattr(settings, "GEMINI_MODEL", ""),
             llm_settings=LLMSettings.from_django(),
+            thinking=getattr(settings, "GEMINI_THINKING", ""),
         )
 
     def __repr__(self):  # never include the key
@@ -174,6 +195,8 @@ class GeminiClient(LLMClient):
             config["temperature"] = request.temperature
         if request.json_output:
             config["responseMimeType"] = "application/json"
+        if self._thinking:
+            config["thinkingConfig"] = dict(self._thinking)
         if config:
             body["generationConfig"] = config
         return body
