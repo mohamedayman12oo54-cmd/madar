@@ -68,6 +68,26 @@ class AIProvider:
         return QuizResult(questions=self.generate_quiz(evidence.get("title", ""), evidence.get("text", "")))
 
 
+def state_from_counts(evidence: dict):
+    """The transparent rule behind the monthly State suggestion — deterministic, free, instant and explainable,
+    which is what an ADVISORY number built from attendance counts should be. -> (state, present, sessions,
+    studied, recitations)."""
+    present, absent = int(evidence.get("present", 0)), int(evidence.get("absent", 0))
+    studied, not_studied = int(evidence.get("studied", 0)), int(evidence.get("not_studied", 0))
+    sessions, recitations = present + absent, studied + not_studied
+    if sessions + recitations == 0:
+        raise AIProviderError("لا توجد بيانات كافية لهذا الشهر لاقتراح حالة.")
+    attendance = present / sessions if sessions else 1.0
+    study = studied / recitations if recitations else 1.0
+    if attendance < 0.6 or study < 0.5:
+        state = "at_risk"
+    elif attendance < 0.8 or study < 0.75:
+        state = "needs_follow_up"
+    else:
+        state = "good"
+    return state, present, sessions, studied, recitations
+
+
 class StubTutorProvider(AIProvider):
     def generate(self, prompt: str, context: str = "") -> str:
         """Honest stub: the RETRIEVAL is real (the excerpts below come from
@@ -89,19 +109,7 @@ class StubTutorProvider(AIProvider):
 
 
     def recommend_state(self, evidence: dict):
-        present, absent = int(evidence.get("present", 0)), int(evidence.get("absent", 0))
-        studied, not_studied = int(evidence.get("studied", 0)), int(evidence.get("not_studied", 0))
-        sessions, recitations = present + absent, studied + not_studied
-        if sessions + recitations == 0:
-            raise AIProviderError("لا توجد بيانات كافية لهذا الشهر لاقتراح حالة.")
-        attendance = present / sessions if sessions else 1.0
-        study = studied / recitations if recitations else 1.0
-        if attendance < 0.6 or study < 0.5:
-            state = "at_risk"
-        elif attendance < 0.8 or study < 0.75:
-            state = "needs_follow_up"
-        else:
-            state = "good"
+        state, present, sessions, studied, recitations = state_from_counts(evidence)
         return state, (
             "[وضع تجريبي — قاعدة حسابية بسيطة وليست نموذج ذكاء اصطناعي]\n"
             f"الحضور: {present} من {sessions} — التسميع: {studied} ذاكر من {recitations}. "
