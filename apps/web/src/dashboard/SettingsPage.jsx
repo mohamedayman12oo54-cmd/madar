@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ShieldCheck, UserRound } from "lucide-react";
+import { BellRing, Building2, ShieldCheck, UserRound } from "lucide-react";
 import {
   Field,
   TextInput,
@@ -10,7 +10,7 @@ import {
   Btn,
   Banner,
 } from "../auth/ui.jsx";
-import { settingsApi } from "../lib/dashboardApi.js";
+import { guardianMessagesApi, settingsApi } from "../lib/dashboardApi.js";
 import { ApiError } from "../lib/api.js";
 import { formatPhone } from "../lib/phone.js";
 import { useSession } from "../state/session.jsx";
@@ -250,6 +250,82 @@ export function SecuritySection({ loginPath = "/auth/teacher/login" }) {
   );
 }
 
+const LIMITS = [
+  ["absence_threshold", "عدد الغيابات في الشهر", 0, 31, "ينبّه ولي الأمر عند هذا العدد. اكتب 0 لإيقاف هذا التنبيه."],
+  ["exam_percent_below", "نسبة الامتحان الأقل من (%)", 0, 100, "ينبّه إذا كانت أعلى درجة للطالب أقل من هذه النسبة. 0 للإيقاف."],
+  ["unpaid_after_day", "تذكير بالمصروفات من يوم", 0, 28, "يذكّر ولي الأمر من هذا اليوم في الشهر إن لم يُسجَّل الدفع. 0 للإيقاف."],
+];
+
+/** Automatic warnings to guardians. Off until the teacher turns it on; the system then writes them by itself
+ *  (once per child per month / exam) and the guardian reads them in the portal. */
+function GuardianAlertsSection() {
+  const [cfg, setCfg] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    guardianMessagesApi
+      .alertSettings()
+      .then(setCfg)
+      .catch(() => setMsg({ tone: "err", text: "تعذّر تحميل إعدادات التنبيهات." }));
+  }, []);
+  const save = async (e) => {
+    e.preventDefault();
+    setMsg(null);
+    setBusy(true);
+    try {
+      setCfg(await guardianMessagesApi.saveAlertSettings(cfg));
+      setMsg({ tone: "info", text: "تم حفظ إعدادات التنبيهات." });
+    } catch (e2) {
+      setMsg({ tone: "err", text: fieldsText(e2, "تعذّر الحفظ.") });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const num = (k) => (ev) => setCfg((c) => ({ ...c, [k]: Number(ev.target.value) }));
+  return (
+    <Section title="تنبيهات أولياء الأمور التلقائية" icon={BellRing}>
+      {msg && <Banner tone={msg.tone}>{msg.text}</Banner>}
+      {!cfg && !msg && <p className="field-msg">جاري التحميل...</p>}
+      {cfg && (
+        <form onSubmit={save} className="dash-form">
+          <label className="check-item form-wide">
+            <input
+              type="checkbox"
+              checked={cfg.enabled}
+              onChange={(ev) => setCfg((c) => ({ ...c, enabled: ev.target.checked }))}
+            />
+            <span>أرسل تحذيرًا تلقائيًا لولي الأمر عند الغياب أو تأخر الدفع أو انخفاض الدرجة</span>
+          </label>
+          <label className="check-item form-wide">
+            <input
+              type="checkbox"
+              checked={Boolean(cfg.show_rank)}
+              onChange={(ev) => setCfg((c) => ({ ...c, show_rank: ev.target.checked }))}
+            />
+            <span>أظهر لولي الأمر ترتيب ابنه بين زملاء مجموعته (حسب متوسط الامتحانات)</span>
+          </label>
+          {LIMITS.map(([key, label, min, max, hint]) => (
+            <Field key={key} label={label} hint={hint}>
+              <input
+                className="inp"
+                type="number"
+                min={min}
+                max={max}
+                disabled={!cfg.enabled}
+                value={cfg[key]}
+                onChange={num(key)}
+              />
+            </Field>
+          ))}
+          <Btn type="submit" loading={busy} loadingText="جارٍ الحفظ…">
+            حفظ
+          </Btn>
+        </form>
+      )}
+    </Section>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <>
@@ -258,6 +334,7 @@ export default function SettingsPage() {
         <div className="set-col">
           <ProfileSection />
           <EnvironmentSection />
+          <GuardianAlertsSection />
         </div>
         <div className="set-col">
           <PushToggle />
