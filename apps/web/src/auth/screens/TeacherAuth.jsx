@@ -236,8 +236,11 @@ export function TeacherSignup() {
               <Field label="رقم الهاتف" required error={fe.phone}>
                 <PhoneInput value={f.phone} onChange={on("phone")} error={fe.phone} />
               </Field>
-              <Field label="كلمة المرور" required error={fe.pw}>
+              <Field label="كلمة المرور" required error={fe.pw} htmlFor="signup-pw">
                 <PasswordInput
+                  id="signup-pw"
+                  aria-required="true"
+                  aria-invalid={fe.pw ? true : undefined}
                   value={f.pw}
                   onChange={on("pw")}
                   placeholder="أدخل كلمة المرور"
@@ -448,8 +451,10 @@ export function TeacherForgot() {
             <Head title="إنشاء كلمة مرور جديدة" />
             <div className="auth-body">
               {err && <Banner tone="err">{err}</Banner>}
-              <Field label="كلمة المرور الجديدة" required>
+              <Field label="كلمة المرور الجديدة" required htmlFor="new-pw">
                 <PasswordInput
+                  id="new-pw"
+                  aria-required="true"
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
                   placeholder="أدخل كلمة المرور الجديدة"
