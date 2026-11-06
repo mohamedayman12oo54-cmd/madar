@@ -25,10 +25,11 @@ class PlanListEndpointTests(TenantTestCase):
         body = r.json()
         self.assertEqual(len(body), 3)
         keys = {row["key"] for row in body}
-        self.assertEqual(keys, {Plan.Key.PLAN_1, Plan.Key.PLAN_2, Plan.Key.PLAN_3})
-        plan_1 = next(row for row in body if row["key"] == Plan.Key.PLAN_1)
-        self.assertEqual(plan_1["price_minor_units"], 100000)
-        self.assertEqual(plan_1["max_students"], 400)
+        self.assertEqual(keys, {Plan.Key.MONTHLY, Plan.Key.TERM, Plan.Key.YEARLY})
+        by_key = {row["key"]: row for row in body}
+        self.assertEqual(
+            {k: (v["price_minor_units"], v["period_days"], v["max_students"]) for k, v in by_key.items()},
+            {"monthly": (185000, 30, None), "term": (450000, 180, None), "yearly": (1000000, 365, None)})
 
     def test_a_student_is_refused(self):
         student = self.make_student_in(self.env_a, "201020000099")
@@ -55,7 +56,7 @@ class SubscriptionStatusEndpointTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_2)
+        self.plan = Plan.objects.get(key=Plan.Key.TERM)
         self.subscription = _make_subscription(
             self.env_a, plan=self.plan, cancel_at_period_end=False,
             current_period_end=timezone.now() + timezone.timedelta(days=10),
@@ -72,7 +73,7 @@ class SubscriptionStatusEndpointTests(TenantTestCase):
         r = self.client_a.get("/api/v1/billing/subscription/", **self.with_env(self.env_a.id))
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
-        self.assertEqual(body["plan_key"], Plan.Key.PLAN_2)
+        self.assertEqual(body["plan_key"], Plan.Key.TERM)
         self.assertIn("entitlement", body)
         self.assertIn("access_granted", body["entitlement"])
 
@@ -141,7 +142,7 @@ class CancelSubscriptionEndpointTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(
             self.env_a, plan=self.plan, state=Subscription.State.ACTIVE, cancel_at_period_end=False,
             current_period_start=timezone.now() - timezone.timedelta(days=5),
@@ -197,7 +198,7 @@ class PaymentHistoryEndpointTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.subscription = _make_subscription(self.env_a, plan=self.plan)
         self.period = None
         from .models import BillingPeriod
