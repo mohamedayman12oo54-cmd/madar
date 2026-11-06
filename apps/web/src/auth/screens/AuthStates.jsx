@@ -154,7 +154,7 @@ export function LogoutConfirm() {
   const { logout } = useSession(); // the session store must hear about it, or the app still thinks you are in
   const doLogout = async () => {
     await logout();
-    nav("/auth", { replace: true });
+    nav("/", { replace: true });
   };
   return (
     <AuthShell>
