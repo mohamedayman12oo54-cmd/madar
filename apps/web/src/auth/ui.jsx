@@ -103,14 +103,16 @@ export function Stepper({ total, current }) {
 }
 
 /* ---------------- fields (label + required + reserved message) ---------------- */
-export function Field({ label, required, error, hint, children, className = "" }) {
+// `htmlFor`: only for a Field that holds more than the control itself (e.g. an input plus a checklist), where
+// the single-child wiring below cannot tell which child is the control.
+export function Field({ label, required, error, hint, children, className = "", htmlFor }) {
   const uid = useId();
   const messageId = `${uid}-msg`;
   // When the field wraps exactly one control, tie everything together for assistive technology: the label
   // names the control (for/id), and the hint or error is its accessible description, announced when it
   // appears. (Previously a screen reader met every input in the app as an unnamed edit box.)
   const only = Children.count(children) === 1 && isValidElement(children) ? children : null;
-  const controlId = only ? only.props.id || `${uid}-ctl` : undefined;
+  const controlId = only ? only.props.id || `${uid}-ctl` : htmlFor;
   const control = only
     ? cloneElement(only, {
         id: controlId,
