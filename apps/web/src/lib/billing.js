@@ -6,16 +6,21 @@
 //  * Every number shown (price, student cap, dates) comes from the server; nothing is computed
 //    from the URL or from client-held state.
 
-export const PLAN_ORDER = ["plan_1", "plan_2", "plan_3"];
+export const PLAN_ORDER = ["monthly", "term", "yearly"];
 export const TRIAL_DAYS = 16;
+// Only a fallback for a status that predates `period_days`: the server sends each plan's real length.
 export const PERIOD_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 export const PLAN_LABELS = {
-  plan_1: "الباقة الأولى",
-  plan_2: "الباقة الثانية",
-  plan_3: "الباقة الثالثة",
+  monthly: "الباقة الشهرية",
+  term: "باقة الترم",
+  yearly: "الباقة السنوية",
 };
+// What one paid period is called, per plan ("كل شهر"). The number of days always comes from the server.
+export const PLAN_PERIOD_NAMES = { monthly: "كل شهر", term: "كل ترم", yearly: "كل سنة" };
+export const periodText = (key, days) =>
+  `${PLAN_PERIOD_NAMES[key] || "كل فترة"}${days ? ` (${Number(days).toLocaleString("ar-EG")} يومًا)` : ""}`;
 
 // Feature keys come from the Backend's capability registry (billing/capabilities.py).
 export const FEATURES = [
@@ -23,12 +28,9 @@ export const FEATURES = [
   { key: "ai.video_content_chat", label: "محادثة ذكية حول محتوى الفيديو", soon: true },
   { key: "ai.performance_analysis", label: "تحليل أداء الطلاب وتوصيات الحالة", soon: false },
 ];
-// Which plan includes which feature (commercial-model §Plans). The trial equals plan 3.
-export const PLAN_FEATURES = {
-  plan_1: ["ai.quiz_from_video"],
-  plan_2: ["ai.quiz_from_video", "ai.video_content_chat"],
-  plan_3: ["ai.quiz_from_video", "ai.video_content_chat", "ai.performance_analysis"],
-};
+// Every plan, and the free trial, includes every feature: plans differ only in price and period length.
+const ALL_FEATURES = FEATURES.map((f) => f.key);
+export const PLAN_FEATURES = { monthly: ALL_FEATURES, term: ALL_FEATURES, yearly: ALL_FEATURES };
 
 export const planLabel = (key) => PLAN_LABELS[key] || "—";
 
@@ -79,7 +81,7 @@ export function cycleInfo(sub, now = Date.now()) {
     ) &&
     sub.current_period_end
   ) {
-    return build("paid", sub.current_period_end, PERIOD_DAYS);
+    return build("paid", sub.current_period_end, sub.period_days || PERIOD_DAYS);
   }
   return null;
 }
@@ -94,7 +96,7 @@ export function accessSummary(sub, now = Date.now()) {
       return {
         tone: cycle.left <= 3 ? "warn" : "good",
         title: "أنت في الفترة التجريبية",
-        text: `متبقٍّ ${cycle.left.toLocaleString("ar-EG")} ${cycle.left === 1 ? "يوم" : "أيام"}، وبها كل مزايا الباقة الثالثة (حتى ${formatCap(ent.student_cap)} طالبًا). لا يُسحب منك شيء تلقائيًا.`,
+        text: `متبقٍّ ${cycle.left.toLocaleString("ar-EG")} ${cycle.left === 1 ? "يوم" : "أيام"}، وبها كل المزايا (حتى ${formatCap(ent.student_cap)} طالبًا). لا يُسحب منك شيء تلقائيًا.`,
       };
     case "paid_active":
       return {
