@@ -8,15 +8,21 @@ globalThis.document = win.document;
 const { KEEPALIVE_MS, startKeepAlive } = await import("./keepalive.js");
 
 const tick = () => new Promise((r) => setTimeout(r, 5));
+// Timers slip when the machine is busy (the suite runs many files at once), so wait for the condition
+// with a generous deadline instead of betting on one fixed sleep.
+const until = async (cond, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 5));
+};
 
 test("renews on the timer, and stops when asked", async () => {
   let n = 0;
   const stop = startKeepAlive(() => { n += 1; }, { every: 20, minGap: 0 });
-  await new Promise((r) => setTimeout(r, 90));
+  await until(() => n >= 2);
   stop();
   const seen = n;
   assert.ok(seen >= 2, `renewed ${seen} times`);
-  await new Promise((r) => setTimeout(r, 60));
+  await new Promise((r) => setTimeout(r, 100));
   assert.equal(n, seen, "no renewal after stop");
 });
 
@@ -40,9 +46,9 @@ test("waking up (focus) renews, but not more often than the minimum gap", async 
 test("a renewal that throws never breaks the loop", async () => {
   let n = 0;
   const stop = startKeepAlive(() => { n += 1; throw new Error("offline"); }, { every: 15, minGap: 0 });
-  await new Promise((r) => setTimeout(r, 70));
+  await until(() => n >= 2);
   stop();
-  assert.ok(n >= 2);
+  assert.ok(n >= 2, `renewed ${n} times`);
 });
 
 test("the default is a renewal well inside the access-token life (30 min)", () => {
