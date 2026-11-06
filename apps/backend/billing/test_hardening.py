@@ -36,7 +36,7 @@ class WebhookSizeCapChecksHeaderFirstTests(TestCase):
 class MissingAmountMustNotActivateTests(TenantTestCase):
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
         self.sub = Subscription.objects.create(environment=self.env_a, plan=self.plan, state=Subscription.State.TRIAL)
         self.attempt = PaymentAttempt.objects.create(
             environment=self.env_a, subscription=self.sub, merchant_order_id="chk-h1",
@@ -95,7 +95,7 @@ class CheckoutIsThrottledTests(TenantTestCase):
         codes = []
         for _ in range(40):
             r = self.client_a.post(
-                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json",
+                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json",
                 **self.with_env(self.env_a.id),
             )
             codes.append(r.status_code)
@@ -108,7 +108,7 @@ class UnavailableProviderIsACleanFailureTests(TenantTestCase):
         from django.test import override_settings
         with override_settings(PAYMENT_PROVIDER="kashier"):
             r = self.client_a.post(
-                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json",
+                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json",
                 **self.with_env(self.env_a.id),
             )
         # 503, not 400: nothing is wrong with the request, the payment service is temporarily unavailable
@@ -143,7 +143,7 @@ class ReturnUrlPointsAtTheWebAppTests(TenantTestCase):
         from unittest import mock
         with mock.patch.object(FakePaymentProvider, "create_recurring_setup_session", spy):
             r = self.client_a.post(
-                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.PLAN_1}, format="json",
+                "/api/v1/billing/checkout/", {"plan_key": Plan.Key.MONTHLY}, format="json",
                 **self.with_env(self.env_a.id),
             )
         self.assertEqual(r.status_code, 201, r.content)
