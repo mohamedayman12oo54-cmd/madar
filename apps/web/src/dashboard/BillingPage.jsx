@@ -7,7 +7,6 @@ import { billingApi } from "../lib/dashboardApi.js";
 import { pollUntilDone } from "../lib/poll.js";
 import {
   FEATURES,
-  PERIOD_DAYS,
   PLAN_FEATURES,
   accessSummary,
   attemptIdFromSearch,
@@ -17,6 +16,7 @@ import {
   formatCap,
   formatMoney,
   isAttemptDone,
+  periodText,
   planLabel,
   safeCheckoutUrl,
   sortPlans,
@@ -116,7 +116,7 @@ function StatusBand({ sub, now }) {
           {ent?.access_granted && (
             <span className="bl-pill">
               <Users size={15} aria-hidden="true" />
-              حتى {formatCap(ent.student_cap)} {ent.student_cap == null ? "" : "طالب"}
+              {ent.student_cap == null ? "بدون حد لعدد الطلاب" : `حتى ${formatCap(ent.student_cap)} طالب`}
             </span>
           )}
           {cycle && (
@@ -188,7 +188,7 @@ function ReturnPanel({ attemptId, onSettled, onDismiss }) {
 }
 
 /* ------------------------------------------------------------------- plan ladder */
-function PlanColumn({ plan, maxCap, sub, busyKey, onChoose }) {
+function PlanColumn({ plan, sub, busyKey, onChoose }) {
   const included = new Set(PLAN_FEATURES[plan.key] || []);
   const paidActive =
     sub?.entitlement?.basis === "paid_active" ||
@@ -214,8 +214,6 @@ function PlanColumn({ plan, maxCap, sub, busyKey, onChoose }) {
     hint = "لديك عملية دفع قيد الإتمام لباقة أخرى.";
   }
 
-  const capPct =
-    plan.max_students == null ? 100 : Math.max(8, Math.round((plan.max_students / maxCap) * 100));
   return (
     <div className="bl-plan" data-current={isCurrent ? 1 : 0}>
       <div className="bl-plan-name">
@@ -228,15 +226,10 @@ function PlanColumn({ plan, maxCap, sub, busyKey, onChoose }) {
       </div>
       <div className="bl-price">
         <b>{formatMoney(plan.price_minor_units, plan.currency)}</b>
-        <span>كل {nf(PERIOD_DAYS)} يومًا</span>
+        <span>{periodText(plan.key, plan.period_days)}</span>
       </div>
       <div className="bl-cap">
-        <span>
-          حتى <b>{formatCap(plan.max_students)}</b> {plan.max_students == null ? "" : "طالب"}
-        </span>
-        <div className="bl-cap-bar" aria-hidden="true">
-          <i style={{ width: `${capPct}%` }} />
-        </div>
+        <span>{plan.max_students == null ? "بدون حد لعدد الطلاب" : `حتى ${formatCap(plan.max_students)} طالب`}</span>
       </div>
       <ul className="bl-feats">
         {FEATURES.map((f) => {
@@ -416,7 +409,6 @@ export default function BillingPage({ redirect = defaultRedirect, now: nowProp }
       </>
     );
 
-  const maxCap = Math.max(...plans.map((p) => p.max_students || 0), 1);
   const canCancel = sub.entitlement?.basis === "paid_active" && !sub.cancel_at_period_end;
   const hasPending = !!sub.pending_checkout;
 
@@ -447,7 +439,6 @@ export default function BillingPage({ redirect = defaultRedirect, now: nowProp }
             <PlanColumn
               key={p.key}
               plan={p}
-              maxCap={maxCap}
               sub={sub}
               busyKey={busyKey}
               onChoose={choose}
@@ -458,8 +449,8 @@ export default function BillingPage({ redirect = defaultRedirect, now: nowProp }
           <Lock size={15} aria-hidden="true" />
           <span>
             عند الاشتراك تُحفظ بطاقتك لدى بوابة الدفع (كاشير) وليس لدينا، ويُسحب سعر الباقة تلقائيًا
-            كل {nf(PERIOD_DAYS)} يومًا حتى تلغي التجديد. يمكنك الإلغاء في أي وقت وتستمر مزاياك حتى
-            نهاية الفترة المدفوعة. لا نخزّن رقم بطاقتك أبدًا.
+            عند نهاية كل فترة (شهر أو ترم أو سنة حسب الباقة التي اخترتها) حتى تلغي التجديد. يمكنك
+            الإلغاء في أي وقت وتستمر مزاياك حتى نهاية الفترة المدفوعة. لا نخزّن رقم بطاقتك أبدًا.
           </span>
         </p>
       </section>
