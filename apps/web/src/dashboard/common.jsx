@@ -72,9 +72,11 @@ export function PageHeader({ infoKey, title, count, sub, children }) {
   return (
     <>
       <div className="dash-section-head">
-        <h2>
-          {title}
-          {count ? ` (${count})` : ""}
+        <div className="dash-title-group">
+          <h1>
+            {title}
+            {count ? ` (${count})` : ""}
+          </h1>
           <button
             type="button"
             className="info-btn"
@@ -84,7 +86,7 @@ export function PageHeader({ infoKey, title, count, sub, children }) {
           >
             <CircleHelp size={18} />
           </button>
-        </h2>
+        </div>
         <div className="dash-head-actions">{children}</div>
       </div>
       {open && <InfoModal infoKey={infoKey} onClose={close} />}
