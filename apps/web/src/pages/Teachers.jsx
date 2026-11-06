@@ -9,7 +9,7 @@ export default function Teachers() {
       <div className="page-head">
         <div className="wrap">
           <div className="kicker">للمدرسين</div>
-          <h2 className="h2">مدار للمعلّم المستقل.</h2>
+          <h1 className="h2">مدار للمعلّم المستقل.</h1>
           <p className="lead">أدوات تدريسك اليومية في نظام واحد — سريع أثناء الحصة، منظّم بعدها.</p>
         </div>
       </div>
