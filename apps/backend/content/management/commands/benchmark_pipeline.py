@@ -1,7 +1,7 @@
 """
 Times the REAL lesson pipeline end to end on one video and prints a report:
 
-    1. Groq Whisper (the only transcriber)            -> extract / API / total time
+    1. Gemini audio transcription (the only transcriber) -> extract / API / total time
     2. Gemini quiz generation from the transcript     -> generation / content check / total
 
     python manage.py benchmark_pipeline --video "E:\\lessons\\lesson1.mp4" --language ar
@@ -9,8 +9,8 @@ Times the REAL lesson pipeline end to end on one video and prints a report:
     python manage.py benchmark_pipeline --video lesson.mp4 --language ar --no-quiz
 
 It is a diagnostic, not part of the product or the test suite. It SENDS the
-video's audio to Groq and the transcript to Gemini (it needs GROQ_API_KEY and
-the Gemini settings), so use a lesson you are allowed to send. Nothing is
+video's audio, and then its transcript, to Gemini (it needs api_for_transcript,
+GEMINI_API_KEY and the Gemini settings), so use a lesson you are allowed to send. Nothing is
 written to the database. The transcript and the questions are never printed or
 saved unless you pass --show-text / --output.
 """
@@ -27,7 +27,7 @@ from ai.providers import AIProviderError
 from ai.quiz_contract import QuizConfigError, QuizGenerationConfig
 from ai.quiz_generation import LLMQuizProvider
 from content.models import ContentItem
-from content.transcription import ExternalSTTError, GroqWhisperTranscriber
+from content.transcription import ExternalSTTError, GeminiTranscriber
 
 
 def _fmt_ms(ms):
@@ -48,7 +48,7 @@ def _media_seconds(path):
 
 
 class Command(BaseCommand):
-    help = "Time Groq transcription and Gemini quiz generation on one video."
+    help = "Time Gemini transcription and Gemini quiz generation on one video."
 
     def add_arguments(self, parser):
         src = parser.add_mutually_exclusive_group(required=True)
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                           f"{'%.0f s of media' % audio_s if audio_s else 'duration unknown (no ffprobe)'}  "
                           f"language={language or 'auto-detect'}")
 
-        text = self._step_groq(path, language, report)
+        text = self._step_transcribe(path, language, report)
 
         if opts["show_text"] and text:
             self.stdout.write("\nTranscript start: " + text[:300].replace("\n", " "))
@@ -110,26 +110,30 @@ class Command(BaseCommand):
         return item.video_file.path
 
     # ---------------------------------------------------------------- steps --
-    def _step_groq(self, path, language, report):
-        self.stdout.write("\n[1/2] Groq Whisper ...")
-        if not GroqWhisperTranscriber.is_configured():
-            report["groq"] = {"status": "not_configured"}
-            self.stdout.write(self.style.ERROR("GROQ_API_KEY is not set, so the app cannot transcribe anything."))
+    def _step_transcribe(self, path, language, report):
+        self.stdout.write("\n[1/2] Gemini transcription ...")
+        if not GeminiTranscriber.is_configured():
+            report["transcription"] = {"status": "not_configured"}
+            self.stdout.write(self.style.ERROR(
+                "api_for_transcript (or a Gemini model: GEMINI_TRANSCRIBE_MODEL / GEMINI_MODEL) is not set, "
+                "so the app cannot transcribe anything."))
             return ""
         started = time.monotonic()
         try:
-            result = GroqWhisperTranscriber().transcribe(path, language)
+            result = GeminiTranscriber().transcribe(path, language)
         except ExternalSTTError as exc:
             wall = int((time.monotonic() - started) * 1000)
-            report["groq"] = {"status": "failed", "category": exc.category, "http_status": exc.status, "wall_ms": wall}
+            report["transcription"] = {"status": "failed", "category": exc.category, "http_status": exc.status,
+                                   "wall_ms": wall}
             self.stdout.write(self.style.ERROR(
                 f"FAILED after {_fmt_ms(wall)}: category={exc.category} status={exc.status} - {exc}"))
             return ""
         wall = int((time.monotonic() - started) * 1000)
         text = result["text"]
-        report["groq"] = {
-            "status": "ok", "model": GroqWhisperTranscriber().__dict__.get("_model"), "wall_ms": wall,
+        report["transcription"] = {
+            "status": "ok", "model": result.get("model"), "wall_ms": wall, "parts": result.get("parts"),
             "timings_ms": result.get("timings_ms"), "audio_uploaded_mb": round(result.get("audio_bytes", 0) / 1e6, 2),
+            "tokens": result.get("usage"),
             "detected_language": result.get("language"), "chars": len(text), "segments": len(result["segments"]),
         }
         self.stdout.write(self.style.SUCCESS(f"OK in {_fmt_ms(wall)}  language={result.get('language')}  chars={len(text)}"))
@@ -180,12 +184,12 @@ class Command(BaseCommand):
           f"{('%.0f s' % r['media_seconds']) if r['media_seconds'] else 'duration unknown'})")
         w(f"Language       : {r['language']}")
 
-        g = r.get("groq", {})
-        w("\n1) Transcription - Groq Whisper")
+        g = r.get("transcription", {})
+        w("\n1) Transcription - Gemini")
         if g.get("status") == "ok":
             t = g["timings_ms"] or {}
             w(f"   Audio extraction (ffmpeg) : {_fmt_ms(t.get('audio_extract'))}")
-            w(f"   Groq API call             : {_fmt_ms(t.get('api_call'))}   (uploaded {g['audio_uploaded_mb']} MB)")
+            w(f"   Gemini API call           : {_fmt_ms(t.get('api_call'))}   (sent {g['audio_uploaded_mb']} MB in {g.get('parts')} part(s))")
             w(f"   TOTAL                     : {_fmt_ms(g['wall_ms'])}")
             if r["media_seconds"]:
                 w(f"   Speed                     : {r['media_seconds'] / (max(g['wall_ms'], 1) / 1000):.1f}x real time "

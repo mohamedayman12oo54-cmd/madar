@@ -551,18 +551,28 @@ VIDEO_PROVIDER = env_str("VIDEO_PROVIDER", "local")
 VIDEO_XACCEL_PREFIX = env_str("VIDEO_XACCEL_PREFIX", "")
 
 # --- Lesson transcription (content/transcription.py) ------------------------
-# "groq_whisper_api" is the only active provider: hosted Whisper via Groq's
-# OpenAI-compatible REST API. If it is unconfigured, rate limited (429), times
-# out, or is otherwise unavailable, the transcript fails and can be retried.
+# "gemini_audio" is the only active provider: ffmpeg pulls a small mono mp3 out of the video and Gemini
+# (`generateContent`, audio sent inline, through ai.gemini.GeminiClient) writes what is said with timestamps.
+# If it is unconfigured, rate limited, times out or is otherwise unavailable, the transcript fails and can be retried.
 # Local faster-whisper is FROZEN: "faster_whisper" is not accepted here.
-TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "groq_whisper_api")
+TRANSCRIPTION_PROVIDER = env_str("TRANSCRIPTION_PROVIDER", "gemini_audio")
 # Blank during test runs regardless of the environment (same reasoning as
 # VIDEO_TRANSCODE below): the suite must never place a real network call.
-GROQ_API_KEY = env_str("GROQ_API_KEY", "") if "test" not in sys.argv else ""
-GROQ_STT_MODEL = env_str("GROQ_STT_MODEL", "whisper-large-v3-turbo")
-GROQ_STT_TIMEOUT_SECONDS = env_int("GROQ_STT_TIMEOUT_SECONDS", 120)
-# Groq's per-file limit: 25 MB on the free tier, 100 MB on the dev tier.
-GROQ_STT_MAX_UPLOAD_MB = env_int("GROQ_STT_MAX_UPLOAD_MB", 25)
+# The key is read ONLY from the environment variable `api_for_transcript` (put it in .env, which is git-ignored);
+# it is never written in source. It is a Gemini API key, separate from GEMINI_API_KEY (quizzes and the assistant).
+TRANSCRIPT_API_KEY = env_str("api_for_transcript", "") if "test" not in sys.argv else ""
+# The Gemini model that transcribes. Blank = GEMINI_MODEL (the one the quiz generator already uses).
+GEMINI_TRANSCRIBE_MODEL = env_str("GEMINI_TRANSCRIBE_MODEL", "")
+# Per request (one piece of audio). Audio longer than TRANSCRIPT_CHUNK_SECONDS goes out in pieces of that length
+# (never more than ~26 minutes: a whole inline request may not pass 20 MB) and the pieces are stitched back in order.
+TRANSCRIPT_TIMEOUT_SECONDS = env_int("TRANSCRIPT_TIMEOUT_SECONDS", 180)
+TRANSCRIPT_CHUNK_SECONDS = env_int("TRANSCRIPT_CHUNK_SECONDS", 600)
+# Output cap per piece. On "thinking" models the thinking tokens count toward it, hence the generous default.
+TRANSCRIPT_MAX_OUTPUT_TOKENS = env_int("TRANSCRIPT_MAX_OUTPUT_TOKENS", 32768)
+# Same syntax as GEMINI_THINKING (a token budget, or minimal/low/medium/high). Blank sends nothing.
+TRANSCRIPT_THINKING = env_str("TRANSCRIPT_THINKING", "")
+# Optional full path to ffmpeg. Otherwise: the one on PATH, then the copy bundled with `imageio-ffmpeg`.
+FFMPEG_BINARY = env_str("FFMPEG_BINARY", "")
 # Frozen with faster-whisper: nothing reads the next three until it is registered again.
 TRANSCRIPTION_MODEL = env_str("TRANSCRIPTION_MODEL", "small")
 # cpu works everywhere. "cuda" needs the NVIDIA CUDA/cuBLAS libraries installed; "auto" picks
@@ -810,7 +820,7 @@ LOGGING = {
 VAPID_PUBLIC_KEY = env_str("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = env_str("VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = env_str("VAPID_CONTACT", "mailto:admin@example.com")
-# Blank during test runs regardless of the developer .env (same reasoning as GROQ_API_KEY): the suite must never
+# Blank during test runs regardless of the developer .env (same reasoning as TRANSCRIPT_API_KEY): the suite must never
 # push to a real device, and tests that need keys opt in with override_settings.
 if "test" in sys.argv:
     VAPID_PUBLIC_KEY = VAPID_PRIVATE_KEY = ""
