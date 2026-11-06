@@ -150,7 +150,7 @@
   display: inline-block;
   min-width: 26px;
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: 100px;
   text-align: center;
   font-size: 0.78rem;
   font-weight: 700;
@@ -317,7 +317,7 @@
 .ex-timer {
   flex: none;
   padding: 5px 14px;
-  border-radius: 99px;
+  border-radius: 100px;
   background: var(--fill);
   color: var(--navy);
   font-weight: 800;
