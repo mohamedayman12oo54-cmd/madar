@@ -3,12 +3,18 @@ import { NavLink, Link } from "react-router-dom";
 import { Menu, X, ArrowLeft } from "lucide-react";
 import logo from "../assets/madar-logo.png";
 import { navItems } from "../data/content";
+import { useSession } from "../state/session.jsx";
+
+// Where each kind of signed-in account lands (the guardian portal has no account, so no entry here).
+const AREA = { teacher: "/app", student: "/learn", team: "/team" };
 
 // NOTE: the shell is a plain <div> (no transform) so the glass backdrop-filter
 // renders correctly in Safari — a transformed ancestor breaks it into a dark box.
 export default function Navbar() {
   const [tight, setTight] = useState(false);
   const [open, setOpen] = useState(false);
+  const { status, user } = useSession();
+  const area = status === "authenticated" ? AREA[user?.role] : null;
 
   useEffect(() => {
     const on = () => setTight(window.scrollY > 12);
@@ -39,12 +45,20 @@ export default function Navbar() {
             ))}
           </div>
           <div className="nactions">
-            <Link className="btn btn-ghost" to="/auth">
-              تسجيل الدخول
-            </Link>
-            <Link className="btn btn-primary" to="/auth">
-              ابدأ الآن <ArrowLeft className="arw" size={16} />
-            </Link>
+            {area ? (
+              <Link className="btn btn-primary" to={area}>
+                لوحتي <ArrowLeft className="arw" size={16} />
+              </Link>
+            ) : (
+              <>
+                <Link className="btn btn-ghost" to="/auth">
+                  تسجيل الدخول
+                </Link>
+                <Link className="btn btn-primary" to="/auth">
+                  ابدأ الآن <ArrowLeft className="arw" size={16} />
+                </Link>
+              </>
+            )}
             <button className="burger" aria-label="القائمة" onClick={() => setOpen(true)}>
               <Menu size={20} />
             </button>
@@ -64,8 +78,8 @@ export default function Navbar() {
             {i.label}
           </NavLink>
         ))}
-        <Link className="btn btn-primary" to="/auth" onClick={() => setOpen(false)}>
-          ابدأ الآن
+        <Link className="btn btn-primary" to={area || "/auth"} onClick={() => setOpen(false)}>
+          {area ? "لوحتي" : "ابدأ الآن"}
         </Link>
       </div>
     </>
