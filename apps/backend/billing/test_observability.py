@@ -122,11 +122,11 @@ class CheckoutAndFailurePathLogTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
 
     def test_checkout_initiation_logs_no_secret(self):
         with self.assertLogs("billing", level="INFO") as captured:
-            attempt, _url = services.start_checkout(self.env_a, Plan.Key.PLAN_1, "https://app.test/return")
+            attempt, _url = services.start_checkout(self.env_a, Plan.Key.MONTHLY, "https://app.test/return")
 
         rendered = "\n".join(captured.output)
         self.assertIn("event=attempt_created", rendered)
@@ -155,11 +155,11 @@ class TransitionHistoryTests(TenantTestCase):
 
     def setUp(self):
         super().setUp()
-        self.plan = Plan.objects.get(key=Plan.Key.PLAN_1)
+        self.plan = Plan.objects.get(key=Plan.Key.MONTHLY)
 
     def test_checkout_initiation_writes_one_history_row_for_the_new_attempt(self):
         before = BillingTransition.objects.count()
-        attempt, _url = services.start_checkout(self.env_a, Plan.Key.PLAN_1, "https://app.test/return")
+        attempt, _url = services.start_checkout(self.env_a, Plan.Key.MONTHLY, "https://app.test/return")
 
         rows = BillingTransition.objects.filter(model_name="payment_attempt", object_id=attempt.pk)
         self.assertEqual(rows.count(), 1)
