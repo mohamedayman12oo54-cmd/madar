@@ -402,6 +402,8 @@ const ROUTES = {
       },
     ],
   },
+  "/control/customer/tickets/": [],
+  "/control/customer/categories/": [],
   "/billing/checkout/": () => CHECKOUT_RESPONSE,
   "/billing/checkout/return/": () => RETURN_STATUS,
   "/billing/subscription/cancel/": {
@@ -2593,6 +2595,59 @@ test("a page that crashes shows a message and a reload button instead of a blank
     assert.ok(buttonWith(m.container, "إعادة تحميل الصفحة"), "offers a reload");
   } finally {
     console.error = origError;
+    await m.done();
+  }
+});
+
+test("overview redesign: greeting hero, quick create menu, phone bottom bar and grouped sidebar all render", async () => {
+  ME = TEACHER;
+  const m = await mount("/app", React.createElement(AppRoutes));
+  try {
+    assert.ok(m.container.querySelector(".ov-hero"), "hero");
+    assert.match(m.container.querySelector(".ov-hero h2").textContent, /مدرّس/, "greets the teacher by name");
+    assert.equal(m.container.querySelector(".start-card"), null, "no onboarding card once every step is done");
+    const groups = [...m.container.querySelectorAll(".dash-group-title")].map((n) => n.textContent);
+    assert.deepEqual(groups, ["التدريس اليومي", "المتابعة والمحتوى", "حسابي"]);
+    assert.equal(m.container.querySelectorAll(".dash-bt").length, 5, "four tabs + more");
+    const btn = m.container.querySelector(".dash-quick-btn");
+    assert.ok(btn, "quick create");
+    await clickEl(btn);
+    const items = [...m.container.querySelectorAll(".dash-quick-menu button")].map((b) => b.textContent);
+    assert.equal(items.length, 5);
+    assert.ok(items.some((t) => t.includes("إضافة طالب")));
+  } finally {
+    await m.done();
+  }
+});
+
+test("overview redesign: a brand-new teacher sees the getting-started checklist with the right steps open", async () => {
+  ME = TEACHER;
+  const saved = ROUTES["/environments/overview/"];
+  ROUTES["/environments/overview/"] = {
+    ...saved,
+    students: { active: 0, inactive: 0 },
+    structure: { grades: 0, groups: 0 },
+    sessions: { today: [], open: 0, upcoming: [] },
+  };
+  const m = await mount("/app", React.createElement(AppRoutes));
+  try {
+    const card = m.container.querySelector(".start-card");
+    assert.ok(card, "checklist shown");
+    assert.equal(card.querySelectorAll("li").length, 4);
+    assert.equal(card.querySelectorAll("li.done").length, 0);
+    assert.match(card.textContent, /٠ من ٤|0 من 4/);
+  } finally {
+    ROUTES["/environments/overview/"] = saved;
+    await m.done();
+  }
+});
+
+test("the dashboard support page is reachable from the sidebar and renders", async () => {
+  ME = TEACHER;
+  const m = await mount("/app/support", React.createElement(AppRoutes));
+  try {
+    assert.match(m.container.textContent, /الدعم والمساعدة/);
+  } finally {
     await m.done();
   }
 });
