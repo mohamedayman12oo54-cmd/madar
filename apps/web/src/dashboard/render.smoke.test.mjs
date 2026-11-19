@@ -810,14 +810,17 @@ localStorage.setItem("madar.activeEnvironment", "1");
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
-const { MemoryRouter } = await import("react-router-dom");
 const { createServer } = await import("vite");
 const vite = await createServer({
   server: { middlewareMode: true },
   appType: "custom",
   logLevel: "error",
   optimizeDeps: { noDiscovery: true },
+  // React Router 7 ships dual CJS/ESM: bundle it through Vite so the test harness sees the ESM build
+  ssr: { noExternal: ["react-router", "react-router-dom"], resolve: { conditions: ["module-sync", "import", "module", "node", "default"] } },
 });
+// the router must come from the SAME module graph as the app (two copies = two contexts)
+const { MemoryRouter } = await vite.ssrLoadModule("react-router-dom");
 const load = (p) => vite.ssrLoadModule(p);
 const { SessionProvider } = await load("/src/state/session.jsx");
 const { EnvironmentProvider } = await load("/src/state/environment.jsx");
@@ -1169,7 +1172,7 @@ test("guardian portal: a server that has not been updated (sections missing) sti
 
 test("guardian portal with no session sends the visitor to the guardian login", async () => {
   sessionStorage.removeItem("madar.parent.session");
-  const { Routes, Route } = await import("react-router-dom");
+  const { Routes, Route } = await vite.ssrLoadModule("react-router-dom");
   const m = await mount(
     "/parent",
     React.createElement(
@@ -1636,7 +1639,7 @@ test("scanner: the self check-in panel shows the QR, the announced code and the 
 
 test("public check-in page: phone + 6-digit code form, no account data, attendance only", async () => {
   ME = TEACHER;
-  const { Routes, Route } = await import("react-router-dom");
+  const { Routes, Route } = await vite.ssrLoadModule("react-router-dom");
   const { CheckinPage } = await load("/src/auth/screens/Checkin.jsx");
   const m = await mount(
     "/checkin/tok123",
@@ -2559,7 +2562,7 @@ test("guardian portal: a reply box is hidden until asked for, and a sent reply a
 
 test("a page that crashes shows a message and a reload button instead of a blank white screen, and recovers on navigation", async () => {
   const ErrorBoundary = (await load("/src/components/ErrorBoundary.jsx")).default;
-  const { Routes, Route, Link } = await import("react-router-dom");
+  const { Routes, Route, Link } = await vite.ssrLoadModule("react-router-dom");
   const Boom = () => {
     throw new Error("boom: something broke while rendering");
   };

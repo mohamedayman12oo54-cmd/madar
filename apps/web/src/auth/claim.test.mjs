@@ -87,14 +87,17 @@ globalThis.fetch = async (url, init = {}) => {
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
-const { MemoryRouter, Routes, Route } = await import("react-router-dom");
 const { createServer } = await import("vite");
 const vite = await createServer({
   server: { middlewareMode: true },
   appType: "custom",
   logLevel: "error",
   optimizeDeps: { noDiscovery: true },
+  // React Router 7 ships dual CJS/ESM: bundle it through Vite so the test harness sees the ESM build
+  ssr: { noExternal: ["react-router", "react-router-dom"], resolve: { conditions: ["module-sync", "import", "module", "node", "default"] } },
 });
+// the router must come from the SAME module graph as the app (two copies = two contexts)
+const { MemoryRouter, Routes, Route } = await vite.ssrLoadModule("react-router-dom");
 const { StudentClaim, StudentLogin } = await vite.ssrLoadModule(
   "/src/auth/screens/StudentAuth.jsx"
 );
