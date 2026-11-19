@@ -1,7 +1,25 @@
 from django.conf import settings
 from django.contrib import admin
 from django.http import JsonResponse
-from django.urls import include, path
+from django.urls import include, path, register_converter
+
+
+class BoundedInt:
+    """The `<int:pk>` of every route in the API. Django's own converter accepts any number of digits, so
+    `/users/99999999999999999999/` reached the database and came back as an HTTP 500 ("bigint out of range").
+    Nine digits fit every id column; anything longer cannot name a real row and is a plain 404 at the router."""
+
+    regex = "[0-9]{1,9}"
+
+    def to_python(self, value):
+        return int(value)
+
+    def to_url(self, value):
+        return str(value)
+
+
+# Registered BEFORE any path() below (and before include() imports an app's urls) so it replaces the built-in `int`.
+register_converter(BoundedInt, "int")
 
 
 def health(request):
