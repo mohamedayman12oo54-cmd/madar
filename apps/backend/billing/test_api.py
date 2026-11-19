@@ -29,7 +29,7 @@ class PlanListEndpointTests(TenantTestCase):
         by_key = {row["key"]: row for row in body}
         self.assertEqual(
             {k: (v["price_minor_units"], v["period_days"], v["max_students"]) for k, v in by_key.items()},
-            {"monthly": (185000, 30, None), "term": (450000, 180, None), "yearly": (1000000, 365, None)})
+            {"monthly": (150000, 30, None), "term": (500000, 180, None), "yearly": (950000, 365, None)})
 
     def test_a_student_is_refused(self):
         student = self.make_student_in(self.env_a, "201020000099")

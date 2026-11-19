@@ -380,9 +380,9 @@ const ROUTES = {
   "/billing/plans/": {
     count: 3,
     results: [
-      { key: "monthly", name: "شهري", price_minor_units: 185000, currency: "EGP", max_students: null, period_days: 30 },
-      { key: "term", name: "كل ترم", price_minor_units: 450000, currency: "EGP", max_students: null, period_days: 180 },
-      { key: "yearly", name: "سنوي", price_minor_units: 1000000, currency: "EGP", max_students: null, period_days: 365 },
+      { key: "monthly", name: "شهري", price_minor_units: 150000, currency: "EGP", max_students: null, period_days: 30 },
+      { key: "term", name: "كل ترم", price_minor_units: 500000, currency: "EGP", max_students: null, period_days: 180 },
+      { key: "yearly", name: "سنوي", price_minor_units: 950000, currency: "EGP", max_students: null, period_days: 365 },
     ],
   },
   "/billing/subscription/": () => SUB,
@@ -394,7 +394,7 @@ const ROUTES = {
       {
         id: 1,
         status: "succeeded",
-        amount_minor_units: 150000,
+        amount_minor_units: 185000,
         currency: "EGP",
         created_at: NOW,
         period_start: NOW,
@@ -1368,9 +1368,9 @@ test("billing: the trial shows its remaining days and the plan ladder with serve
     assert.ok(container.querySelector(".bl-ring-fg"), "depleting ring");
     assert.equal(container.querySelectorAll(".bl-timer b").length, 3, "days:hours:minutes timer");
     assert.equal(container.querySelector(".bl-days-n").textContent, "٥");
-    assert.match(text, /١٬٨٥٠ ج\.م/); // monthly
-    assert.match(text, /٤٬٥٠٠ ج\.م/); // term
-    assert.match(text, /١٠٬٠٠٠ ج\.م/); // yearly
+    assert.match(text, /١٬٥٠٠ ج\.م/); // monthly
+    assert.match(text, /٥٬٠٠٠ ج\.م/); // term
+    assert.match(text, /٩٬٥٠٠ ج\.م/); // yearly
     assert.match(text, /كل شهر \(٣٠ يومًا\)/);
     assert.match(text, /كل ترم \(١٨٠ يومًا\)/);
     assert.match(text, /كل سنة \(٣٦٥ يومًا\)/);
