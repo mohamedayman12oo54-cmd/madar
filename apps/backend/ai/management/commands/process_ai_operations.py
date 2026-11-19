@@ -40,6 +40,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from ai.models import AIOperation
+from control.jobs import record_run
 from ai.processing import COMPLETED, ENTITLEMENT_LOST_ERROR, GATED_KIND_CAPABILITIES, claim, run_claimed  # noqa: F401
 
 
@@ -63,6 +64,15 @@ class Command(BaseCommand):
             time.sleep(options["interval"])
 
     def run_once(self, options):
+        with record_run("process_ai_operations") as run:
+            completed, failed, requeued = self._work(options)
+            run.processed, run.failed = completed + failed, failed
+        self.stdout.write(self.style.SUCCESS(
+            f"Processed {completed + failed} AI operation(s): {completed} completed, {failed} failed"
+            + (f"; requeued {requeued} stale." if requeued else ".")
+        ))
+
+    def _work(self, options):
         stale_before = timezone.now() - timedelta(minutes=options["requeue_stale_minutes"])
         requeued = AIOperation.objects.filter(
             status=AIOperation.Status.PROCESSING, started_at__lt=stale_before
@@ -80,8 +90,4 @@ class Command(BaseCommand):
                 completed += 1
             else:
                 failed += 1
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Processed {completed + failed} AI operation(s): {completed} completed, {failed} failed"
-            + (f"; requeued {requeued} stale." if requeued else ".")
-        ))
+        return completed, failed, requeued

@@ -39,7 +39,7 @@ Password for every seeded account is `Demo1234!`.
 There's no "team signup" screen anywhere in the product, so team accounts are
 provisioned by whoever runs the backend:
 ```bash
-python manage.py create_team_user "team@madar" --name "اسم الفريق"
+python manage.py create_team_user "team@madar" --name "اسم الفريق" --role super_admin
 ```
 
 ## Architecture
@@ -71,6 +71,34 @@ python manage.py create_team_user "team@madar" --name "اسم الفريق"
 
 All under `/api/v1`. `<flow>` is one of `teacher-signup` / `teacher-reset` /
 `student-claim` / `student-reset`.
+
+## Madar Control Center (`/team`, API `/api/v1/control/`)
+The internal team's operating console: users, environments, support tickets & complaints, finance (read-only),
+AI monitoring, notifications, reports, audit log, system health and settings. App: `control/`.
+
+* **Roles & permissions.** `team` accounts get a `TeamProfile` (role + per-person grants/revocations). Roles:
+  `super_admin`, `admin`, `support_manager`, `support_agent`, `technical_support`, `finance_manager`,
+  `content_manager`, `analyst` (editable in the UI; catalog in `control/permissions_catalog.py`). Every endpoint
+  declares its permission and the server checks it on each request (`control/access.py`); hidden buttons are cosmetic.
+  A team account **without** a profile (every account created before this feature) keeps only `knowledge.manage` —
+  nothing widens by upgrading. Provision team members with
+  `python manage.py create_team_user <id> --name … --role <role_key>`; there is no in-app or public team signup.
+* **Escalation rules.** Nobody edits their own role/permissions/state, nobody grants a permission they lack, only a
+  super admin touches a super admin, the last active super admin cannot be demoted or deactivated.
+* **Audit log.** `AuditLog` is append-only (the model refuses update/delete). Writes: user edits/suspension, team and
+  role changes, every ticket change, settings, notices. Reads of another person's/environment's private detail are
+  logged too (`view`, de-duplicated for 10 minutes). Secret-looking keys are scrubbed before storage.
+* **Support.** `Ticket` / `TicketMessage` (customer, agent, **internal** note) / `TicketEvent` (history). Teachers and
+  students open and follow their own tickets (`/app/support`, `/learn/support`); the customer API filters internal
+  notes at the query. Guardians have no account: staff log tickets for them. Attachments: png/jpg/gif/webp/pdf/txt,
+  ≤3 per message, ≤5 MB, magic bytes checked, random stored names, served only through authenticated endpoints.
+  Support metrics are computed from ticket timestamps/events.
+* **Background jobs.** `process_notifications`, `process_ai_operations`, `process_guardian_alerts`,
+  `purge_pending_auth` and the new `process_platform_notices` write a `JobRun` per execution; System Health shows only
+  those records ("never recorded" when there are none).
+* **Platform notices** go through the existing Web Push module. "Sent" means the push service accepted it — never
+  "delivered". Sending is refused (409) when VAPID keys are not configured.
+* **Finance** is read-only (no write endpoint exists); card tokens / agreement ids are never selected.
 
 ## What I added beyond the given screens (and why)
 The provided frontend has no teacher dashboard, so **there was no screen

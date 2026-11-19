@@ -39,6 +39,7 @@ urlpatterns = [
     path("api/v1/student/exams/", include("learning.student_urls")),
     path("api/v1/exams/", include("learning.urls")),
     path("api/v1/student/", include("studentarea.urls")),
+    path("api/v1/control/", include("control.urls")),
 ]
 
 if settings.ENABLE_ADMIN:

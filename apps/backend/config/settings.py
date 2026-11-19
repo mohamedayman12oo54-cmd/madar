@@ -126,6 +126,7 @@ INSTALLED_APPS = [
     "studentarea",
     "learning",
     "billing",
+    "control",
 ]
 
 
@@ -397,6 +398,8 @@ REST_FRAMEWORK = {
         "billing-cancel": "10/hour",
         "billing-status": "120/min",
         "billing-webhook": "600/min",
+        # support tickets raised / answered by teachers and students (control app)
+        "support-write": "60/hour",
         "broadcast": "20/hour",
         "guardian-message": "120/hour",
         "guardian-reply": "20/hour",

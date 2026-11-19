@@ -13,6 +13,7 @@ import argparse
 import time
 
 from django.core.management.base import BaseCommand
+from control.jobs import record_run
 from notifications.delivery import deliver_pending
 
 
@@ -35,7 +36,10 @@ class Command(BaseCommand):
             time.sleep(options["interval"])
 
     def run_once(self, options):
-        r = deliver_pending(limit=options["limit"])
+        with record_run("process_notifications") as run:
+            r = deliver_pending(limit=options["limit"])
+            run.processed = r["sent"] + r["failed"] + r["expired"]
+            run.failed = r["failed"] + r["expired"]
         self.stdout.write(self.style.SUCCESS(
             f"Processed {r['sent'] + r['failed'] + r['expired']} notification(s): "
             f"{r['sent']} sent, {r['failed']} failed" + (f", {r['expired']} expired." if r["expired"] else ".")))
