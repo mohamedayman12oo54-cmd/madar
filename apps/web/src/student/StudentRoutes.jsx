@@ -11,6 +11,7 @@ import NotificationsPage from "./NotificationsPage.jsx";
 import SettingsPage from "./SettingsPage.jsx";
 import AssistantPage from "./AssistantPage.jsx";
 import { ExamsPage, ExamRunPage } from "./ExamPages.jsx";
+import SupportPage from "../support/SupportPage.jsx";
 
 export default function StudentRoutes() {
   return (
@@ -29,6 +30,7 @@ export default function StudentRoutes() {
           <Route path="exams" element={<ExamsPage />} />
           <Route path="assistant" element={<AssistantPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="support" element={<SupportPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/learn" replace />} />
         </Route>
