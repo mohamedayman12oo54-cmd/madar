@@ -372,3 +372,65 @@ request throttles remain, and the lock never exceeds 5 minutes per round.
 The product owner reversed INV-4: a student may be in a single group. Enforced in
 `MAX_GROUPS_PER_STUDENT = 1` for the teacher's form and the public form. Students who already sit in two
 groups keep them until edited. The approved documentation that states INV-4 must be updated.
+
+
+---
+
+# Round 2 — whole-application audit including the Control Center (Nov 2026)
+
+Method: route-by-route sweep of the live API (`config/test_route_sweep.py`), static review of every sink class
+(raw SQL, `mark_safe`, `innerHTML`, subprocess, outbound HTTP, file serving), token-forgery attacks, real-browser runs
+of every page against a real backend, dependency audit, `check --deploy`.
+
+## Vulnerabilities found and fixed
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | **High** | A student suspended from the Control Center (`is_active=False`, `is_verified=True`) could re-activate themselves through the student **claim** flow (badge code + phone + OTP), undoing the suspension. | Claim request and activation now accept only never-claimed accounts (`is_verified=False`). Test: `test_a_suspended_student_cannot_undo_the_suspension_through_the_claim_flow`. |
+| 2 | **High** | The pre-existing Knowledge Base API only checked `role == team`, so with roles introduced any support agent / analyst could read **and edit** it. | Gated on `knowledge.manage` (legacy team accounts keep it). Tested for 5 roles + teacher. |
+| 3 | Medium | Integers too large for a column (`/users/99999999999999999999/`, `?page=9999999999999999999`, `?environment=…`) reached PostgreSQL and returned **HTTP 500** (`bigint out of range`) across the whole API (every `<int:pk>` route). | `<int:…>` is now a bounded 9-digit converter; central `DataError`/`ValidationError` handling returns 400; validated `id_param`/`date_param` helpers in the console; page clamp. |
+| 4 | Medium | Malformed dates (`?from=not-a-date`) in console filters raised an ORM `ValidationError` → 500. | `date_param` → 400. |
+| 5 | Medium | A NUL character (`%00` in a query/path or `\u0000` in JSON) became a database error (500) wherever it reached a query. | `NullByteGuardMiddleware` rejects it everywhere (400). |
+| 6 | Medium | A JSON body nested ~200 000 deep overflowed the parser's stack: **unauthenticated HTTP 500** on login endpoints. | `RecursionError` handled centrally → 400. |
+| 7 | Medium | Ticket-upload size was checked only after the whole body had been received/spooled. | Declared `Content-Length` over the limit (or chunked) is refused with 413 before parsing. |
+| 8 | Low | Audit-log immutability was enforced in Python only. | PostgreSQL row triggers now refuse UPDATE/DELETE (only the `ON DELETE SET NULL` of the actor is allowed); tested with raw SQL. |
+| 9 | Low | Audit actor filter listed a person twice after a rename (duplicate React keys). | One entry per person, latest label. |
+| 10 | Low | Audit IP ignored the proxy rules used by the rate limiters. | Uses DRF `get_ident` (honours `DJANGO_NUM_PROXIES`). |
+| 11 | Dep. | `Django 5.2.17` (two LTS security patches behind), `psycopg 3.3.6`, `PyJWT 2.15.0`; npm: 2 advisories in `react-router` 6 (open redirect via backslash, SSR deserialisation). | Django 5.2.19, psycopg 3.3.9, PyJWT 2.15.1; React Router 7.18.6 → `npm audit`: **0 vulnerabilities**. |
+
+## Attacks that were tried and did NOT succeed
+JWT `alg=none`, wrong-key signature, payload tampering (user id), HS512 confusion, refresh-as-access and
+access-as-refresh, expired token, stale `session_version`, deactivated account with a live token, forged `role` claim;
+Django session cookie as ambient credential (CSRF); all 5 HTTP methods on all `/api/v1` routes anonymously; every
+console route as teacher / student / guardian / role-less team account / read-only role; hostile JSON shapes on every
+route; hostile query strings on every console route; SSRF via the push-subscription endpoint (host allow-list);
+open redirect via platform-notice URL; CSV formula injection; SVG/EXE/polyglot uploads; unsigned webhooks.
+
+## Remaining risks / limits (honest list)
+* **Privileged insiders.** A member with `users.edit` can change a teacher/student's email or phone, then use the normal
+  "forgot password" OTP on the new address (account takeover). It is audited (before/after values) and limited to
+  `admin`/`super_admin` by default, but not technically prevented. Keep `users.edit` to few people.
+* **Account enumeration at signup/claim**: "this email/phone is already used" is revealed before OTP (UX trade-off,
+  rate limited).
+* **Tokens live in `localStorage`** (XSS would expose them). Mitigations: strict CSP (`script-src 'self'`), no
+  `innerHTML`/`dangerouslySetInnerHTML` anywhere, React escaping. A cookie-based session would trade this for CSRF.
+* Signed streaming/document tickets travel in a query string (short-lived, viewer-bound); they can appear in proxy logs.
+* A support agent with `tickets.reply` can act on tickets assigned to someone else (by design, for coverage).
+* `pip-audit`-style CVE data for Python packages could not be queried offline; versions were compared to the latest
+  releases only.
+
+## Production checklist (things code cannot enforce)
+1. `DJANGO_DEBUG=False`, a ≥50-char random `DJANGO_SECRET_KEY`, explicit `DJANGO_ALLOWED_HOSTS`, https-only
+   `CORS_ALLOWED_ORIGINS` / `DJANGO_CSRF_TRUSTED_ORIGINS` (the app refuses to start otherwise). Do **not** leave a
+   development `.env` with `DJANGO_SECURE_SSL_REDIRECT=False` on the server (`check --deploy` warns W008).
+2. Behind a reverse proxy set `DJANGO_NUM_PROXIES` to the number of trusted proxies (rate limits and audit IPs depend on it)
+   and make the proxy overwrite `X-Forwarded-For`.
+3. Database role used by the app: no `SUPERUSER`/`CREATEDB`; `REVOKE TRUNCATE, TRIGGER ON control_auditlog FROM app_role;`
+   (the triggers block UPDATE/DELETE, not TRUNCATE). Back up the audit table separately (append-only log shipping).
+4. Reverse proxy: `client_max_body_size` ≈ 20 MB for ticket endpoints (videos use the chunked upload route), TLS 1.2+,
+   the headers in `web/deploy/security-headers.conf` (CSP `frame-ancestors`, HSTS, nosniff…).
+5. Keep `DJANGO_ENABLE_ADMIN` off (or on a secret path behind VPN / IP allow-list).
+6. Schedule: `process_*` workers, `purge_pending_auth` daily, `flushexpiredtokens` weekly (JWT blacklist table growth),
+   `createcachetable` once (shared throttle/lock-out counters).
+7. VAPID / Gemini / Kashier keys only in the environment, never in the repository (verified: none are tracked).
+8. Rotate the team accounts' passwords created by `seed_demo` (`Demo1234!`) — never run `seed_demo` in production.

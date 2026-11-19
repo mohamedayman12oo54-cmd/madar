@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from accounts.models import PendingAuth
+from control.jobs import record_run
 
 
 class Command(BaseCommand):
@@ -16,5 +17,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         cutoff = timezone.now() - timedelta(hours=options["hours"])
-        n, _ = PendingAuth.objects.filter(created_at__lt=cutoff).delete()
+        with record_run("purge_pending_auth") as run:
+            n, _ = PendingAuth.objects.filter(created_at__lt=cutoff).delete()
+            run.processed = n
         self.stdout.write(self.style.SUCCESS(f"Purged {n} expired pending-auth row(s)."))

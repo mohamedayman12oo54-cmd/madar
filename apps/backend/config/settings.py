@@ -126,12 +126,14 @@ INSTALLED_APPS = [
     "studentarea",
     "learning",
     "billing",
+    "control",
 ]
 
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "config.middleware.NullByteGuardMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -397,6 +399,8 @@ REST_FRAMEWORK = {
         "billing-cancel": "10/hour",
         "billing-status": "120/min",
         "billing-webhook": "600/min",
+        # support tickets raised / answered by teachers and students (control app)
+        "support-write": "60/hour",
         "broadcast": "20/hour",
         "guardian-message": "120/hour",
         "guardian-reply": "20/hour",

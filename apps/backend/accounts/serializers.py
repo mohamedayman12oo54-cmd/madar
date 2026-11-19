@@ -335,6 +335,9 @@ class StudentClaimRequestSerializer(serializers.Serializer):
                 is_active=True,
                 student__role=User.Role.STUDENT,
                 student__is_active=False,
+                # "never claimed" ONLY. An account the team SUSPENDED is also is_active=False but is_verified=True,
+                # and must not be able to re-activate itself with its badge code (that would undo a suspension).
+                student__is_verified=False,
             )
             .first()
         )

@@ -380,9 +380,9 @@ const ROUTES = {
   "/billing/plans/": {
     count: 3,
     results: [
-      { key: "monthly", name: "شهري", price_minor_units: 185000, currency: "EGP", max_students: null, period_days: 30 },
-      { key: "term", name: "كل ترم", price_minor_units: 450000, currency: "EGP", max_students: null, period_days: 180 },
-      { key: "yearly", name: "سنوي", price_minor_units: 1000000, currency: "EGP", max_students: null, period_days: 365 },
+      { key: "monthly", name: "شهري", price_minor_units: 150000, currency: "EGP", max_students: null, period_days: 30 },
+      { key: "term", name: "كل ترم", price_minor_units: 500000, currency: "EGP", max_students: null, period_days: 180 },
+      { key: "yearly", name: "سنوي", price_minor_units: 950000, currency: "EGP", max_students: null, period_days: 365 },
     ],
   },
   "/billing/subscription/": () => SUB,
@@ -394,7 +394,7 @@ const ROUTES = {
       {
         id: 1,
         status: "succeeded",
-        amount_minor_units: 150000,
+        amount_minor_units: 185000,
         currency: "EGP",
         created_at: NOW,
         period_start: NOW,
@@ -402,6 +402,8 @@ const ROUTES = {
       },
     ],
   },
+  "/control/customer/tickets/": [],
+  "/control/customer/categories/": [],
   "/billing/checkout/": () => CHECKOUT_RESPONSE,
   "/billing/checkout/return/": () => RETURN_STATUS,
   "/billing/subscription/cancel/": {
@@ -810,14 +812,17 @@ localStorage.setItem("madar.activeEnvironment", "1");
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
-const { MemoryRouter } = await import("react-router-dom");
 const { createServer } = await import("vite");
 const vite = await createServer({
   server: { middlewareMode: true },
   appType: "custom",
   logLevel: "error",
   optimizeDeps: { noDiscovery: true },
+  // React Router 7 ships dual CJS/ESM: bundle it through Vite so the test harness sees the ESM build
+  ssr: { noExternal: ["react-router", "react-router-dom"], resolve: { conditions: ["module-sync", "import", "module", "node", "default"] } },
 });
+// the router must come from the SAME module graph as the app (two copies = two contexts)
+const { MemoryRouter } = await vite.ssrLoadModule("react-router-dom");
 const load = (p) => vite.ssrLoadModule(p);
 const { SessionProvider } = await load("/src/state/session.jsx");
 const { EnvironmentProvider } = await load("/src/state/environment.jsx");
@@ -1169,7 +1174,7 @@ test("guardian portal: a server that has not been updated (sections missing) sti
 
 test("guardian portal with no session sends the visitor to the guardian login", async () => {
   sessionStorage.removeItem("madar.parent.session");
-  const { Routes, Route } = await import("react-router-dom");
+  const { Routes, Route } = await vite.ssrLoadModule("react-router-dom");
   const m = await mount(
     "/parent",
     React.createElement(
@@ -1368,9 +1373,9 @@ test("billing: the trial shows its remaining days and the plan ladder with serve
     assert.ok(container.querySelector(".bl-ring-fg"), "depleting ring");
     assert.equal(container.querySelectorAll(".bl-timer b").length, 3, "days:hours:minutes timer");
     assert.equal(container.querySelector(".bl-days-n").textContent, "٥");
-    assert.match(text, /١٬٨٥٠ ج\.م/); // monthly
-    assert.match(text, /٤٬٥٠٠ ج\.م/); // term
-    assert.match(text, /١٠٬٠٠٠ ج\.م/); // yearly
+    assert.match(text, /١٬٥٠٠ ج\.م/); // monthly
+    assert.match(text, /٥٬٠٠٠ ج\.م/); // term
+    assert.match(text, /٩٬٥٠٠ ج\.م/); // yearly
     assert.match(text, /كل شهر \(٣٠ يومًا\)/);
     assert.match(text, /كل ترم \(١٨٠ يومًا\)/);
     assert.match(text, /كل سنة \(٣٦٥ يومًا\)/);
@@ -1636,7 +1641,7 @@ test("scanner: the self check-in panel shows the QR, the announced code and the 
 
 test("public check-in page: phone + 6-digit code form, no account data, attendance only", async () => {
   ME = TEACHER;
-  const { Routes, Route } = await import("react-router-dom");
+  const { Routes, Route } = await vite.ssrLoadModule("react-router-dom");
   const { CheckinPage } = await load("/src/auth/screens/Checkin.jsx");
   const m = await mount(
     "/checkin/tok123",
@@ -2559,7 +2564,7 @@ test("guardian portal: a reply box is hidden until asked for, and a sent reply a
 
 test("a page that crashes shows a message and a reload button instead of a blank white screen, and recovers on navigation", async () => {
   const ErrorBoundary = (await load("/src/components/ErrorBoundary.jsx")).default;
-  const { Routes, Route, Link } = await import("react-router-dom");
+  const { Routes, Route, Link } = await vite.ssrLoadModule("react-router-dom");
   const Boom = () => {
     throw new Error("boom: something broke while rendering");
   };
@@ -2590,6 +2595,59 @@ test("a page that crashes shows a message and a reload button instead of a blank
     assert.ok(buttonWith(m.container, "إعادة تحميل الصفحة"), "offers a reload");
   } finally {
     console.error = origError;
+    await m.done();
+  }
+});
+
+test("overview redesign: greeting hero, quick create menu, phone bottom bar and grouped sidebar all render", async () => {
+  ME = TEACHER;
+  const m = await mount("/app", React.createElement(AppRoutes));
+  try {
+    assert.ok(m.container.querySelector(".ov-hero"), "hero");
+    assert.match(m.container.querySelector(".ov-hero h2").textContent, /مدرّس/, "greets the teacher by name");
+    assert.equal(m.container.querySelector(".start-card"), null, "no onboarding card once every step is done");
+    const groups = [...m.container.querySelectorAll(".dash-group-title")].map((n) => n.textContent);
+    assert.deepEqual(groups, ["التدريس اليومي", "المتابعة والمحتوى", "حسابي"]);
+    assert.equal(m.container.querySelectorAll(".dash-bt").length, 5, "four tabs + more");
+    const btn = m.container.querySelector(".dash-quick-btn");
+    assert.ok(btn, "quick create");
+    await clickEl(btn);
+    const items = [...m.container.querySelectorAll(".dash-quick-menu button")].map((b) => b.textContent);
+    assert.equal(items.length, 5);
+    assert.ok(items.some((t) => t.includes("إضافة طالب")));
+  } finally {
+    await m.done();
+  }
+});
+
+test("overview redesign: a brand-new teacher sees the getting-started checklist with the right steps open", async () => {
+  ME = TEACHER;
+  const saved = ROUTES["/environments/overview/"];
+  ROUTES["/environments/overview/"] = {
+    ...saved,
+    students: { active: 0, inactive: 0 },
+    structure: { grades: 0, groups: 0 },
+    sessions: { today: [], open: 0, upcoming: [] },
+  };
+  const m = await mount("/app", React.createElement(AppRoutes));
+  try {
+    const card = m.container.querySelector(".start-card");
+    assert.ok(card, "checklist shown");
+    assert.equal(card.querySelectorAll("li").length, 4);
+    assert.equal(card.querySelectorAll("li.done").length, 0);
+    assert.match(card.textContent, /٠ من ٤|0 من 4/);
+  } finally {
+    ROUTES["/environments/overview/"] = saved;
+    await m.done();
+  }
+});
+
+test("the dashboard support page is reachable from the sidebar and renders", async () => {
+  ME = TEACHER;
+  const m = await mount("/app/support", React.createElement(AppRoutes));
+  try {
+    assert.match(m.container.textContent, /الدعم والمساعدة/);
+  } finally {
     await m.done();
   }
 });

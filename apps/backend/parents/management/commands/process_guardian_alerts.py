@@ -11,6 +11,7 @@ import time
 
 from django.core.management.base import BaseCommand
 
+from control.jobs import record_run
 from parents.guardian_alerts import run_all
 
 
@@ -25,7 +26,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         iteration = 0
         while True:
-            self.stdout.write(self.style.SUCCESS(f"Wrote {run_all()} guardian warning(s)."))
+            with record_run("process_guardian_alerts") as run:
+                run.processed = run_all()
+            self.stdout.write(self.style.SUCCESS(f"Wrote {run.processed} guardian warning(s)."))
             iteration += 1
             if not options["loop"] or (options["max_iterations"] and iteration >= options["max_iterations"]):
                 break

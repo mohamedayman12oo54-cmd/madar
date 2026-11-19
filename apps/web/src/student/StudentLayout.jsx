@@ -10,6 +10,7 @@ import {
   Sparkles,
   LogOut,
   Settings,
+  LifeBuoy,
 } from "lucide-react";
 import logo from "../assets/madar-logo.png";
 import { useSession } from "../state/session.jsx";
@@ -75,6 +76,9 @@ export default function StudentLayout() {
           >
             <Bell size={18} />
             {unread > 0 && <span className="dash-badge">{unread > 99 ? "99+" : unread}</span>}
+          </NavLink>
+          <NavLink to="/learn/support" className="stu-icon-btn" aria-label="الدعم والمساعدة">
+            <LifeBuoy size={18} />
           </NavLink>
           <NavLink to="/learn/settings" className="stu-icon-btn" aria-label="الإعدادات">
             <Settings size={18} />

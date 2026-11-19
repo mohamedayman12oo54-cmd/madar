@@ -11,12 +11,14 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsTeam
+from control.access import HasControlPerm
 
 from .models import KBDocument
 from .serializers import KBDocumentSerializer
 
-IS_MAINTAINER = [IsTeam]
+# The Knowledge Base right is the Control Center permission `knowledge.manage`. A team account created before roles
+# existed (no TeamProfile) holds exactly that permission, so it keeps working; a support agent or analyst does not.
+IS_MAINTAINER = [HasControlPerm.require("knowledge.manage")]
 
 
 class KBDocumentListCreateView(generics.ListCreateAPIView):

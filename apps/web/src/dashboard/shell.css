@@ -1,0 +1,500 @@
+/* ==========================================================================
+   MADAR — TEACHER DASHBOARD design layer (loaded after dashboard.css; scope: /app).
+   One consistent system on the existing tokens: 8-pt spacing rhythm, three radii, one shadow, one focus ring,
+   quiet surfaces, a single accent (navy). Nothing here changes behaviour — only structure and look.
+   ========================================================================== */
+
+.dash {
+  --d-shadow: 0 1px 2px rgba(49, 56, 81, 0.05), 0 6px 18px -8px rgba(49, 56, 81, 0.12);
+  --d-ring: 0 0 0 3px rgba(49, 56, 81, 0.16);
+  --d-live: #1f8a4c;
+  --d-live-bg: #e3f4ea;
+}
+
+/* one visible focus style everywhere in the dashboard */
+.dash :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* ---------- sidebar ---------- */
+.dash-side {
+  background: var(--panel);
+  padding: 18px 14px 14px;
+}
+.dash-brand {
+  padding: 4px 10px 18px;
+}
+.dash-nav {
+  gap: 0;
+  padding-inline-end: 2px;
+  scrollbar-width: thin;
+}
+.dash-group {
+  display: grid;
+  gap: 2px;
+}
+.dash-group + .dash-group {
+  margin-block-start: 14px;
+}
+.dash-group-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  padding: 6px 14px 4px;
+}
+.dash-link {
+  position: relative;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.dash-link svg {
+  opacity: 0.85;
+}
+.dash-link:hover {
+  background: var(--fill);
+}
+.dash-link.active {
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: 0 8px 18px -10px rgba(49, 56, 81, 0.7);
+}
+.dash-link.active svg {
+  opacity: 1;
+}
+
+/* ---------- top bar ---------- */
+.dash-top {
+  height: 64px;
+  padding-inline: clamp(14px, 2.4vw, 28px);
+}
+.dash-title {
+  font-size: 1.08rem;
+}
+.dash-quick {
+  position: relative;
+}
+.dash-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px 0 12px;
+  border-radius: 100px;
+  border: 0;
+  background: var(--navy);
+  color: var(--cream);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px -10px rgba(49, 56, 81, 0.8);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.dash-quick-btn:hover {
+  transform: translateY(-1px);
+}
+.dash-quick-menu {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-start: calc(100% + 8px);
+  width: 268px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 26px 60px -30px rgba(49, 56, 81, 0.5);
+  padding: 8px;
+  z-index: 35;
+  display: grid;
+  gap: 2px;
+}
+.dash-quick-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+  color: var(--ink);
+}
+.dash-quick-menu button:hover {
+  background: var(--fill);
+}
+.dash-quick-menu .ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bluegray) 45%, #fff);
+  color: var(--navy);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.dash-quick-menu b {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.dash-quick-menu small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--soft);
+  line-height: 1.4;
+}
+
+/* ---------- content area ---------- */
+.dash-body {
+  padding-block-start: 26px;
+}
+.dash-section-head h1 {
+  font-size: clamp(1.3rem, 2.2vw, 1.65rem);
+  letter-spacing: -0.01em;
+}
+.dash-section-head h2 {
+  font-size: 1.05rem;
+}
+
+/* cards: one radius, one shadow, calm hover */
+.dash-card {
+  border-radius: 18px;
+  box-shadow: var(--d-shadow);
+}
+.dash-card-btn:hover {
+  box-shadow: 0 14px 30px -16px rgba(49, 56, 81, 0.35);
+}
+.dash-card.live {
+  border-color: color-mix(in srgb, var(--d-live) 40%, var(--line));
+}
+.dash-card.live .v {
+  color: var(--d-live);
+}
+.dash-card.needs-care {
+  border-color: #e6b8b4;
+}
+.dash-card.needs-care .v {
+  color: #b3261e;
+}
+
+/* lists */
+.list-row {
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: var(--d-shadow);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.list-row:hover {
+  border-color: var(--line-2);
+}
+.list-row strong {
+  color: var(--navy);
+}
+.session-row.is-live {
+  border-color: color-mix(in srgb, var(--d-live) 45%, var(--line));
+  background: linear-gradient(90deg, var(--d-live-bg), var(--panel) 45%);
+}
+
+/* buttons / chips / inputs share the same rhythm */
+.mini-btn {
+  border-radius: 12px;
+  min-height: 36px;
+}
+.mini-btn.is-primary {
+  background: var(--navy);
+  color: var(--cream);
+  border-color: var(--navy);
+}
+.chip-s {
+  padding: 3px 11px;
+  font-weight: 600;
+}
+.chip-s.good {
+  background: var(--d-live-bg);
+  color: var(--d-live);
+}
+.inp:focus,
+.dash select:focus,
+.dash textarea:focus {
+  box-shadow: var(--d-ring);
+}
+.dash-note {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bluegray) 22%, #fff);
+}
+
+/* loading skeleton (replaces bare "loading…" text) */
+.dash-skel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.dash-skel i {
+  display: block;
+  height: 104px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, var(--fill), rgba(49, 56, 81, 0.09), var(--fill));
+  background-size: 200% 100%;
+  animation: dash-skel 1.3s linear infinite;
+}
+@keyframes dash-skel {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-skel i {
+    animation: none;
+  }
+  .dash-quick-btn {
+    transition: none;
+  }
+}
+
+/* ---------- overview ---------- */
+.ov-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding: clamp(18px, 3vw, 28px);
+  margin-block-end: 18px;
+  border-radius: 22px;
+  color: var(--cream);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(194, 203, 211, 0.22), transparent 55%),
+    linear-gradient(135deg, #3f4766 0%, var(--navy) 60%);
+  box-shadow: 0 22px 40px -26px rgba(49, 56, 81, 0.8);
+}
+.ov-hero-date {
+  font-size: 0.84rem;
+  opacity: 0.8;
+}
+.ov-hero h2 {
+  font-size: clamp(1.35rem, 3vw, 1.9rem);
+  line-height: 1.4;
+  margin-block: 2px;
+}
+.ov-hero-sub {
+  opacity: 0.85;
+  font-size: 0.92rem;
+}
+.ov-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ov-hero .abtn-primary {
+  background: var(--cream);
+  color: var(--navy);
+}
+.ov-hero .abtn-primary:hover:not([disabled]) {
+  background: #fff;
+}
+.ov-hero .abtn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--cream);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.ov-hero .abtn-secondary:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.start-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px;
+  margin-block-end: 18px;
+  box-shadow: var(--d-shadow);
+}
+.start-card header {
+  display: grid;
+  gap: 4px;
+  margin-block-end: 12px;
+}
+.start-card h2 {
+  font-size: 1.02rem;
+}
+.start-card header p {
+  font-size: 0.82rem;
+  color: var(--soft);
+}
+.start-card ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 8px;
+}
+.start-card li a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.start-card li a:hover {
+  border-color: var(--navy);
+}
+.start-card li.done a {
+  background: var(--fill);
+  color: var(--soft);
+}
+.start-card li.done b {
+  text-decoration: line-through;
+  text-decoration-color: rgba(49, 56, 81, 0.35);
+}
+.start-card .mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--fill);
+  color: var(--soft);
+}
+.start-card li.done .mark {
+  background: var(--d-live);
+  color: #fff;
+}
+.start-card b {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.start-card small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--soft);
+  line-height: 1.5;
+}
+.start-card li a > svg:last-child {
+  margin-inline-start: auto;
+  color: var(--navy);
+}
+
+.overview-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.overview-side {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 1100px) {
+  .overview-cols {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+/* ---------- phone: bottom tab bar ---------- */
+.dash-bottombar {
+  display: none;
+}
+@media (max-width: 1024px) {
+  .dash-bottombar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    flex: none;
+    background: var(--panel);
+    border-block-start: 1px solid var(--line);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -10px 30px -22px rgba(49, 56, 81, 0.5);
+    z-index: 25;
+  }
+  .dash-bt {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 2px;
+    min-height: 54px;
+    border: 0;
+    background: transparent;
+    border-radius: 14px;
+    color: var(--soft);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .dash-bt.active {
+    color: var(--navy);
+    background: var(--fill);
+  }
+  .dash-bt-dot {
+    position: absolute;
+    top: 8px;
+    inset-inline-end: calc(50% - 16px);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #b4442f;
+  }
+  .dash-body {
+    padding-block-end: 28px;
+  }
+  .ov-hero-actions .abtn {
+    flex: 1 1 140px;
+  }
+}
+@media (max-width: 640px) {
+  .dash-top {
+    padding-inline: 12px;
+  }
+  .dash-quick-btn span {
+    display: none;
+  }
+  .dash-quick-btn {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+  .dash-quick-menu {
+    position: fixed;
+    inset-inline: 12px;
+    inset-block-start: 68px;
+    width: auto;
+  }
+  .list-row {
+    padding: 12px 14px;
+  }
+  .row-actions {
+    width: 100%;
+  }
+  .row-actions .mini-btn {
+    flex: 1 1 auto;
+  }
+  .start-card ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .dash-env {
+    display: none;
+  }
+}
+@media print {
+  .dash-bottombar,
+  .dash-quick {
+    display: none !important;
+  }
+}
+.ov-hero .abtn {
+  white-space: nowrap;
+}

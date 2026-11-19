@@ -25,6 +25,9 @@ class Command(BaseCommand):
         )
         team.set_password(DEMO_PASSWORD)
         team.save()
+        from control.models import Role, TeamProfile
+
+        TeamProfile.objects.get_or_create(user=team, defaults={"role": Role.objects.get(key="super_admin")})
 
         teacher, _ = User.objects.update_or_create(
             email="ahmed@madar.test",

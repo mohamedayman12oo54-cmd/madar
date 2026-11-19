@@ -279,7 +279,7 @@ class StudentClaimActivateView(APIView):
         with transaction.atomic():
             # Only a still-unclaimed account can be activated by a claim flow.
             user = User.objects.select_for_update().filter(
-                id=pending.payload["user_id"], role=User.Role.STUDENT, is_active=False
+                id=pending.payload["user_id"], role=User.Role.STUDENT, is_active=False, is_verified=False
             ).first()
             if not user or not consume_pending(pending):
                 return Response({"detail": GENERIC_RETRY}, status=status.HTTP_400_BAD_REQUEST)

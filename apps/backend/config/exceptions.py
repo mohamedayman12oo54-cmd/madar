@@ -1,3 +1,6 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import DataError
+from rest_framework.response import Response
 from rest_framework.views import exception_handler
 from rest_framework.exceptions import Throttled
 
@@ -7,6 +10,11 @@ def api_exception_handler(exc, context):
     predictable shape ({"detail": ..., "code": ...}) the frontend can rely
     on, and throttled requests get a friendly Arabic message with the
     retry time instead of DRF's default English string."""
+    # Values the database refuses (a number too large for the column, a malformed date the ORM chokes on) are the
+    # CALLER's mistake: a 400, never an HTTP 500 that looks like a server fault and invites probing.
+    # RecursionError: a JSON body nested hundreds of thousands deep overflows the parser's stack before any view code runs.
+    if isinstance(exc, (DataError, DjangoValidationError, RecursionError)):
+        return Response({"detail": "قيمة غير صالحة في الطلب.", "code": "invalid_value"}, status=400)
     response = exception_handler(exc, context)
     if response is None:
         return None

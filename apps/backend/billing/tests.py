@@ -301,7 +301,7 @@ class PlanSeedDataTests(TestCase):
 
     def test_exactly_three_plans_exist_with_the_decided_numbers(self):
         self.assertEqual(Plan.objects.count(), 3)
-        for key, price, days in ((Plan.Key.MONTHLY, 185000, 30), (Plan.Key.TERM, 450000, 180), (Plan.Key.YEARLY, 1000000, 365)):
+        for key, price, days in ((Plan.Key.MONTHLY, 150000, 30), (Plan.Key.TERM, 500000, 180), (Plan.Key.YEARLY, 950000, 365)):
             plan = Plan.objects.get(key=key)
             self.assertEqual((plan.price_minor_units, plan.period_days, plan.currency), (price, days, "EGP"), key)
             self.assertIsNone(plan.max_students)  # no plan has a student cap

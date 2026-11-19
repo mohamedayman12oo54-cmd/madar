@@ -13,6 +13,7 @@ import ContentPage from "./ContentPage.jsx";
 import NotificationsPage from "./NotificationsPage.jsx";
 import SettingsPage from "./SettingsPage.jsx";
 import BillingPage from "./BillingPage.jsx";
+import SupportPage from "../support/SupportPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -30,6 +31,7 @@ export default function AppRoutes() {
           <Route path="content" element={<ContentPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="billing" element={<BillingPage />} />
+          <Route path="support" element={<SupportPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

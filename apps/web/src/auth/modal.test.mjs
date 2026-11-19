@@ -60,6 +60,8 @@ const vite = await createServer({
   appType: "custom",
   logLevel: "error",
   optimizeDeps: { noDiscovery: true },
+  // React Router 7 ships dual CJS/ESM: bundle it through Vite so the test harness sees the ESM build
+  ssr: { noExternal: ["react-router", "react-router-dom"], resolve: { conditions: ["module-sync", "import", "module", "node", "default"] } },
 });
 const { Modal, Field, TextInput, Btn } = await vite.ssrLoadModule("/src/auth/ui.jsx");
 

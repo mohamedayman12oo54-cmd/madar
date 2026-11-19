@@ -1,4 +1,4 @@
-"""Writes the three real plans (billing/catalog.py) into the database: monthly 1,850 / term 4,500 / yearly 10,000 EGP.
+"""Writes the three real plans (billing/catalog.py) into the database: monthly 1,500 / term 5,000 / yearly 9,500 EGP.
 Idempotent and exact — it only ever creates or corrects those three rows. Needed after `manage.py flush`, which
 empties the plan table the migration filled. Prints what it did; changes nothing else."""
 from django.core.management.base import BaseCommand
