@@ -52,14 +52,14 @@ export async function currentSubscription() {
 
 async function sendToServer(sub) {
   const j = sub.toJSON();
-  await api.post("/notifications/push/subscribe/", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+  await api.post("/notifications/push/subscribe/", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { auth: true });
 }
 
 /** Ask permission, subscribe, register with the server. Throws an Error with .code on a known failure. */
 export async function enablePush(userId) {
   const fail = (code) => Object.assign(new Error(code), { code });
   if (!pushSupported()) throw fail("unsupported");
-  const { enabled, public_key } = await api.get("/notifications/push/public-key/");
+  const { enabled, public_key } = await api.get("/notifications/push/public-key/", { auth: true });
   if (!enabled) throw fail("server_off");
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw fail("denied");
@@ -74,7 +74,7 @@ export async function disablePush(userId) {
   setOptIn(userId, false);
   const sub = await currentSubscription();
   if (!sub) return;
-  await api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint }).catch(() => {});
+  await api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint }, { auth: true }).catch(() => {});
   await sub.unsubscribe().catch(() => {});
 }
 
@@ -93,7 +93,7 @@ export async function syncPush(userId) {
 export async function detachDevice() {
   try {
     const sub = await currentSubscription();
-    if (sub) await withTimeout(api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint }), 4000);
+    if (sub) await withTimeout(api.post("/notifications/push/unsubscribe/", { endpoint: sub.endpoint }, { auth: true }), 4000);
   } catch {
     /* best effort */
   }

@@ -1,13 +1,14 @@
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarCheck, BookOpenCheck, Wallet, Gauge, Star, Bell, QrCode } from "lucide-react";
+import { CalendarCheck, BookOpenCheck, Wallet, Gauge, Star, Bell, QrCode, Bot, ArrowLeft } from "lucide-react";
 import { Banner } from "../auth/ui.jsx";
 import { studentApi } from "../lib/studentApi.js";
 import { ApiError } from "../lib/api.js";
 import { qrImageSrc } from "../lib/qr.js";
 import { PageHeader, Empty, fmtMonth } from "../dashboard/common.jsx";
 import VideoCard from "./VideoCard.jsx";
+import "../agent/agent.css";
 
 export const STATE_LABEL = { good: "جيد", needs_follow_up: "يحتاج متابعة", at_risk: "معرّض للخطر" };
 export const STATE_TONE = { good: "good", needs_follow_up: "warn", at_risk: "bad" };
@@ -68,6 +69,16 @@ export default function HomePage() {
           <Bell size={15} /> لديك {d.unread_notifications} إشعار غير مقروء
         </Link>
       )}
+      <Link to="/learn/agent" className="ag-cta" style={{ marginBlockEnd: 14 }}>
+        <span className="ag-cta-ic">
+          <Bot size={22} />
+        </span>
+        <span>
+          <strong>وكيل مدار الذكي</strong>
+          <span>يتابع مستواك ويجهّز لك اختبارات في النقاط التي تحتاج تقوية.</span>
+        </span>
+        <ArrowLeft size={18} className="ag-cta-go" />
+      </Link>
       <div className="dash-cards">
         <div className="dash-card">
           <div className="k">
