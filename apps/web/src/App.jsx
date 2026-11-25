@@ -48,6 +48,8 @@ import { OrbitBig } from "./auth/ui.jsx";
 const AppRoutes = lazy(() => import("./dashboard/AppRoutes.jsx"));
 const StudentRoutes = lazy(() => import("./student/StudentRoutes.jsx"));
 const ParentPortal = lazy(() => import("./parent/ParentPortal.jsx"));
+const ParentAgentPage = lazy(() => import("./agent/ParentAgent.jsx"));
+const AgentPreview = import.meta.env.DEV ? lazy(() => import("./agent/AgentPreview.jsx")) : null;
 const TeamRoutes = lazy(() => import("./team/TeamRoutes.jsx"));
 
 function AreaFallback() {
@@ -118,6 +120,9 @@ export default function App() {
   const isLearn = location.pathname === "/learn" || location.pathname.startsWith("/learn/");
 
   const isParent = location.pathname === "/parent";
+  const isParentAgent = location.pathname === "/parent/agent";
+  // Design preview on mock data (no login). Exists only in `vite dev`; production builds drop it entirely.
+  const isAgentPreview = import.meta.env.DEV && location.pathname === "/preview/agent";
   const isTeam = location.pathname === "/team" || location.pathname.startsWith("/team/");
 
   const prefersReduced =
@@ -158,6 +163,26 @@ export default function App() {
       <MotionConfig reducedMotion="user">
         <Suspense fallback={<AreaFallback />}>
           <TeamRoutes />
+        </Suspense>
+      </MotionConfig>
+    );
+  }
+
+  if (isAgentPreview) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <Suspense fallback={<AreaFallback />}>
+          <AgentPreview />
+        </Suspense>
+      </MotionConfig>
+    );
+  }
+
+  if (isParentAgent) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <Suspense fallback={<AreaFallback />}>
+          <ParentAgentPage />
         </Suspense>
       </MotionConfig>
     );

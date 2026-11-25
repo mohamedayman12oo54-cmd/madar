@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import {
   CalendarCheck,
   BookOpenCheck,
@@ -19,6 +19,8 @@ import {
   Trophy,
   CircleCheck,
   Banknote,
+  Bot,
+  ArrowLeft,
 } from "lucide-react";
 import { Banner } from "../auth/ui.jsx";
 import logo from "../assets/madar-logo.png";
@@ -39,6 +41,7 @@ import ReplyBox from "./ReplyBox.jsx";
 import TrendChart from "./TrendChart.jsx";
 import "./parent.css";
 import "./print.css";
+import "../agent/agent.css";
 
 const STATE_LABEL = { good: "جيد", needs_follow_up: "يحتاج متابعة", at_risk: "معرّض للخطر" };
 const STATE_TONE = { good: "good", needs_follow_up: "warn", at_risk: "bad" };
@@ -260,6 +263,17 @@ function Report({ d, session, active, fresh, onPickChild, onReplySent, tokenRef 
           </ul>
         </div>
       </section>
+
+      <Link to="/parent/agent" className="ag-cta no-print" style={{ marginBlock: 14 }}>
+        <span className="ag-cta-ic">
+          <Bot size={22} />
+        </span>
+        <span>
+          <strong>وكيل مدار الذكي</strong>
+          <span>اعرف ما لاحظه الوكيل عن {d.student.name}، وما الاختبارات التي جهّزها، ووافق على قراراته.</span>
+        </span>
+        <ArrowLeft size={18} className="ag-cta-go" />
+      </Link>
 
       <div className="pp-kpis">
         <Kpi
